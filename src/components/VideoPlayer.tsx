@@ -1292,9 +1292,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </button>
           
           {/* Centered video title & Playback mode badge */}
-          {!hideVideoName && (
+          {(!hideVideoName || video.isRemote) && (
             <div className="top-title-container">
-              <h2 className="top-title-clean">{video.title}</h2>
+              {!hideVideoName && video.playbackMode !== 'native' && (
+                <h2 className="top-title-clean">{video.title}</h2>
+              )}
               {video.isRemote && (
                 <div className="playback-mode-badge-container">
                   {video.playbackMode === 'advanced' ? (
@@ -1671,7 +1673,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <div className={`volume-toast-overlay ${volumeToast.visible ? 'visible' : ''}`}>
         <div className="volume-toast-content">
           <span className="volume-toast-icon">
-            {volumeToast.isMuted || volumeToast.volume === 0 ? '🔇' : volumeToast.volume < 0.4 ? '🔈' : volumeToast.volume < 0.8 ? '🔉' : '🔊'}
+            {volumeToast.isMuted || volumeToast.volume === 0 ? (
+              <VolumeX size={18} style={{ color: '#e50914' }} />
+            ) : volumeToast.volume < 0.4 ? (
+              <Volume1 size={18} />
+            ) : (
+              <Volume2 size={18} />
+            )}
           </span>
           <div className="volume-toast-bar-container">
             <div className="volume-toast-bar-fill" style={{ width: `${volumeToast.isMuted ? 0 : volumeToast.volume * 100}%` }}></div>
@@ -1736,6 +1744,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           display: flex;
           align-items: center;
           justify-content: space-between;
+          width: 100%;
+          box-sizing: border-box;
         }
         .top-title-clean {
           font-size: 1.3rem;
@@ -1743,18 +1753,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           color: white;
           margin: 0;
           text-align: center;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          width: 100%;
+          max-width: 100%;
         }
         .top-title-container {
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 0.4rem;
+          flex: 1;
+          min-width: 0;
+          margin: 0 1.5rem;
+          max-width: calc(100% - 120px);
         }
         .playback-mode-badge-container {
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 0.5rem;
+          flex-wrap: wrap;
         }
         .playback-badge {
           display: inline-flex;
@@ -1826,7 +1846,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         .native-badge-wrapper {
           display: flex;
           align-items: center;
+          justify-content: center;
           gap: 8px;
+          flex-wrap: wrap;
         }
         .btn-enable-advanced {
           background: transparent;
@@ -1854,6 +1876,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           align-items: center;
           justify-content: center;
           transition: transform 0.15s ease, opacity 0.15s ease;
+          flex-shrink: 0;
         }
         .cast-btn:hover, .close-btn:hover {
           transform: scale(1.15);

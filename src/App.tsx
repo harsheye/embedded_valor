@@ -4,7 +4,8 @@ import { ffmpegService } from './services/ffmpeg';
 import { VideoPlayer } from './components/VideoPlayer';
 import { 
   Film, UploadCloud, Play, Settings, X,
-  RefreshCw, AlertCircle, CheckCircle, History, Home
+  RefreshCw, AlertCircle, CheckCircle, History, Home,
+  Clock, Sliders, Volume2, Maximize
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
 import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './utils/remoteByteSource';
@@ -1154,7 +1155,9 @@ function App() {
                 <div className="pref-row">
                   <span className="pref-label">Play button</span>
                   <div className="pref-row-right">
-                    <span className="pref-icon">▶</span>
+                    <span className="pref-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <Play size={16} />
+                    </span>
                     <input 
                       type="checkbox" 
                       className="pref-checkbox"
@@ -1167,7 +1170,9 @@ function App() {
                 <div className="pref-row">
                   <span className="pref-label">Time</span>
                   <div className="pref-row-right">
-                    <span className="pref-icon font-mono" style={{ fontSize: '0.8rem', letterSpacing: '0.5px' }}>2:09:25</span>
+                    <span className="pref-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <Clock size={16} />
+                    </span>
                     <input 
                       type="checkbox" 
                       className="pref-checkbox"
@@ -1180,7 +1185,9 @@ function App() {
                 <div className="pref-row">
                   <span className="pref-label">Play bar</span>
                   <div className="pref-row-right">
-                    <span className="pref-icon">—•</span>
+                    <span className="pref-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <Sliders size={16} />
+                    </span>
                     <input 
                       type="checkbox" 
                       className="pref-checkbox"
@@ -1193,7 +1200,9 @@ function App() {
                 <div className="pref-row">
                   <span className="pref-label">Volume</span>
                   <div className="pref-row-right">
-                    <span className="pref-icon">🔊</span>
+                    <span className="pref-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <Volume2 size={16} />
+                    </span>
                     <input 
                       type="checkbox" 
                       className="pref-checkbox"
@@ -1206,7 +1215,9 @@ function App() {
                 <div className="pref-row">
                   <span className="pref-label">Fullscreen</span>
                   <div className="pref-row-right">
-                    <span className="pref-icon">⤢</span>
+                    <span className="pref-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <Maximize size={16} />
+                    </span>
                     <input 
                       type="checkbox" 
                       className="pref-checkbox"
