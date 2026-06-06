@@ -5,17 +5,24 @@ export class AudioSyncEngine {
   private isSeeking = false;
   private isSyncingEnabled = true;
   private isVideoWaiting = false;
+  private audioStartOffset = 0;
 
-  constructor(video: HTMLVideoElement, audio: HTMLAudioElement) {
+  constructor(video: HTMLVideoElement, audio: HTMLAudioElement, startOffset = 0) {
     this.video = video;
     this.audio = audio;
+    this.audioStartOffset = startOffset;
     this.init();
+  }
+
+  public setAudioStartOffset(offset: number) {
+    this.audioStartOffset = offset;
+    this.audio.currentTime = Math.max(0, this.video.currentTime - this.audioStartOffset);
   }
 
   private init() {
     // Sync initial state
     this.audio.playbackRate = this.video.playbackRate;
-    this.audio.currentTime = this.video.currentTime;
+    this.audio.currentTime = Math.max(0, this.video.currentTime - this.audioStartOffset);
     
     // Mute video native audio to only hear the secondary audio
     this.video.muted = true;
@@ -68,11 +75,11 @@ export class AudioSyncEngine {
   private handleSeeking = () => {
     this.isSeeking = true;
     this.isVideoWaiting = false;
-    this.audio.currentTime = this.video.currentTime;
+    this.audio.currentTime = Math.max(0, this.video.currentTime - this.audioStartOffset);
   };
 
   private handleSeeked = () => {
-    this.audio.currentTime = this.video.currentTime;
+    this.audio.currentTime = Math.max(0, this.video.currentTime - this.audioStartOffset);
     this.isSeeking = false;
     this.isVideoWaiting = false;
   };
@@ -103,12 +110,12 @@ export class AudioSyncEngine {
 
       const vTime = this.video.currentTime;
       const aTime = this.audio.currentTime;
-      const drift = Math.abs(vTime - aTime);
+      const drift = Math.abs(vTime - (aTime + this.audioStartOffset));
 
       // If they drift by more than 80ms, seek audio to video time
       if (drift > 0.08) {
         console.log(`[AudioSync] Drift detected: ${Math.round(drift * 1000)}ms. Syncing audio.`);
-        this.audio.currentTime = vTime;
+        this.audio.currentTime = Math.max(0, vTime - this.audioStartOffset);
       }
 
       // Keep play states synchronized
@@ -140,7 +147,7 @@ export class AudioSyncEngine {
     if (!enabled) {
       this.audio.pause();
     } else {
-      this.audio.currentTime = this.video.currentTime;
+      this.audio.currentTime = Math.max(0, this.video.currentTime - this.audioStartOffset);
       if (!this.video.paused) {
         this.audio.play().catch(console.error);
       }

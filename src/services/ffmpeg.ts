@@ -1,5 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
+import type { ByteSource } from '../utils/remoteByteSource';
 
 export interface MediaStream {
   index: number;
@@ -393,6 +394,175 @@ class FFmpegService {
       throw error;
     } finally {
       this.setProgressCallback(null);
+      try {
+        await ffmpeg.deleteFile(tempInFile);
+        await ffmpeg.deleteFile(tempOutFile);
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Probe a remote file's streams using only the first 2MB of headers
+   */
+  async probeRemoteHeader(_url: string, ext: string, source: ByteSource): Promise<ProbeResult> {
+    const ffmpeg = await this.load();
+    const tempInFile = `input${ext}`;
+
+    const size = await source.getSize();
+    const headerLimit = Math.min(2 * 1024 * 1024, size - 1);
+    const headerBytes = await source.read(0, headerLimit);
+
+    await ffmpeg.writeFile(tempInFile, headerBytes);
+
+    const logs: string[] = [];
+    const collectLog = (msg: string) => logs.push(msg);
+
+    const previousLogCallback = this.logCallback;
+    this.setLogCallback(collectLog);
+
+    try {
+      await ffmpeg.exec(['-i', tempInFile, '-c', 'copy', '-f', 'null', '-']);
+    } catch (err) {
+      console.warn('Remote probe exec finished with warning:', err);
+    } finally {
+      this.setLogCallback(previousLogCallback);
+      try {
+        await ffmpeg.deleteFile(tempInFile);
+      } catch (e) {}
+    }
+
+    const fullLog = logs.join('\n');
+    return this.parseProbeLogs(fullLog);
+  }
+
+  /**
+   * Extract audio segment from a remote byte source using a seek offset
+   */
+  async extractRemoteAudioSegment(
+    source: ByteSource,
+    startOffset: number,
+    endOffset: number,
+    streamIndex: number,
+    transcode = true,
+    signal?: AbortSignal
+  ): Promise<{ url: string; mimeType: string }> {
+    const ffmpeg = await this.load();
+    const tempInFile = 'chunk.bin';
+    const tempOutFile = transcode ? 'audio.mp3' : 'audio.bin';
+    const mimeType = transcode ? 'audio/mp3' : 'audio/octet-stream';
+
+    const chunkBytes = await source.read(startOffset, endOffset, signal);
+    await ffmpeg.writeFile(tempInFile, chunkBytes);
+
+    try {
+      let args: string[];
+      if (transcode) {
+        args = [
+          '-i', tempInFile,
+          '-map', `0:${streamIndex}`,
+          '-vn',
+          '-acodec', 'libmp3lame',
+          '-ab', '128k',
+          tempOutFile
+        ];
+      } else {
+        args = [
+          '-i', tempInFile,
+          '-map', `0:${streamIndex}`,
+          '-vn',
+          '-acodec', 'copy',
+          tempOutFile
+        ];
+      }
+
+      await ffmpeg.exec(args);
+      const data = await ffmpeg.readFile(tempOutFile);
+      const blob = new Blob([data as any], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      return { url, mimeType };
+    } finally {
+      try {
+        await ffmpeg.deleteFile(tempInFile);
+        await ffmpeg.deleteFile(tempOutFile);
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Extract subtitle segment from a remote byte source using a seek offset
+   */
+  async extractRemoteSubtitleSegment(
+    source: ByteSource,
+    startOffset: number,
+    endOffset: number,
+    streamIndex: number,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const ffmpeg = await this.load();
+    const tempInFile = 'chunk.bin';
+    const tempOutFile = 'subtitles.srt';
+
+    const chunkBytes = await source.read(startOffset, endOffset, signal);
+    await ffmpeg.writeFile(tempInFile, chunkBytes);
+
+    try {
+      await ffmpeg.exec([
+        '-i', tempInFile,
+        '-map', `0:${streamIndex}`,
+        '-c:s', 'srt',
+        tempOutFile
+      ]);
+
+      const data = await ffmpeg.readFile(tempOutFile);
+      return new TextDecoder('utf-8').decode(data as any);
+    } finally {
+      try {
+        await ffmpeg.deleteFile(tempInFile);
+        await ffmpeg.deleteFile(tempOutFile);
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Extract audio segment from a single HLS TS segment URL
+   */
+  async extractHlsAudioSegment(
+    segmentUrl: string,
+    _streamIndex: number,
+    transcode = true
+  ): Promise<{ url: string; mimeType: string }> {
+    const ffmpeg = await this.load();
+    const tempInFile = 'segment.ts';
+    const tempOutFile = transcode ? 'audio.mp3' : 'audio.bin';
+    const mimeType = transcode ? 'audio/mp3' : 'audio/octet-stream';
+
+    const response = await fetch(segmentUrl);
+    const buffer = await response.arrayBuffer();
+    await ffmpeg.writeFile(tempInFile, new Uint8Array(buffer));
+
+    try {
+      let args: string[];
+      if (transcode) {
+        args = [
+          '-i', tempInFile,
+          '-acodec', 'libmp3lame',
+          '-ab', '128k',
+          tempOutFile
+        ];
+      } else {
+        args = [
+          '-i', tempInFile,
+          '-acodec', 'copy',
+          tempOutFile
+        ];
+      }
+
+      await ffmpeg.exec(args);
+      const data = await ffmpeg.readFile(tempOutFile);
+      const blob = new Blob([data as any], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      return { url, mimeType };
+    } finally {
       try {
         await ffmpeg.deleteFile(tempInFile);
         await ffmpeg.deleteFile(tempOutFile);

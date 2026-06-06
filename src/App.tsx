@@ -7,6 +7,9 @@ import {
   RefreshCw, AlertCircle, CheckCircle, History, Home
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
+import { HttpByteSource, CachedByteSource } from './utils/remoteByteSource';
+import { probeContainer, parseMp4, parseMkv } from './utils/containerParser';
+import { parseHlsManifest } from './utils/hlsParser';
 
 function App() {
   const [ffmpegStatus, setFfmpegStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -23,6 +26,8 @@ function App() {
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
   const [lastPlayingVideo, setLastPlayingVideo] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history'>('home');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState('');
 
   useEffect(() => {
     const lastId = localStorage.getItem('valor_last_playing_id');
@@ -521,37 +526,149 @@ function App() {
     }
   };
 
+  const processRemoteUrl = async (url: string) => {
+    setIsProcessing(true);
+    setProcessingStep('Initializing connection...');
+    try {
+      const byteSource = new HttpByteSource(url);
+      const cachedSource = new CachedByteSource(byteSource);
+
+      setProcessingStep('Probing stream format...');
+      const container = await probeContainer(cachedSource);
+      console.log('Probed remote container type:', container);
+
+      let duration = 'Unknown';
+      let format: string = container;
+      let streams: any[] = [];
+      let seekMap: any[] = [];
+      let hlsPlaylist: any = null;
+
+      if (container === 'hls') {
+        setProcessingStep('Parsing HLS manifest...');
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch HLS manifest, status: ${res.status}`);
+        }
+        const manifestText = await res.text();
+        hlsPlaylist = parseHlsManifest(manifestText, url);
+        if (hlsPlaylist.segments.length > 0) {
+          const totalDur = hlsPlaylist.segments.reduce((acc: number, s: any) => acc + s.duration, 0);
+          duration = formatTime(totalDur);
+        }
+        format = 'hls';
+      } else if (container === 'mp4') {
+        setProcessingStep('Parsing MP4 structure...');
+        const mp4Info = await parseMp4(cachedSource);
+        duration = formatTime(mp4Info.duration);
+        seekMap = mp4Info.tracks[0]?.seekMap?.timeToOffset || [];
+        
+        setProcessingStep('Analyzing video streams...');
+        if (!ffmpegService.isReady()) {
+          await ffmpegService.load();
+        }
+        const probeResult = await ffmpegService.probeRemoteHeader(url, '.mp4', cachedSource);
+        streams = probeResult.streams;
+      } else if (container === 'mkv') {
+        setProcessingStep('Parsing MKV headers...');
+        const mkvInfo = await parseMkv(cachedSource);
+        duration = formatTime(mkvInfo.duration);
+        seekMap = mkvInfo.seekMap || [];
+        
+        setProcessingStep('Analyzing video streams...');
+        if (!ffmpegService.isReady()) {
+          await ffmpegService.load();
+        }
+        const probeResult = await ffmpegService.probeRemoteHeader(url, '.mkv', cachedSource);
+        streams = probeResult.streams;
+      } else {
+        setProcessingStep('Probing headers...');
+        try {
+          if (!ffmpegService.isReady()) {
+            await ffmpegService.load();
+          }
+          const ext = url.split('.').pop()?.split('?')[0] || 'mp4';
+          const probeResult = await ffmpegService.probeRemoteHeader(url, `.${ext}`, cachedSource);
+          streams = probeResult.streams;
+          duration = probeResult.duration;
+          format = probeResult.format;
+        } catch (e) {
+          console.warn('FFmpeg probe failed on unknown format, using raw URL', e);
+        }
+      }
+
+      const audioTracks: CustomAudioTrack[] = [];
+      const subtitleTracks: CustomSubtitleTrack[] = [];
+
+      const title = url.substring(url.lastIndexOf('/') + 1) || 'Remote Stream';
+      const videoItem: VideoItem = {
+        id: `url-${Date.now()}`,
+        title,
+        url,
+        type: 'url',
+        isRemote: true,
+        containerType: container,
+        seekMap,
+        hlsPlaylist,
+        duration: duration !== 'Unknown' ? duration : undefined,
+        format,
+        streams,
+        audioTracks,
+        subtitleTracks,
+        currentTime: 0
+      };
+
+      setVideos(prev => {
+        const filtered = prev.filter(v => v.url !== url);
+        return [videoItem, ...filtered];
+      });
+      setPlayingVideo(videoItem);
+    } catch (err: any) {
+      console.error('Failed to process remote URL:', err);
+      
+      let probingError = '';
+      const errStr = String(err);
+      if (errStr.includes('status: 403')) {
+        probingError = 'The file server responded with a status of 403 (Forbidden). The file URL might not be supported by the source (e.g. blocks hotlinking or CORS range requests).';
+      } else if (errStr.includes('status: 404')) {
+        probingError = 'The file server responded with a status of 404 (Not Found). The file does not exist at this URL.';
+      } else if (errStr.includes('status: 5')) {
+        probingError = 'The file server returned a 5xx server error.';
+      } else if (errStr.includes('Failed to fetch')) {
+        probingError = 'The request was blocked by a network or CORS restriction from the file server.';
+      } else {
+        probingError = err?.message || errStr;
+      }
+
+      const title = url.substring(url.lastIndexOf('/') + 1) || 'Remote Stream';
+      const fallbackItem: VideoItem = {
+        id: `url-${Date.now()}`,
+        title,
+        url,
+        type: 'url',
+        isRemote: true,
+        containerType: 'unknown',
+        audioTracks: [],
+        subtitleTracks: [],
+        probingError: probingError || undefined
+      };
+      setVideos(prev => {
+        const filtered = prev.filter(v => v.url !== url);
+        return [fallbackItem, ...filtered];
+      });
+      setPlayingVideo(fallbackItem);
+    } finally {
+      setIsProcessing(false);
+      setProcessingStep('');
+    }
+  };
+
   // URL Form submit handler
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!videoUrl) return;
-
-    const title = `Stream (${videoUrl.substring(videoUrl.lastIndexOf('/') + 1) || 'URL'})`;
-    
-    // Deduplicate history items
-    const existingIndex = videos.findIndex(v => v.type === 'url' && v.url === videoUrl);
-    let targetVideo: VideoItem;
-    if (existingIndex !== -1) {
-      const existing = videos[existingIndex];
-      targetVideo = existing;
-      setVideos(prev => {
-        const filtered = prev.filter((_, idx) => idx !== existingIndex);
-        return [targetVideo, ...filtered];
-      });
-    } else {
-      targetVideo = {
-        id: `url-${Date.now()}`,
-        title,
-        url: videoUrl,
-        type: 'url',
-        audioTracks: [],
-        subtitleTracks: [],
-      };
-      setVideos((prev) => [targetVideo, ...prev]);
-    }
-
-    setPlayingVideo(targetVideo);
+    const url = videoUrl;
     setVideoUrl('');
+    await processRemoteUrl(url);
   };
 
   // If playing, render VideoPlayer fullscreen
@@ -1038,6 +1155,16 @@ function App() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isProcessing && (
+        <div className="processing-overlay">
+          <div className="loader-box">
+            <RefreshCw className="loader-spin" size={40} />
+            <h4>Processing Stream</h4>
+            <p className="step-text">{processingStep}</p>
           </div>
         </div>
       )}

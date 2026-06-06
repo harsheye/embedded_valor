@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, Loader, Check, MonitorPlay,
-  Volume2, Volume1, VolumeX
+  Volume2, Volume1, VolumeX, AlertCircle
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -10,6 +10,7 @@ import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSyncEngine } from '../utils/audioSync';
 import { parseSubtitles } from '../utils/subtitleParser';
 import { ffmpegService } from '../services/ffmpeg';
+import { HttpByteSource, CachedByteSource } from '../utils/remoteByteSource';
 
 interface VideoPlayerProps {
   video: VideoItem;
@@ -77,6 +78,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [selectedSubTrack, setSelectedSubTrack] = useState<CustomSubtitleTrack | null>(null);
   const [extractingStreamIndex, setExtractingStreamIndex] = useState<number | null>(null);
   const [showAudioSubMenu, setShowAudioSubMenu] = useState(false);
+  const [activeAudioStartOffset, setActiveAudioStartOffset] = useState(0);
+  const [activeRemoteAudioStreamIndex, setActiveRemoteAudioStreamIndex] = useState<number | null>(null);
+  const [activeRemoteSubStreamIndex, setActiveRemoteSubStreamIndex] = useState<number | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   // Default Subtitle Settings (kept for compatibility with SubtitleOverlay)
   const [subSettings] = useState<SubtitleSettings>({
@@ -122,6 +127,52 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const audioSubTimeoutRef = useRef<any>(null);
   const customAudioInputRef = useRef<HTMLInputElement>(null);
   const customSubInputRef = useRef<HTMLInputElement>(null);
+
+  const cachedSourceRef = useRef<CachedByteSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (video.isRemote) {
+      const byteSource = new HttpByteSource(video.url);
+      cachedSourceRef.current = new CachedByteSource(byteSource, 4 * 1024 * 1024, 16); // 4MB chunks, cache size 16 (64MB)
+    } else {
+      cachedSourceRef.current = null;
+    }
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [video.url, video.isRemote]);
+
+  const getByteOffsetForTime = (seekMap: { time: number; offset: number }[], time: number): number => {
+    if (!seekMap || seekMap.length === 0) return 0;
+    const entry = seekMap.reduce((prev: any, curr: any) => {
+      if (curr.time <= time) {
+        return curr;
+      }
+      return prev;
+    }, seekMap[0]);
+    return entry.offset;
+  };
+
+  // Background prefetch next chunks as video plays
+  useEffect(() => {
+    if (video.isRemote && video.seekMap && video.seekMap.length > 0 && cachedSourceRef.current) {
+      const currentOffset = getByteOffsetForTime(video.seekMap, currentTime);
+      const chunkSize = 4 * 1024 * 1024; // 4MB chunks
+      const currentChunk = Math.floor(currentOffset / chunkSize);
+      
+      // Prefetch next 3 chunks in background
+      for (let i = 1; i <= 3; i++) {
+        const nextChunk = currentChunk + i;
+        const start = nextChunk * chunkSize;
+        const end = (nextChunk + 1) * chunkSize - 1;
+        
+        cachedSourceRef.current.read(start, end).catch(() => {});
+      }
+    }
+  }, [currentTime, video.isRemote, video.url, video.seekMap]);
 
   const getLangLabel = (lang?: string, fallback: string = '') => {
     if (!lang) return fallback;
@@ -183,8 +234,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Synchronize Audio Engine
   useEffect(() => {
     if (selectedAudioTrack && videoRef.current && audioRef.current) {
-      console.log(`[Player] Initializing sync engine for track: ${selectedAudioTrack.name}`);
-      const engine = new AudioSyncEngine(videoRef.current, audioRef.current);
+      console.log(`[Player] Initializing sync engine for track: ${selectedAudioTrack.name} with offset: ${activeAudioStartOffset}`);
+      const engine = new AudioSyncEngine(videoRef.current, audioRef.current, activeAudioStartOffset);
       syncEngineRef.current = engine;
 
       // Sync initial volume
@@ -201,7 +252,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         videoRef.current.volume = volume;
       }
     }
-  }, [selectedAudioTrack]);
+  }, [selectedAudioTrack, activeAudioStartOffset]);
 
   useEffect(() => {
     localStorage.setItem('valor_volume', volume.toString());
@@ -276,8 +327,267 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [isPlaying, showAudioSubMenu]);
 
+  // Remote audio/subtitle segment chunk loading on demand
+  const loadRemoteAudioChunk = async (time: number, streamIndex: number, codec: string) => {
+    // Seek optimization: abort any active remote fetches
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
+    setExtractingStreamIndex(streamIndex);
+    setFlyExtractProgress(0);
+    
+    const wasPlaying = isPlaying;
+    if (videoRef.current && isPlaying) {
+      videoRef.current.pause();
+    }
+
+    try {
+      if (!ffmpegService.isReady()) {
+        await ffmpegService.load();
+      }
+
+      let audioUrl = '';
+      let offsetTime = time;
+
+      const cachedSource = cachedSourceRef.current || new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16);
+
+      if (video.containerType === 'hls' && video.hlsPlaylist) {
+        const segments = video.hlsPlaylist.segments || [];
+        const segIdx = segments.findIndex((s: any) => s.startTime <= time && time < s.startTime + s.duration);
+        const segment = segIdx !== -1 ? segments[segIdx] : segments[0];
+        
+        if (segment) {
+          offsetTime = segment.startTime;
+          console.log(`[Remote Audio] HLS segment time: ${offsetTime}, url: ${segment.uri}`);
+          const transcode = codec !== 'aac' && codec !== 'mp3';
+          const result = await ffmpegService.extractHlsAudioSegment(segment.uri, streamIndex, transcode);
+          audioUrl = result.url;
+        }
+      } else {
+        const seekMap = video.seekMap || [];
+        const entry = seekMap.reduce((prev: any, curr: any) => {
+          if (curr.time <= time) {
+            return curr;
+          }
+          return prev;
+        }, seekMap[0] || { time: 0, offset: 0 });
+
+        offsetTime = entry.time;
+        const startOffset = entry.offset;
+        
+        const size = 8 * 1024 * 1024; // 8MB chunk for transcode
+        const endOffset = startOffset + size;
+
+        console.log(`[Remote Audio] Range: ${startOffset}-${endOffset}, time: ${offsetTime}`);
+        
+        const transcode = codec !== 'aac' && codec !== 'mp3';
+        const result = await ffmpegService.extractRemoteAudioSegment(cachedSource, startOffset, endOffset, streamIndex, transcode, signal);
+        audioUrl = result.url;
+      }
+
+      if (audioUrl) {
+        setActiveAudioStartOffset(offsetTime);
+        const newTrack: CustomAudioTrack = {
+          id: `remote-aud-${streamIndex}-${offsetTime}`,
+          name: `Remote Audio (${offsetTime.toFixed(0)}s)`,
+          url: audioUrl,
+          isExtracted: true,
+          streamIndex,
+          codec: 'mp3'
+        };
+        setSelectedAudioTrack(newTrack);
+        if (syncEngineRef.current) {
+          syncEngineRef.current.setAudioStartOffset(offsetTime);
+        }
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('[Remote Audio] Load aborted');
+        return;
+      }
+      console.error('Failed to extract remote audio segment:', err);
+    } finally {
+      setExtractingStreamIndex(null);
+      if (wasPlaying && videoRef.current) {
+        videoRef.current.play().catch(console.error);
+      }
+    }
+  };
+
+  const loadRemoteSubtitleChunk = async (time: number, streamIndex: number) => {
+    // Seek optimization: abort any active remote fetches
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
+    setExtractingStreamIndex(streamIndex);
+    
+    try {
+      if (!ffmpegService.isReady()) {
+        await ffmpegService.load();
+      }
+
+      let cues: any[] = [];
+      let format: 'srt' | 'vtt' = 'srt';
+
+      const cachedSource = cachedSourceRef.current || new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16);
+
+      if (video.containerType === 'hls' && video.hlsPlaylist) {
+        const segments = video.hlsPlaylist.segments || [];
+        const segIdx = segments.findIndex((s: any) => s.startTime <= time && time < s.startTime + s.duration);
+        const segment = segIdx !== -1 ? segments[segIdx] : segments[0];
+        
+        if (segment) {
+          const res = await fetch(segment.uri);
+          const text = await res.text();
+          cues = parseSubtitles(text, 'segment.vtt');
+          format = 'vtt';
+        }
+      } else {
+        const seekMap = video.seekMap || [];
+        const entry = seekMap.reduce((prev: any, curr: any) => {
+          if (curr.time <= time) {
+            return curr;
+          }
+          return prev;
+        }, seekMap[0] || { time: 0, offset: 0 });
+
+        const startOffset = entry.offset;
+        const size = await cachedSource.getSize();
+        const endOffset = Math.min(startOffset + 2 * 1024 * 1024, size - 1);
+
+        const subtitleText = await ffmpegService.extractRemoteSubtitleSegment(cachedSource, startOffset, endOffset, streamIndex, signal);
+        
+        cues = parseSubtitles(subtitleText, 'subtitles.srt');
+        format = 'srt';
+      }
+
+      if (cues && cues.length > 0) {
+        const newTrack: CustomSubtitleTrack = {
+          id: `remote-sub-${streamIndex}`,
+          name: `Remote Subtitles`,
+          url: '',
+          cues,
+          isExtracted: true,
+          streamIndex,
+          format
+        };
+        setSelectedSubTrack(newTrack);
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('[Remote Subtitles] Load aborted');
+        return;
+      }
+      console.error('Failed to extract remote subtitles:', err);
+    } finally {
+      setExtractingStreamIndex(null);
+    }
+  };
+
+  const handleVideoError = () => {
+    if (!videoRef.current) return;
+    const err = videoRef.current.error;
+    let message = 'An unknown playback error occurred.';
+    
+    if (video.probingError) {
+      message = video.probingError.startsWith('File URL not supported by the source')
+        ? video.probingError
+        : `File URL not supported by the source: ${video.probingError}`;
+    } else if (err) {
+      switch (err.code) {
+        case 1: // MEDIA_ERR_ABORTED
+          message = 'Playback was aborted by the user or browser.';
+          break;
+        case 2: // MEDIA_ERR_NETWORK
+          message = 'A network error occurred while downloading the video.';
+          break;
+        case 3: // MEDIA_ERR_DECODE
+          message = 'The video playback was aborted due to a corruption problem or because the video used features your browser did not support.';
+          break;
+        case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+          if (video.isRemote) {
+            message = 'File URL not supported by the source, or the format/codecs are not supported by your browser.';
+          } else {
+            message = 'The video format or codecs are not supported by your browser.';
+          }
+          break;
+      }
+    } else if (video.isRemote) {
+      message = 'File URL not supported by the source, or a network connection failure occurred.';
+    }
+    
+    console.error('[VideoPlayer] Playback error code:', err?.code, 'message:', message);
+    setPlaybackError(message);
+  };
+
+  const handleVideoSeeked = async () => {
+    setIsBuffering(false);
+    if (!videoRef.current) return;
+    const newTime = videoRef.current.currentTime;
+
+    if (video.isRemote) {
+      if (activeRemoteAudioStreamIndex !== null) {
+        let needLoad = false;
+        if (video.containerType === 'hls' && video.hlsPlaylist) {
+          const segments = video.hlsPlaylist.segments || [];
+          const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeAudioStartOffset && activeAudioStartOffset < s.startTime + s.duration);
+          const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
+          if (oldSegIdx !== newSegIdx) {
+            needLoad = true;
+          }
+        } else {
+          const seekMap = video.seekMap || [];
+          const oldEntry = seekMap.reduce((prev: any, curr: any) => curr.time <= activeAudioStartOffset ? curr : prev, seekMap[0]);
+          const newEntry = seekMap.reduce((prev: any, curr: any) => curr.time <= newTime ? curr : prev, seekMap[0]);
+          if (oldEntry?.offset !== newEntry?.offset) {
+            needLoad = true;
+          }
+        }
+
+        if (needLoad) {
+          console.log(`[VideoPlayer] Seek detected to ${newTime}s outside current chunk range. Fetching new audio chunk.`);
+          const activeStream = audioStreams.find(s => s.index === activeRemoteAudioStreamIndex);
+          await loadRemoteAudioChunk(newTime, activeRemoteAudioStreamIndex, activeStream?.codec || 'mp3');
+        }
+      }
+
+      if (activeRemoteSubStreamIndex !== null) {
+        let needLoad = false;
+        if (video.containerType === 'hls' && video.hlsPlaylist) {
+          const segments = video.hlsPlaylist.segments || [];
+          const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeAudioStartOffset && activeAudioStartOffset < s.startTime + s.duration);
+          const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
+          if (oldSegIdx !== newSegIdx) {
+            needLoad = true;
+          }
+        } else {
+          if (Math.abs(newTime - activeAudioStartOffset) > 120) {
+            needLoad = true;
+          }
+        }
+
+        if (needLoad) {
+          console.log(`[VideoPlayer] Seek detected to ${newTime}s outside current subtitle range. Fetching new subtitles.`);
+          await loadRemoteSubtitleChunk(newTime, activeRemoteSubStreamIndex);
+        }
+      }
+    }
+  };
+
   // On-the-fly extraction handlers for embedded streams selected in-player
   const handleSelectEmbeddedAudio = async (streamIndex: number, codec: string, language?: string) => {
+    if (video.isRemote) {
+      setActiveRemoteAudioStreamIndex(streamIndex);
+      await loadRemoteAudioChunk(currentTime, streamIndex, codec);
+      return;
+    }
+
     if (!video.file) return;
 
     // Check if it's already extracted
@@ -338,6 +648,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const handleSelectEmbeddedSubtitle = async (streamIndex: number, _codec: string, language?: string) => {
+    if (video.isRemote) {
+      setActiveRemoteSubStreamIndex(streamIndex);
+      await loadRemoteSubtitleChunk(currentTime, streamIndex);
+      return;
+    }
+
     if (!video.file) return;
 
     // Check if it's already extracted
@@ -548,10 +864,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (nextOpt.type === 'off') {
       setSelectedSubTrack(null);
+      setActiveRemoteSubStreamIndex(null);
     } else if (nextOpt.type === 'embedded') {
       handleSelectEmbeddedSubtitle(nextOpt.streamIndex, nextOpt.codec, nextOpt.language);
     } else if (nextOpt.type === 'custom') {
       setSelectedSubTrack(nextOpt.track);
+      setActiveRemoteSubStreamIndex(null);
     }
 
     triggerSwitchToast(nextOpt.name);
@@ -576,10 +894,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (nextOpt.type === 'original') {
       setSelectedAudioTrack(null);
+      setActiveRemoteAudioStreamIndex(null);
     } else if (nextOpt.type === 'embedded') {
       handleSelectEmbeddedAudio(nextOpt.streamIndex, nextOpt.codec, nextOpt.language);
     } else if (nextOpt.type === 'custom') {
       setSelectedAudioTrack(nextOpt.track);
+      setActiveRemoteAudioStreamIndex(null);
     }
 
     triggerSwitchToast(nextOpt.name);
@@ -889,6 +1209,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <video
         ref={videoRef}
         src={video.url}
+        crossOrigin="anonymous"
         className="main-video-element"
         onLoadedMetadata={() => {
           if (videoRef.current) {
@@ -914,8 +1235,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onPause={() => setIsPlaying(false)}
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => setIsBuffering(false)}
-        onSeeked={() => setIsBuffering(false)}
-        onSeeking={() => setIsBuffering(false)}
+        onSeeked={handleVideoSeeked}
+        onSeeking={() => setIsBuffering(true)}
+        onError={handleVideoError}
         onClick={(e) => {
           e.stopPropagation();
           togglePlay();
@@ -1027,6 +1349,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <video
                       ref={previewVideoRef}
                       src={video.url}
+                      crossOrigin="anonymous"
                       className="scrub-hover-preview-video"
                       muted
                       playsInline
@@ -1141,7 +1464,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           <h4>Audio</h4>
                           <div className="popover-options">
                             {/* Default Original Audio if streams are available, or default selector */}
-                            <label className="popover-option" onClick={() => { setSelectedAudioTrack(null); setShowAudioSubMenu(false); }}>
+                            <label className="popover-option" onClick={() => { setSelectedAudioTrack(null); setActiveRemoteAudioStreamIndex(null); setShowAudioSubMenu(false); }}>
                               <input type="radio" name="audio-lang" checked={selectedAudioTrack === null} readOnly />
                               <span>Original</span>
                               {selectedAudioTrack === null && <Check size={14} className="check-icon" />}
@@ -1184,7 +1507,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           <h4>Subtitles</h4>
                           <div className="popover-options">
                             {/* Off */}
-                            <label className="popover-option" onClick={() => { setSelectedSubTrack(null); setShowAudioSubMenu(false); }}>
+                            <label className="popover-option" onClick={() => { setSelectedSubTrack(null); setActiveRemoteSubStreamIndex(null); setShowAudioSubMenu(false); }}>
                               <input type="radio" name="sub-lang" checked={selectedSubTrack === null} readOnly />
                               <span>Off</span>
                               {selectedSubTrack === null && <Check size={14} className="check-icon" />}
@@ -1315,6 +1638,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </span>
         </div>
       </div>
+
+      {playbackError && (
+        <div className="playback-error-overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="playback-error-box glass-panel animate-fade-in">
+            <AlertCircle size={48} className="error-icon" />
+            <h3>Playback Failed</h3>
+            <p className="error-desc">{playbackError}</p>
+            <button className="btn btn-primary" onClick={onBack} style={{ marginTop: '0.5rem', padding: '0.6rem 1.8rem', fontWeight: 600 }}>
+              Go Back
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Styles */}
       <style>{`
@@ -2111,6 +2447,46 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         .no-animations .hud-btn-clean:hover {
           transform: none !important;
+        }
+
+        .playback-error-overlay {
+          position: absolute;
+          inset: 0;
+          z-index: 600;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.9);
+          padding: 2rem;
+        }
+        .playback-error-box {
+          width: 100%;
+          max-width: 420px;
+          background: #181818;
+          border: 1px solid rgba(229, 9, 20, 0.4);
+          border-radius: 12px;
+          padding: 2.5rem 2rem;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1.25rem;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+        }
+        .playback-error-box .error-icon {
+          color: #e50914;
+        }
+        .playback-error-box h3 {
+          margin: 0;
+          font-size: 1.4rem;
+          font-weight: 700;
+          color: white;
+        }
+        .error-desc {
+          font-size: 0.95rem;
+          color: #cccccc;
+          margin: 0;
+          line-height: 1.5;
         }
       `}</style>
     </div>

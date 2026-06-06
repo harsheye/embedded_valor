@@ -34,6 +34,11 @@ export interface VideoItem {
   streams?: MediaStream[];
   audioTracks: CustomAudioTrack[];
   subtitleTracks: CustomSubtitleTrack[];
+  isRemote?: boolean;
+  containerType?: 'mp4' | 'mkv' | 'ts' | 'hls' | 'unknown';
+  seekMap?: { time: number; offset: number }[];
+  hlsPlaylist?: any;
   thumbnailUrl?: string;
   currentTime?: number;
+  probingError?: string;
 }
