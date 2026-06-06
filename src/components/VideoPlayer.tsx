@@ -1209,7 +1209,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <video
         ref={videoRef}
         src={video.url}
-        crossOrigin="anonymous"
         className="main-video-element"
         onLoadedMetadata={() => {
           if (videoRef.current) {
@@ -1349,7 +1348,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <video
                       ref={previewVideoRef}
                       src={video.url}
-                      crossOrigin="anonymous"
                       className="scrub-hover-preview-video"
                       muted
                       playsInline
