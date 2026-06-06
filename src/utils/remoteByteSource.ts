@@ -176,3 +176,25 @@ export class CachedByteSource implements ByteSource {
     }
   }
 }
+
+export async function detectUrlCapabilities(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 3000);
+
+  try {
+    const response = await fetch(url, {
+      headers: { Range: 'bytes=0-15' },
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    if (response.status === 200 || response.status === 206) {
+      const buffer = await response.arrayBuffer();
+      return buffer.byteLength > 0;
+    }
+    return false;
+  } catch (e) {
+    clearTimeout(id);
+    console.warn('CORS or network error during capability detection:', e);
+    return false;
+  }
+}

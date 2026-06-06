@@ -7,7 +7,7 @@ import {
   RefreshCw, AlertCircle, CheckCircle, History, Home
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
-import { HttpByteSource, CachedByteSource } from './utils/remoteByteSource';
+import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './utils/remoteByteSource';
 import { probeContainer, parseMp4, parseMkv } from './utils/containerParser';
 import { parseHlsManifest } from './utils/hlsParser';
 
@@ -528,8 +528,37 @@ function App() {
 
   const processRemoteUrl = async (url: string) => {
     setIsProcessing(true);
-    setProcessingStep('Initializing connection...');
+    setProcessingStep('Checking connection capabilities...');
+    
     try {
+      const parserAvailable = await detectUrlCapabilities(url);
+      
+      if (!parserAvailable) {
+        console.log('[App] Remote byte access blocked or failed. Engaging Native Playback Mode.');
+        const title = url.substring(url.lastIndexOf('/') + 1) || 'Remote Stream';
+        const nativeItem: VideoItem = {
+          id: `url-${Date.now()}`,
+          title,
+          url,
+          type: 'url',
+          isRemote: true,
+          containerType: 'unknown',
+          audioTracks: [],
+          subtitleTracks: [],
+          playbackMode: 'native',
+          probingError: 'The remote server blocks cross-origin byte access (CORS).'
+        };
+        setVideos(prev => {
+          const filtered = prev.filter(v => v.url !== url);
+          return [nativeItem, ...filtered];
+        });
+        setPlayingVideo(nativeItem);
+        setIsProcessing(false);
+        setProcessingStep('');
+        return;
+      }
+
+      setProcessingStep('Initializing connection...');
       const byteSource = new HttpByteSource(url);
       const cachedSource = new CachedByteSource(byteSource);
 
@@ -614,7 +643,8 @@ function App() {
         streams,
         audioTracks,
         subtitleTracks,
-        currentTime: 0
+        currentTime: 0,
+        playbackMode: 'advanced'
       };
 
       setVideos(prev => {
@@ -623,7 +653,7 @@ function App() {
       });
       setPlayingVideo(videoItem);
     } catch (err: any) {
-      console.error('Failed to process remote URL:', err);
+      console.warn('Failed to process remote URL under Advanced Mode, falling back to Native Mode:', err);
       
       let probingError = '';
       const errStr = String(err);
@@ -649,6 +679,7 @@ function App() {
         containerType: 'unknown',
         audioTracks: [],
         subtitleTracks: [],
+        playbackMode: 'native',
         probingError: probingError || undefined
       };
       setVideos(prev => {

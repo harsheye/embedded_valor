@@ -41,4 +41,5 @@ export interface VideoItem {
   thumbnailUrl?: string;
   currentTime?: number;
   probingError?: string;
+  playbackMode?: 'advanced' | 'native';
 }

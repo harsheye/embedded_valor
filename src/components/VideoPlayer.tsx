@@ -938,6 +938,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const nextSubKey = (keybinds.nextSubtitle || 'b').toLowerCase();
       const nextAudioKey = (keybinds.nextAudio || 'v').toLowerCase();
 
+      if (video.playbackMode === 'native') {
+        if (pressedKey === exitKey) {
+          e.preventDefault();
+          if (document.fullscreenElement) {
+            document.exitFullscreen()
+              .then(() => handleExit())
+              .catch(() => handleExit());
+          } else {
+            handleExit();
+          }
+        }
+        return;
+      }
+
       if (pressedKey === fullscreenKey) {
         e.preventDefault();
         if (containerRef.current) {
@@ -1209,6 +1223,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <video
         ref={videoRef}
         src={video.url}
+        controls={video.playbackMode === 'native'}
+        crossOrigin={video.playbackMode === 'advanced' ? 'anonymous' : undefined}
         className="main-video-element"
         onLoadedMetadata={() => {
           if (videoRef.current) {
@@ -1238,6 +1254,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onSeeking={() => setIsBuffering(true)}
         onError={handleVideoError}
         onClick={(e) => {
+          if (video.playbackMode === 'native') return;
           e.stopPropagation();
           togglePlay();
         }}
@@ -1283,8 +1300,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </button>
           )}
           
-          {/* Centered video title */}
-          {!hideVideoName && <h2 className="top-title-clean">{video.title}</h2>}
+          {/* Centered video title & Playback mode badge */}
+          {!hideVideoName && (
+            <div className="top-title-container">
+              <h2 className="top-title-clean">{video.title}</h2>
+              {video.isRemote && (
+                <div className="playback-mode-badge-container">
+                  {video.playbackMode === 'advanced' ? (
+                    <span className="playback-badge badge-advanced" title="FFmpeg-powered custom stream demuxing enabled">
+                      <span className="badge-dot"></span> Playback Mode: Advanced
+                    </span>
+                  ) : (
+                    <div className="native-badge-wrapper">
+                      <span 
+                        className="playback-badge badge-native"
+                      >
+                        <span className="badge-dot"></span> Playback Mode: Native Browser
+                        <span className="tooltip-text">Advanced metadata access is unavailable because the remote server blocks cross-origin byte access.</span>
+                      </span>
+                      <button 
+                        className="btn-enable-advanced" 
+                        onClick={() => triggerSwitchToast("Advanced Mode via proxy is a future feature. Currently playing in Native Mode.")}
+                      >
+                        Enable Advanced Mode
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Close Button */}
           {!hidePlayerButtons && (
@@ -1296,7 +1341,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Center Screen HUD Controls */}
-      {!hidePlayerButtons && (
+      {!hidePlayerButtons && video.playbackMode !== 'native' && (
         <div 
           className={`center-controls-hud ${showControls ? 'visible' : 'hidden'}`} 
           onClick={(e) => {
@@ -1325,7 +1370,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Bottom Controls Overlay */}
-      {(!hideTimeline || !hidePlayerButtons) && (
+      {(!hideTimeline || !hidePlayerButtons) && video.playbackMode !== 'native' && (
         <div 
           className={`player-overlay bottom-overlay ${showControls ? 'visible' : 'hidden'}`} 
           onClick={(e) => e.stopPropagation()}
@@ -1348,6 +1393,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <video
                       ref={previewVideoRef}
                       src={video.url}
+                      crossOrigin={video.playbackMode === 'advanced' ? 'anonymous' : undefined}
                       className="scrub-hover-preview-video"
                       muted
                       playsInline
@@ -1698,6 +1744,106 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           color: white;
           margin: 0;
           text-align: center;
+        }
+        .top-title-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.4rem;
+        }
+        .playback-mode-badge-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+        .playback-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          position: relative;
+        }
+        .badge-advanced {
+          background-color: rgba(34, 197, 94, 0.15);
+          color: #22c55e;
+          border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        .badge-advanced .badge-dot {
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background-color: #22c55e;
+          box-shadow: 0 0 8px #22c55e;
+        }
+        .badge-native {
+          cursor: help;
+          background-color: rgba(249, 115, 22, 0.15);
+          color: #f97316;
+          border: 1px solid rgba(249, 115, 22, 0.3);
+        }
+        .badge-native .badge-dot {
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background-color: #f97316;
+          box-shadow: 0 0 8px #f97316;
+        }
+        .badge-native .tooltip-text {
+          visibility: hidden;
+          width: 240px;
+          background-color: rgba(20, 20, 20, 0.95);
+          color: #fff;
+          text-align: center;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          padding: 8px 12px;
+          position: absolute;
+          z-index: 1000;
+          top: 130%;
+          left: 50%;
+          transform: translateX(-50%);
+          opacity: 0;
+          transition: opacity 0.3s;
+          font-size: 0.75rem;
+          line-height: 1.3;
+          pointer-events: none;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+          text-transform: none;
+          font-weight: normal;
+          letter-spacing: normal;
+        }
+        .badge-native:hover .tooltip-text {
+          visibility: visible;
+          opacity: 1;
+        }
+        .native-badge-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .btn-enable-advanced {
+          background: transparent;
+          border: 1px dashed rgba(255, 255, 255, 0.4);
+          font-size: 0.7rem;
+          font-weight: 600;
+          padding: 3px 8px;
+          border-radius: 4px;
+          color: #fff;
+          transition: all 0.2s;
+          cursor: pointer;
+        }
+        .btn-enable-advanced:hover {
+          border-style: solid;
+          border-color: #fff;
+          background: rgba(255, 255, 255, 0.08);
         }
         .cast-btn, .close-btn {
           background: none;
