@@ -15,7 +15,7 @@ import { HttpByteSource, CachedByteSource } from '../utils/remoteByteSource';
 interface VideoPlayerProps {
   video: VideoItem;
   onBack: () => void;
-  onUpdateVideo: (updatedVideo: VideoItem) => void;
+  onUpdateVideo: (updatedVideo: VideoItem, isExiting?: boolean) => void;
   hideUIOverlays?: boolean;
   hideVideoName?: boolean;
   toastDuration?: number;
@@ -193,6 +193,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isAutoProbing, setIsAutoProbing] = useState(false);
   const [flyExtractProgress, setFlyExtractProgress] = useState(0);
   const probingVideoIdRef = useRef<string | null>(null);
+  const startedExtractionsRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    startedExtractionsRef.current.clear();
+  }, [video.id]);
 
   // Safeguarded arrays
   const audioTracks = video.audioTracks || [];
@@ -537,6 +542,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!videoRef.current) return;
     const newTime = videoRef.current.currentTime;
 
+    // Immediately save seeked position to parent state so seek states don't drift or restore old positions
+    onUpdateVideo({
+      ...video,
+      currentTime: newTime
+    });
+
     if (video.isRemote) {
       if (activeRemoteAudioStreamIndex !== null) {
         let needLoad = false;
@@ -596,6 +607,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (!video.file) return;
 
+    // Guard against duplicate concurrent extractions
+    if (startedExtractionsRef.current.has(streamIndex)) return;
+    startedExtractionsRef.current.add(streamIndex);
+
     // Check if it's already extracted
     const existing = audioTracks.find(t => t.streamIndex === streamIndex);
     if (existing) {
@@ -643,6 +658,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setSelectedAudioTrack(newTrack);
     } catch (err) {
       console.error(err);
+      startedExtractionsRef.current.delete(streamIndex); // allow retry on failure
       alert('Failed to extract audio track: ' + err);
     } finally {
       setExtractingStreamIndex(null);
@@ -661,6 +677,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     if (!video.file) return;
+
+    // Guard against duplicate concurrent extractions
+    if (startedExtractionsRef.current.has(streamIndex)) return;
+    startedExtractionsRef.current.add(streamIndex);
 
     // Check if it's already extracted
     const existing = subtitleTracks.find(t => t.streamIndex === streamIndex);
@@ -709,6 +729,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setSelectedSubTrack(newTrack);
     } catch (err) {
       console.error(err);
+      startedExtractionsRef.current.delete(streamIndex); // allow retry on failure
       alert('Failed to extract subtitle track: ' + err);
     } finally {
       setExtractingStreamIndex(null);
@@ -724,7 +745,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onUpdateVideo({
         ...video,
         currentTime: videoRef.current.currentTime
-      });
+      }, true);
     }
     onBack();
   };
@@ -1023,22 +1044,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Autoplay (autostart) on load
   useEffect(() => {
     if (videoRef.current) {
-      if (video.currentTime && !hasSeekedRef.current) {
-        const videoDuration = videoRef.current.duration;
-        if (videoDuration) {
-          const remainingTime = videoDuration - video.currentTime;
-          if (video.currentTime > 60 && remainingTime > 120) {
-            console.log(`[Player] Resuming playback from: ${video.currentTime}s`);
-            videoRef.current.currentTime = video.currentTime;
-          } else {
-            console.log(`[Player] Professional resume limits not met. Starting from beginning.`);
-            videoRef.current.currentTime = 0;
-          }
-          hasSeekedRef.current = true;
-        } else {
-          videoRef.current.currentTime = video.currentTime;
-        }
-      }
+      // Seek / resume is handled strictly and reliably in onLoadedMetadata.
+      // We only run autoplay playback trigger here.
       videoRef.current.play()
         .then(() => setIsPlaying(true))
         .catch(err => console.log('[Player] Autoplay blocked:', err));
@@ -1226,11 +1233,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setDuration(videoDuration);
             if (video.currentTime && !hasSeekedRef.current) {
               const remainingTime = videoDuration - video.currentTime;
-              if (video.currentTime > 60 && remainingTime > 120) {
-                console.log(`[Player] Professional resume limits met: seeking to ${video.currentTime}s`);
+              // Lenient resume limits: resume if watched > 5s and remaining > 10s
+              if (video.currentTime > 5 && remainingTime > 10) {
+                console.log(`[Player] Resume limits met: seeking to ${video.currentTime}s`);
                 videoRef.current.currentTime = video.currentTime;
               } else {
-                console.log(`[Player] Professional resume limits not met (currentTime: ${video.currentTime}s, remaining: ${remainingTime}s). Starting from 0.`);
+                console.log(`[Player] Resume limits not met (currentTime: ${video.currentTime}s, remaining: ${remainingTime}s). Starting from 0.`);
                 videoRef.current.currentTime = 0;
               }
               hasSeekedRef.current = true;
@@ -1325,7 +1333,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           )}
 
           {/* Close Button */}
-          <button className="close-btn" onClick={onBack} title="Close">
+          <button className="close-btn" onClick={handleExit} title="Close">
             <X size={24} />
           </button>
         </div>

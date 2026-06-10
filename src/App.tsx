@@ -18,7 +18,17 @@ function App() {
   const [videos, setVideos] = useState<VideoItem[]>(() => {
     try {
       const saved = localStorage.getItem('valor_videos');
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((v: any) => ({
+            ...v,
+            audioTracks: [],
+            subtitleTracks: []
+          }));
+        }
+      }
+      return [];
     } catch (err) {
       console.error('Failed to parse saved videos:', err);
       return [];
@@ -29,6 +39,18 @@ function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'history'>('home');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
+
+  useEffect(() => {
+    const handleStatusChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        if (detail.status) setFfmpegStatus(detail.status);
+        if (detail.progress !== undefined) setFfmpegProgress(detail.progress);
+      }
+    };
+    window.addEventListener('ffmpeg-status-change', handleStatusChange);
+    return () => window.removeEventListener('ffmpeg-status-change', handleStatusChange);
+  }, []);
 
   useEffect(() => {
     const lastId = localStorage.getItem('valor_last_playing_id');
@@ -209,10 +231,15 @@ function App() {
     }
   };
 
-  const handleUpdateVideo = (updatedVideo: VideoItem) => {
+  const handleUpdateVideo = (updatedVideo: VideoItem, isExiting = false) => {
     setVideos((prev) => prev.map((v) => (v.id === updatedVideo.id ? updatedVideo : v)));
-    if (playingVideo && playingVideo.id === updatedVideo.id) {
-      setPlayingVideo(updatedVideo);
+    if (!isExiting) {
+      setPlayingVideo((prevPlaying) => {
+        if (prevPlaying && prevPlaying.id === updatedVideo.id) {
+          return updatedVideo;
+        }
+        return prevPlaying;
+      });
     }
   };
 
@@ -329,96 +356,87 @@ function App() {
     let mergedFormat: string | undefined = undefined;
     let mergedStreams: any[] | undefined = undefined;
 
-    let mergedVideo: VideoItem;
+    // Find all matching items in history (legacy or fingerprint style) using current state
+    const matches = videos.filter(v => 
+      v.id === targetId || 
+      (customId && v.id === customId) ||
+      (v.type === 'local' && (
+        (v.fileName && v.fileName.toLowerCase() === file.name.toLowerCase()) ||
+        (v.title && v.title.toLowerCase() === title.toLowerCase()) ||
+        v.id === targetId
+      ))
+    );
 
-    setVideos(prev => {
-      // Find all matching items in history (legacy or fingerprint style)
-      const matches = prev.filter(v => 
-        v.id === targetId || 
-        (customId && v.id === customId) ||
-        (v.type === 'local' && (
-          (v.fileName && v.fileName.toLowerCase() === file.name.toLowerCase()) ||
-          (v.title && v.title.toLowerCase() === title.toLowerCase()) ||
-          v.id === targetId
-        ))
-      );
+    // Extract and merge metadata from matches
+    matches.forEach(m => {
+      if (m.currentTime && m.currentTime > maxCurrentTime) {
+        maxCurrentTime = m.currentTime;
+      }
+      if (m.duration && !mergedDuration) {
+        mergedDuration = m.duration;
+      }
+      if (m.format && !mergedFormat) {
+        mergedFormat = m.format;
+      }
+      if (m.streams && !mergedStreams) {
+        mergedStreams = m.streams;
+      }
+      
+      // Merge audio tracks
+      if (m.audioTracks) {
+        m.audioTracks.forEach(t => {
+          if (!mergedAudioTracks.some(existingT => existingT.id === t.id || existingT.name === t.name)) {
+            mergedAudioTracks.push(t);
+          }
+        });
+      }
 
-      // Extract and merge metadata from matches
-      matches.forEach(m => {
-        if (m.currentTime && m.currentTime > maxCurrentTime) {
-          maxCurrentTime = m.currentTime;
-        }
-        if (m.duration && !mergedDuration) {
-          mergedDuration = m.duration;
-        }
-        if (m.format && !mergedFormat) {
-          mergedFormat = m.format;
-        }
-        if (m.streams && !mergedStreams) {
-          mergedStreams = m.streams;
-        }
-        
-        // Merge audio tracks
-        if (m.audioTracks) {
-          m.audioTracks.forEach(t => {
-            if (!mergedAudioTracks.some(existingT => existingT.id === t.id || existingT.name === t.name)) {
-              mergedAudioTracks.push(t);
+      // Merge subtitle tracks
+      if (m.subtitleTracks) {
+        m.subtitleTracks.forEach(t => {
+          if (!mergedSubtitleTracks.some(existingT => existingT.id === t.id || existingT.name === t.name)) {
+            mergedSubtitleTracks.push(t);
+          }
+        });
+      }
+
+      // Clean up old File handles in IndexedDB asynchronously
+      if (m.id !== targetId) {
+        (async () => {
+          try {
+            const oldHandle = await getFileHandle(m.id);
+            if (oldHandle) {
+              await storeFileHandle(targetId, oldHandle);
             }
-          });
-        }
-
-        // Merge subtitle tracks
-        if (m.subtitleTracks) {
-          m.subtitleTracks.forEach(t => {
-            if (!mergedSubtitleTracks.some(existingT => existingT.id === t.id || existingT.name === t.name)) {
-              mergedSubtitleTracks.push(t);
-            }
-          });
-        }
-
-        // Clean up old File handles in IndexedDB asynchronously
-        if (m.id !== targetId) {
-          (async () => {
-            try {
-              const oldHandle = await getFileHandle(m.id);
-              if (oldHandle) {
-                await storeFileHandle(targetId, oldHandle);
-              }
-              await removeFileHandle(m.id);
-            } catch (err) {
-              console.error(`Failed to migrate file handle from ${m.id} to ${targetId}:`, err);
-            }
-          })();
-        }
-      });
-
-      // Filter out all matching items from history
-      const filtered = prev.filter(v => !matches.some(m => m.id === v.id));
-
-      mergedVideo = {
-        id: targetId,
-        title,
-        url: blobUrl,
-        type: 'local',
-        file: file,
-        fileName: file.name,
-        currentTime: maxCurrentTime,
-        duration: mergedDuration,
-        format: mergedFormat,
-        streams: mergedStreams,
-        audioTracks: mergedAudioTracks,
-        subtitleTracks: mergedSubtitleTracks
-      };
-
-      return [mergedVideo, ...filtered];
+            await removeFileHandle(m.id);
+          } catch (err) {
+            console.error(`Failed to migrate file handle from ${m.id} to ${targetId}:`, err);
+          }
+        })();
+      }
     });
 
-    // Make sure we set playing video outside of state updater
-    setTimeout(() => {
-      if (mergedVideo) {
-        setPlayingVideo(mergedVideo);
-      }
-    }, 0);
+    const newVideoItem: VideoItem = {
+      id: targetId,
+      title,
+      url: blobUrl,
+      type: 'local',
+      file: file,
+      fileName: file.name,
+      currentTime: maxCurrentTime,
+      duration: mergedDuration,
+      format: mergedFormat,
+      streams: mergedStreams,
+      audioTracks: mergedAudioTracks,
+      subtitleTracks: mergedSubtitleTracks
+    };
+
+    setVideos(prev => {
+      const filtered = prev.filter(v => !matches.some(m => m.id === v.id));
+      return [newVideoItem, ...filtered];
+    });
+
+    setPlayingVideo(newVideoItem);
 
     // Make sure the file handle is stored in IndexedDB if provided
     if (fileHandle) {
@@ -1405,8 +1423,11 @@ function App() {
           gap: 0.5rem;
           overflow-y: auto;
           flex: 1;
-          padding-right: 4px;
-          scrollbar-width: thin;
+          padding-right: 0px;
+          scrollbar-width: none;
+        }
+        .sidebar-history-list::-webkit-scrollbar {
+          display: none;
         }
         .sidebar-history-item {
           display: flex;
