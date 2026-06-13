@@ -231,12 +231,27 @@ function App() {
     }
   };
 
-  const handleUpdateVideo = (updatedVideo: VideoItem, isExiting = false) => {
-    setVideos((prev) => prev.map((v) => (v.id === updatedVideo.id ? updatedVideo : v)));
+  const handleUpdateVideo = (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting = false) => {
+    setVideos((prev) =>
+      prev.map((v) => {
+        const isTarget = typeof updatedVideoOrUpdater === 'function'
+          ? (playingVideo && v.id === playingVideo.id)
+          : v.id === updatedVideoOrUpdater.id;
+        if (isTarget) {
+          return typeof updatedVideoOrUpdater === 'function' ? (updatedVideoOrUpdater as Function)(v) : updatedVideoOrUpdater;
+        }
+        return v;
+      })
+    );
     if (!isExiting) {
       setPlayingVideo((prevPlaying) => {
-        if (prevPlaying && prevPlaying.id === updatedVideo.id) {
-          return updatedVideo;
+        if (prevPlaying) {
+          const isTarget = typeof updatedVideoOrUpdater === 'function'
+            ? true
+            : prevPlaying.id === updatedVideoOrUpdater.id;
+          if (isTarget) {
+            return typeof updatedVideoOrUpdater === 'function' ? (updatedVideoOrUpdater as Function)(prevPlaying) : updatedVideoOrUpdater;
+          }
         }
         return prevPlaying;
       });
@@ -465,19 +480,40 @@ function App() {
         setPlayingVideo(video);
       } else if (video.type === 'local') {
         if (video.file) {
-          setVideos(prev => {
-            const filtered = prev.filter(v => v.id !== video.id);
-            return [video, ...filtered];
-          });
-          setPlayingVideo(video);
-        } else {
-          // Try to load from IndexedDB
+          let readable = false;
           try {
-            const handle = await getFileHandle(video.id);
-            if (handle) {
-              const hasPermission = await verifyPermission(handle);
-              if (hasPermission) {
-                const file = await handle.getFile();
+            await video.file.slice(0, 1).arrayBuffer();
+            readable = true;
+          } catch (e) {
+            console.warn('Local file object in state is no longer readable:', e);
+          }
+
+          if (readable) {
+            setVideos(prev => {
+              const filtered = prev.filter(v => v.id !== video.id);
+              return [video, ...filtered];
+            });
+            setPlayingVideo(video);
+            return;
+          }
+        }
+
+        // Try to load from IndexedDB
+        try {
+          const handle = await getFileHandle(video.id);
+          if (handle) {
+            const hasPermission = await verifyPermission(handle);
+            if (hasPermission) {
+              const file = await handle.getFile();
+              let fileReadable = false;
+              try {
+                await file.slice(0, 1).arrayBuffer();
+                fileReadable = true;
+              } catch (e) {
+                console.warn('File retrieved from IndexedDB handle is not readable:', e);
+              }
+
+              if (fileReadable) {
                 const blobUrl = URL.createObjectURL(file);
                 const updated = {
                   ...video,
@@ -493,40 +529,40 @@ function App() {
                 return;
               }
             }
+          }
+        } catch (err) {
+          console.error('IndexedDB file restoration failed:', err);
+        }
+
+        // Fallback to picker
+        pendingLocalReassociateIdRef.current = video.id;
+
+        if ('showOpenFilePicker' in window) {
+          try {
+            const [handle] = await (window as any).showOpenFilePicker({
+              types: [{
+                description: 'Video Files',
+                accept: {
+                  'video/mp4': ['.mp4', '.m4v'],
+                  'video/webm': ['.webm'],
+                  'video/x-matroska': ['.mkv'],
+                  'video/quicktime': ['.mov'],
+                  'video/x-msvideo': ['.avi']
+                }
+              }]
+            });
+            const file = await handle.getFile();
+            await processLocalVideo(file, video.id, handle);
           } catch (err) {
-            console.error('IndexedDB file restoration failed:', err);
+            console.error('Re-association picker cancelled:', err);
+          } finally {
+            isPickerOpenRef.current = false;
           }
-
-          // Fallback to picker
-          pendingLocalReassociateIdRef.current = video.id;
-
-          if ('showOpenFilePicker' in window) {
-            try {
-              const [handle] = await (window as any).showOpenFilePicker({
-                types: [{
-                  description: 'Video Files',
-                  accept: {
-                    'video/mp4': ['.mp4', '.m4v'],
-                    'video/webm': ['.webm'],
-                    'video/x-matroska': ['.mkv'],
-                    'video/quicktime': ['.mov'],
-                    'video/x-msvideo': ['.avi']
-                  }
-                }]
-              });
-              const file = await handle.getFile();
-              await processLocalVideo(file, video.id, handle);
-            } catch (err) {
-              console.error('Re-association picker cancelled:', err);
-            } finally {
-              isPickerOpenRef.current = false;
-            }
-          } else {
-            historyVideoInputRef.current?.click();
-            setTimeout(() => {
-              isPickerOpenRef.current = false;
-            }, 1000);
-          }
+        } else {
+          historyVideoInputRef.current?.click();
+          setTimeout(() => {
+            isPickerOpenRef.current = false;
+          }, 1000);
         }
       }
     } catch (err) {

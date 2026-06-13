@@ -1,4 +1,4 @@
-import { FFmpeg, FFFSType } from '@ffmpeg/ffmpeg';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import type { ByteSource } from '../utils/remoteByteSource';
 
@@ -16,7 +16,7 @@ export interface ProbeResult {
   streams: MediaStream[];
 }
 
-const MEMFS_MAX_SIZE = 150 * 1024 * 1024; // 150MB
+const MEMFS_MAX_SIZE = 300 * 1024 * 1024; // 300MB
 
 class FFmpegService {
   private ffmpeg: FFmpeg | null = null;
@@ -25,6 +25,12 @@ class FFmpegService {
   private progressCallback: ((progress: number) => void) | null = null;
   private logCallback: ((log: string) => void) | null = null;
   private activePromise: Promise<any> = Promise.resolve();
+
+  // Active session file state (persisted across stream switches in a single video playback session)
+  private activeFile: File | null = null;
+  private activeFilePath: string | null = null;
+  private activeMountPoint: string | null = null;
+  private activeUseMount = false;
 
   private async runWithLock<T>(task: () => Promise<T>): Promise<T> {
     const nextPromise = new Promise<T>((resolve, reject) => {
@@ -102,8 +108,20 @@ class FFmpegService {
     }
   }
 
-  reset() {
+  reset(force = false) {
     if (this.ffmpeg) {
+      // Clean up session mounts/files synchronously if possible, or ignore errors
+      if (this.activeUseMount && this.activeMountPoint) {
+        try {
+          this.ffmpeg.unmount(this.activeMountPoint);
+          this.ffmpeg.deleteDir(this.activeMountPoint);
+        } catch (e) {}
+      } else if (this.activeFilePath && !this.activeUseMount) {
+        try {
+          this.ffmpeg.deleteFile(this.activeFilePath);
+        } catch (e) {}
+      }
+
       try {
         this.ffmpeg.terminate();
       } catch (e) {
@@ -111,9 +129,104 @@ class FFmpegService {
       }
       this.ffmpeg = null;
     }
+
+    this.activeFile = null;
+    this.activeFilePath = null;
+    this.activeMountPoint = null;
+    this.activeUseMount = false;
+
     this.isLoaded = false;
     this.isLoading = false;
+    if (force) {
+      this.activePromise = Promise.resolve();
+    }
     window.dispatchEvent(new CustomEvent('ffmpeg-status-change', { detail: { status: 'idle', progress: 0 } }));
+  }
+
+  private async mountOrWriteFile(ffmpeg: FFmpeg, file: File): Promise<string> {
+    if (this.activeFile === file && this.activeFilePath) {
+      // Reuse already mounted or written file for this session
+      return this.activeFilePath;
+    }
+
+    // Clean up previous file if any
+    await this.cleanupSessionFile(ffmpeg);
+
+    const ext = this.getExtension(file.name);
+    this.activeFile = file;
+
+    const mountPoint = `/mount_session`;
+    const mountedFilePath = `${mountPoint}/${file.name}`;
+
+    if (file.size > MEMFS_MAX_SIZE) {
+      try {
+        try {
+          await ffmpeg.createDir(mountPoint);
+        } catch (dirErr) {
+          // Ignore if directory already exists
+        }
+        await ffmpeg.mount('WORKERFS' as any, { files: [file] }, mountPoint);
+        this.activeUseMount = true;
+        this.activeMountPoint = mountPoint;
+        this.activeFilePath = mountedFilePath;
+        console.log(`[FFmpeg] Session file mounted via WORKERFS at ${mountedFilePath}`);
+      } catch (mountErr) {
+        console.warn('[FFmpeg] Failed to mount session file via WORKERFS, falling back to writing:', mountErr);
+        this.activeUseMount = false;
+      }
+    } else {
+      this.activeUseMount = false;
+    }
+
+    if (!this.activeUseMount) {
+      const tempInFile = `input${ext}`;
+      let fileData: Uint8Array;
+      try {
+        if (file.size > MEMFS_MAX_SIZE) {
+          const slice = file.slice(0, 2 * 1024 * 1024);
+          const buffer = await slice.arrayBuffer();
+          fileData = new Uint8Array(buffer);
+        } else {
+          fileData = await fetchFile(file);
+        }
+      } catch (err) {
+        console.warn('Initial file read failed, attempting to read 2MB header slice:', err);
+        const slice = file.slice(0, 2 * 1024 * 1024);
+        const buffer = await slice.arrayBuffer();
+        fileData = new Uint8Array(buffer);
+      }
+      await ffmpeg.writeFile(tempInFile, fileData);
+      this.activeFilePath = tempInFile;
+      console.log(`[FFmpeg] Session file written to MEMFS: ${tempInFile}`);
+    }
+
+    return this.activeFilePath!;
+  }
+
+  private async cleanupSessionFile(ffmpeg: FFmpeg | null) {
+    if (!ffmpeg) return;
+
+    if (this.activeUseMount && this.activeMountPoint) {
+      try {
+        await ffmpeg.unmount(this.activeMountPoint);
+        await ffmpeg.deleteDir(this.activeMountPoint);
+        console.log(`[FFmpeg] Session file unmounted from ${this.activeMountPoint}`);
+      } catch (e) {
+        console.warn('[FFmpeg] Error unmounting session file:', e);
+      }
+    } else if (this.activeFilePath && !this.activeUseMount) {
+      try {
+        await ffmpeg.deleteFile(this.activeFilePath);
+        console.log(`[FFmpeg] Session file deleted from MEMFS: ${this.activeFilePath}`);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    this.activeFile = null;
+    this.activeFilePath = null;
+    this.activeMountPoint = null;
+    this.activeUseMount = false;
   }
 
   setLogCallback(callback: ((log: string) => void) | null) {
@@ -139,44 +252,8 @@ class FFmpegService {
   async probeFile(file: File): Promise<ProbeResult> {
     return this.runWithLock(async () => {
       const ffmpeg = await this.load();
-      const ext = this.getExtension(file.name);
-      const mountPoint = `/mount_${Date.now()}`;
-      const mountedFilePath = `${mountPoint}/${file.name}`;
-      let useMount = false;
+      const inputPath = await this.mountOrWriteFile(ffmpeg, file);
 
-      if (file.size > MEMFS_MAX_SIZE) {
-        try {
-          await ffmpeg.createDir(mountPoint);
-          await ffmpeg.mount(FFFSType.WORKERFS, { files: [file] }, mountPoint);
-          useMount = true;
-          console.log(`[FFmpeg] Successfully mounted local file via WORKERFS at ${mountedFilePath}`);
-        } catch (mountErr) {
-          console.warn('[FFmpeg] Failed to mount local file via WORKERFS, falling back to writing to virtual FS:', mountErr);
-        }
-      }
-
-      if (!useMount) {
-        // Fallback or small file: write to virtual FS (using slice if large to avoid OOM)
-        const tempInFile = `input${ext}`;
-        let fileData: Uint8Array;
-        try {
-          if (file.size > MEMFS_MAX_SIZE) {
-            const slice = file.slice(0, 2 * 1024 * 1024);
-            const buffer = await slice.arrayBuffer();
-            fileData = new Uint8Array(buffer);
-          } else {
-            fileData = await fetchFile(file);
-          }
-        } catch (err) {
-          console.warn('Initial file read failed, attempting to read 2MB header slice:', err);
-          const slice = file.slice(0, 2 * 1024 * 1024);
-          const buffer = await slice.arrayBuffer();
-          fileData = new Uint8Array(buffer);
-        }
-        await ffmpeg.writeFile(tempInFile, fileData);
-      }
-
-      const inputPath = useMount ? mountedFilePath : `input${ext}`;
       const logs: string[] = [];
       const collectLog = (msg: string) => {
         logs.push(msg);
@@ -190,27 +267,12 @@ class FFmpegService {
         // with code 0, flushing all stream metadata logs without processing any media frames.
         await ffmpeg.exec(['-i', inputPath, '-t', '0', '-c', 'copy', '-f', 'null', '-']);
       } catch (err) {
-        console.warn('Probe exec finished with warning:', err);
+        console.warn('Probe exec finished with warning, resetting worker:', err);
+        this.reset();
+        throw err;
       } finally {
         // Restore log callback
         this.setLogCallback(previousLogCallback);
-        // Clean up
-        if (useMount) {
-          try {
-            await ffmpeg.unmount(mountPoint);
-            await ffmpeg.deleteDir(mountPoint);
-          } catch (e) {
-            console.warn('[FFmpeg] Cleanup of mounted directory failed:', e);
-          }
-        } else {
-          try {
-            await ffmpeg.deleteFile(`input${ext}`);
-          } catch (e) {
-            // ignore
-          }
-        }
-        // Always reset instance after running exec
-        this.reset();
       }
 
       const fullLog = logs.join('\n');
@@ -300,45 +362,28 @@ class FFmpegService {
   async extractSubtitle(file: File, streamIndex: number): Promise<{ url: string; filename: string; format: 'vtt' | 'srt' }> {
     return this.runWithLock(async () => {
       const ffmpeg = await this.load();
-      const ext = this.getExtension(file.name);
-      const tempOutFile = 'subtitles.srt'; // Extract as SRT, we will parse or convert in JS
-
-      const mountPoint = `/mount_${Date.now()}`;
-      const mountedFilePath = `${mountPoint}/${file.name}`;
-      let useMount = false;
-
-      if (file.size > MEMFS_MAX_SIZE) {
-        try {
-          await ffmpeg.createDir(mountPoint);
-          await ffmpeg.mount(FFFSType.WORKERFS, { files: [file] }, mountPoint);
-          useMount = true;
-          console.log(`[FFmpeg] Successfully mounted local file for subtitle extraction via WORKERFS at ${mountedFilePath}`);
-        } catch (mountErr) {
-          console.warn('[FFmpeg] Failed to mount local file for subtitle extraction, falling back to writing to virtual FS:', mountErr);
-        }
-      }
-
-      if (!useMount) {
-        const tempInFile = `input${ext}`;
-        await ffmpeg.writeFile(tempInFile, await fetchFile(file));
-      }
-
-      const inputPath = useMount ? mountedFilePath : `input${ext}`;
+      const inputPath = await this.mountOrWriteFile(ffmpeg, file);
+      const tempOutFile = 'subtitles.srt';
 
       try {
         try {
-          // ffmpeg -i input.mkv -map 0:s:index -c:s copy output.srt
-          // Or if subtitle is ASS, we can copy it, but srt is widely supported by our parser.
-          // Wait, let's map stream by its absolute stream index (0:streamIndex)
+          // Try copy first (instant!)
           await ffmpeg.exec([
             '-i', inputPath,
             '-map', `0:${streamIndex}`,
             '-vn', '-an',
-            '-c:s', 'srt', // Transcode to SRT
+            '-c:s', 'copy',
             tempOutFile
           ]);
         } catch (execErr: any) {
-          console.warn('Subtitle extraction exec finished with warning/abort:', execErr);
+          console.warn('Subtitle copy failed, attempting transcode to srt:', execErr);
+          await ffmpeg.exec([
+            '-i', inputPath,
+            '-map', `0:${streamIndex}`,
+            '-vn', '-an',
+            '-c:s', 'srt',
+            tempOutFile
+          ]);
         }
 
         const data = await ffmpeg.readFile(tempOutFile);
@@ -351,51 +396,14 @@ class FFmpegService {
           format: 'srt'
         };
       } catch (error) {
-        console.warn('Text conversion failed, attempting raw copy...');
-        // Try again with copying codec directly
-        try {
-          const copyOutFile = 'subtitles_copy.srt';
-          try {
-            await ffmpeg.exec([
-              '-i', inputPath,
-              '-map', `0:${streamIndex}`,
-              '-vn', '-an',
-              '-c:s', 'copy',
-              copyOutFile
-            ]);
-          } catch (execErr: any) {
-            console.warn('Subtitle raw copy exec finished with warning/abort:', execErr);
-          }
-          const data = await ffmpeg.readFile(copyOutFile);
-          const blob = new Blob([data as any], { type: 'text/plain' });
-          const url = URL.createObjectURL(blob);
-          return {
-            url,
-            filename: `${file.name.replace(/\.[^/.]+$/, '')}.stream_${streamIndex}.srt`,
-            format: 'srt'
-          };
-        } catch (e) {
-          console.error('Failed to extract subtitle track', e);
-          throw new Error('Subtitle extraction failed. The format may not be supported for direct extraction.');
-        }
+        console.error('Failed to extract subtitle track, resetting worker:', error);
+        this.reset();
+        throw new Error('Subtitle extraction failed. The format may not be supported for direct extraction.');
       } finally {
-        // Clean up
-        if (useMount) {
-          try {
-            await ffmpeg.unmount(mountPoint);
-            await ffmpeg.deleteDir(mountPoint);
-          } catch (e) {}
-        } else {
-          try {
-            await ffmpeg.deleteFile(`input${ext}`);
-          } catch (e) {}
-        }
         try {
           await ffmpeg.deleteFile(tempOutFile);
           await ffmpeg.deleteFile('subtitles_copy.srt');
         } catch (e) {}
-        // Always reset instance after running exec
-        this.reset();
       }
     });
   }
@@ -407,42 +415,47 @@ class FFmpegService {
     file: File,
     streamIndex: number,
     transcode = true,
+    codec = '',
     onProgress?: (p: number) => void
   ): Promise<{ url: string; filename: string; mimeType: string }> {
     return this.runWithLock(async () => {
       const ffmpeg = await this.load();
-      const ext = this.getExtension(file.name);
+      const inputPath = await this.mountOrWriteFile(ffmpeg, file);
       
-      // Choose output format and codec based on transcoding option
-      const tempOutFile = transcode ? 'audio.mp3' : 'audio_extracted.bin';
-      const mimeType = transcode ? 'audio/mp3' : 'audio/octet-stream';
-      const outExt = transcode ? 'mp3' : 'bin';
+      let outExt = 'mp3';
+      let mimeType = 'audio/mp3';
+      let tempOutFile = 'audio.mp3';
+
+      if (!transcode) {
+        const lowerCodec = codec.toLowerCase();
+        if (lowerCodec.includes('aac')) {
+          outExt = 'm4a';
+          mimeType = 'audio/mp4';
+        } else if (lowerCodec.includes('mp3')) {
+          outExt = 'mp3';
+          mimeType = 'audio/mp3';
+        } else if (lowerCodec.includes('opus')) {
+          outExt = 'ogg';
+          mimeType = 'audio/ogg';
+        } else if (lowerCodec.includes('flac')) {
+          outExt = 'flac';
+          mimeType = 'audio/flac';
+        } else if (lowerCodec.includes('vorbis')) {
+          outExt = 'ogg';
+          mimeType = 'audio/ogg';
+        } else if (lowerCodec.includes('ac3') || lowerCodec.includes('eac3') || lowerCodec.includes('dts') || lowerCodec.includes('truehd')) {
+          outExt = 'm4a';
+          mimeType = 'audio/mp4';
+        } else {
+          outExt = 'm4a';
+          mimeType = 'audio/mp4';
+        }
+        tempOutFile = `audio_extracted.${outExt}`;
+      }
 
       if (onProgress) {
         this.setProgressCallback(onProgress);
       }
-
-      const mountPoint = `/mount_${Date.now()}`;
-      const mountedFilePath = `${mountPoint}/${file.name}`;
-      let useMount = false;
-
-      if (file.size > MEMFS_MAX_SIZE) {
-        try {
-          await ffmpeg.createDir(mountPoint);
-          await ffmpeg.mount(FFFSType.WORKERFS, { files: [file] }, mountPoint);
-          useMount = true;
-          console.log(`[FFmpeg] Successfully mounted local file for audio extraction via WORKERFS at ${mountedFilePath}`);
-        } catch (mountErr) {
-          console.warn('[FFmpeg] Failed to mount local file for audio extraction, falling back to writing to virtual FS:', mountErr);
-        }
-      }
-
-      if (!useMount) {
-        const tempInFile = `input${ext}`;
-        await ffmpeg.writeFile(tempInFile, await fetchFile(file));
-      }
-
-      const inputPath = useMount ? mountedFilePath : `input${ext}`;
 
       try {
         let args: string[];
@@ -470,7 +483,9 @@ class FFmpegService {
         try {
           await ffmpeg.exec(args);
         } catch (execErr: any) {
-          console.warn('Audio extraction exec finished with warning/abort:', execErr);
+          console.warn('Audio extraction exec finished with warning/abort, resetting worker:', execErr);
+          this.reset();
+          throw execErr;
         }
 
         const data = await ffmpeg.readFile(tempOutFile);
@@ -483,26 +498,14 @@ class FFmpegService {
           mimeType
         };
       } catch (error) {
-        console.error('Audio extraction failed', error);
+        console.error('Audio extraction failed, resetting worker:', error);
+        this.reset();
         throw error;
       } finally {
         this.setProgressCallback(null);
-        // Clean up
-        if (useMount) {
-          try {
-            await ffmpeg.unmount(mountPoint);
-            await ffmpeg.deleteDir(mountPoint);
-          } catch (e) {}
-        } else {
-          try {
-            await ffmpeg.deleteFile(`input${ext}`);
-          } catch (e) {}
-        }
         try {
           await ffmpeg.deleteFile(tempOutFile);
         } catch (e) {}
-        // Always reset instance after running exec
-        this.reset();
       }
     });
   }
@@ -517,34 +520,12 @@ class FFmpegService {
   ): Promise<{ url: string; filename: string }> {
     return this.runWithLock(async () => {
       const ffmpeg = await this.load();
-      const ext = this.getExtension(file.name);
+      const inputPath = await this.mountOrWriteFile(ffmpeg, file);
       const tempOutFile = 'output.mp4';
 
       if (onProgress) {
         this.setProgressCallback(onProgress);
       }
-
-      const mountPoint = `/mount_${Date.now()}`;
-      const mountedFilePath = `${mountPoint}/${file.name}`;
-      let useMount = false;
-
-      if (file.size > MEMFS_MAX_SIZE) {
-        try {
-          await ffmpeg.createDir(mountPoint);
-          await ffmpeg.mount(FFFSType.WORKERFS, { files: [file] }, mountPoint);
-          useMount = true;
-          console.log(`[FFmpeg] Successfully mounted local file for video remuxing via WORKERFS at ${mountedFilePath}`);
-        } catch (mountErr) {
-          console.warn('[FFmpeg] Failed to mount local file for video remuxing, falling back to writing to virtual FS:', mountErr);
-        }
-      }
-
-      if (!useMount) {
-        const tempInFile = `input${ext}`;
-        await ffmpeg.writeFile(tempInFile, await fetchFile(file));
-      }
-
-      const inputPath = useMount ? mountedFilePath : `input${ext}`;
 
       try {
         let args: string[];
@@ -569,7 +550,9 @@ class FFmpegService {
         try {
           await ffmpeg.exec(args);
         } catch (execErr: any) {
-          console.warn('Video remuxing exec finished with warning/abort:', execErr);
+          console.warn('Video remuxing exec finished with warning/abort, resetting worker:', execErr);
+          this.reset();
+          throw execErr;
         }
 
         const data = await ffmpeg.readFile(tempOutFile);
@@ -581,25 +564,14 @@ class FFmpegService {
           filename: `${file.name.replace(/\.[^/.]+$/, '')}_playable.mp4`
         };
       } catch (error) {
-        console.error('Video remuxing failed', error);
+        console.error('Video remuxing failed, resetting worker:', error);
+        this.reset();
         throw error;
       } finally {
         this.setProgressCallback(null);
-        if (useMount) {
-          try {
-            await ffmpeg.unmount(mountPoint);
-            await ffmpeg.deleteDir(mountPoint);
-          } catch (e) {}
-        } else {
-          try {
-            await ffmpeg.deleteFile(`input${ext}`);
-          } catch (e) {}
-        }
         try {
           await ffmpeg.deleteFile(tempOutFile);
         } catch (e) {}
-        // Always reset instance after running exec
-        this.reset();
       }
     });
   }
@@ -627,14 +599,14 @@ class FFmpegService {
       // Run probe command with -t 0 to exit instantly with code 0 and flush logs.
       await ffmpeg.exec(['-i', tempInFile, '-t', '0', '-c', 'copy', '-f', 'null', '-']);
     } catch (err) {
-      console.warn('Remote probe exec finished with warning:', err);
+      console.warn('Remote probe exec finished with warning, resetting worker:', err);
+      this.reset();
+      throw err;
     } finally {
       this.setLogCallback(previousLogCallback);
       try {
         await ffmpeg.deleteFile(tempInFile);
       } catch (e) {}
-      // Always reset instance after running exec
-      this.reset();
     }
 
     const fullLog = logs.join('\n');
@@ -684,19 +656,22 @@ class FFmpegService {
       try {
         await ffmpeg.exec(args);
       } catch (execErr: any) {
-        console.warn('extractRemoteAudioSegment exec finished with warning/abort:', execErr);
+        console.warn('extractRemoteAudioSegment exec finished with warning/abort, resetting worker:', execErr);
+        this.reset();
+        throw execErr;
       }
       const data = await ffmpeg.readFile(tempOutFile);
       const blob = new Blob([data as any], { type: mimeType });
       const url = URL.createObjectURL(blob);
       return { url, mimeType };
+    } catch (error) {
+      this.reset();
+      throw error;
     } finally {
       try {
         await ffmpeg.deleteFile(tempInFile);
         await ffmpeg.deleteFile(tempOutFile);
       } catch (e) {}
-      // Always reset instance after running exec
-      this.reset();
     }
   }
 
@@ -726,18 +701,21 @@ class FFmpegService {
           tempOutFile
         ]);
       } catch (execErr: any) {
-        console.warn('extractRemoteSubtitleSegment exec finished with warning/abort:', execErr);
+        console.warn('extractRemoteSubtitleSegment exec finished with warning/abort, resetting worker:', execErr);
+        this.reset();
+        throw execErr;
       }
 
       const data = await ffmpeg.readFile(tempOutFile);
       return new TextDecoder('utf-8').decode(data as any);
+    } catch (error) {
+      this.reset();
+      throw error;
     } finally {
       try {
         await ffmpeg.deleteFile(tempInFile);
         await ffmpeg.deleteFile(tempOutFile);
       } catch (e) {}
-      // Always reset instance after running exec
-      this.reset();
     }
   }
 
@@ -778,19 +756,22 @@ class FFmpegService {
       try {
         await ffmpeg.exec(args);
       } catch (execErr: any) {
-        console.warn('extractHlsAudioSegment exec finished with warning/abort:', execErr);
+        console.warn('extractHlsAudioSegment exec finished with warning/abort, resetting worker:', execErr);
+        this.reset();
+        throw execErr;
       }
       const data = await ffmpeg.readFile(tempOutFile);
       const blob = new Blob([data as any], { type: mimeType });
       const url = URL.createObjectURL(blob);
       return { url, mimeType };
+    } catch (error) {
+      this.reset();
+      throw error;
     } finally {
       try {
         await ffmpeg.deleteFile(tempInFile);
         await ffmpeg.deleteFile(tempOutFile);
       } catch (e) {}
-      // Always reset instance after running exec
-      this.reset();
     }
   }
 }

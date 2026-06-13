@@ -15,7 +15,7 @@ import { HttpByteSource, CachedByteSource } from '../utils/remoteByteSource';
 interface VideoPlayerProps {
   video: VideoItem;
   onBack: () => void;
-  onUpdateVideo: (updatedVideo: VideoItem, isExiting?: boolean) => void;
+  onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean) => void;
   hideUIOverlays?: boolean;
   hideVideoName?: boolean;
   toastDuration?: number;
@@ -206,18 +206,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const audioStreams = streams.filter(s => s.type === 'audio');
   const subtitleStreams = streams.filter(s => s.type === 'subtitle');
 
-  // Clear hover timeouts on unmount
+  // Clear hover timeouts and reset FFmpeg on unmount or when changing videos
   useEffect(() => {
     return () => {
       if (audioSubTimeoutRef.current) clearTimeout(audioSubTimeoutRef.current);
+      console.log('[Player] VideoPlayer resetting FFmpeg worker and lock queue due to unmount or video change');
+      ffmpegService.reset(true);
     };
-  }, []);
+  }, [video.id]);
 
   // Auto-probe local file streams on startup if not already scanned
   useEffect(() => {
     const autoProbe = async () => {
       if (video.type === 'local' && video.file && !video.streams && probingVideoIdRef.current !== video.id) {
         probingVideoIdRef.current = video.id;
+
+        // Verify that the file is actually readable
+        try {
+          await video.file.slice(0, 1).arrayBuffer();
+        } catch (readErr) {
+          console.error('[Player] Local file is not readable on auto-probe:', readErr);
+          probingVideoIdRef.current = null;
+          return;
+        }
+
         setIsAutoProbing(true);
         try {
           if (!ffmpegService.isReady()) {
@@ -607,6 +619,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (!video.file) return;
 
+    // Check if the file is readable!
+    try {
+      await video.file.slice(0, 1).arrayBuffer();
+    } catch (e) {
+      console.error('[Player] File is not readable:', e);
+      alert('Cannot read the video file. It may have been moved, deleted, or permissions were revoked.');
+      return;
+    }
+
     // Guard against duplicate concurrent extractions
     if (startedExtractionsRef.current.has(streamIndex)) return;
     startedExtractionsRef.current.add(streamIndex);
@@ -632,21 +653,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         await ffmpegService.load();
       }
 
+      const lowerCodec = (codec || '').toLowerCase();
+      const isNativePlayable = lowerCodec.includes('aac') || 
+                               lowerCodec.includes('mp3') || 
+                               lowerCodec.includes('opus') || 
+                               lowerCodec.includes('flac') || 
+                               lowerCodec.includes('vorbis') || 
+                               lowerCodec.includes('ac3') || 
+                               lowerCodec.includes('eac3') || 
+                               lowerCodec.includes('dts') || 
+                               lowerCodec.includes('truehd');
       const result = await ffmpegService.extractAudio(
         video.file,
         streamIndex,
-        codec !== 'aac' && codec !== 'mp3',
+        !isNativePlayable, // only transcode if not native playable
+        codec || '',
         (p: number) => setFlyExtractProgress(p)
       );
 
+      const resolvedCodec = result.mimeType.split('/')[1] || 'mp3';
       const newTrack: CustomAudioTrack = {
         id: `extracted-aud-${Date.now()}`,
-        name: `Audio (${language?.toUpperCase() || 'Track'}) - MP3`,
+        name: `Audio (${language?.toUpperCase() || 'Track'}) - ${resolvedCodec.toUpperCase()}`,
         url: result.url,
         isExtracted: true,
         streamIndex,
         language,
-        codec: 'mp3'
+        codec: resolvedCodec
       };
 
       const updatedVideo = {
@@ -677,6 +710,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     if (!video.file) return;
+
+    // Check if the file is readable!
+    try {
+      await video.file.slice(0, 1).arrayBuffer();
+    } catch (e) {
+      console.error('[Player] File is not readable:', e);
+      alert('Cannot read the video file. It may have been moved, deleted, or permissions were revoked.');
+      return;
+    }
 
     // Guard against duplicate concurrent extractions
     if (startedExtractionsRef.current.has(streamIndex)) return;
