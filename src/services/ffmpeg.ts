@@ -183,7 +183,10 @@ export class FFmpegService {
    */
   private async mountFile(ff: FFmpeg, file: File, uniqueId: string): Promise<string> {
     const mountPoint = `${this.INPUT_DIR}_${uniqueId}`;
-    const inputPath = `${mountPoint}/${file.name}`;
+    const ext = file.name.substring(file.name.lastIndexOf('.')) || '.mkv';
+    const cleanName = `input${ext}`;
+    const inputPath = `${mountPoint}/${cleanName}`;
+    const cleanFile = new File([file], cleanName, { type: file.type });
 
     try {
       await ff.createDir(mountPoint);
@@ -193,9 +196,10 @@ export class FFmpegService {
 
     try {
       // Use string literal — FFFSType.WORKERFS is undefined in ESM builds
-      await ff.mount("WORKERFS" as any, { files: [file] }, mountPoint);
+      await ff.mount("WORKERFS" as any, { files: [cleanFile] }, mountPoint);
       console.log(`[ffmpeg] WORKERFS mounted successfully at ${inputPath}`);
     } catch (workerFsError) {
+      // WORKERFS unavailable in this environment — fall back to MEMFS write
       console.warn("[ffmpeg] WORKERFS unavailable, falling back to fetchFile:", workerFsError);
       const data = await fetchFile(file);
       await ff.writeFile(inputPath, data);
@@ -208,11 +212,28 @@ export class FFmpegService {
    * Unmount WORKERFS and delete output file — always call in finally.
    */
   private async cleanupSession(ff: FFmpeg, inputPath: string, outputPath: string): Promise<void> {
-    // Extract mount point directory from inputPath
     const mountPoint = inputPath.substring(0, inputPath.lastIndexOf('/'));
+    let unmounted = false;
+
     if (mountPoint && mountPoint.startsWith(this.INPUT_DIR)) {
       try {
         await ff.unmount(mountPoint);
+        unmounted = true;
+      } catch {
+        // Not mounted or already unmounted
+      }
+    }
+
+    if (!unmounted) {
+      try {
+        await ff.deleteFile(inputPath);
+      } catch {
+        // File not found
+      }
+    }
+
+    if (mountPoint && mountPoint.startsWith(this.INPUT_DIR)) {
+      try {
         await ff.deleteDir(mountPoint);
       } catch {
         // Was never mounted or already unmounted
