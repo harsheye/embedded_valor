@@ -715,8 +715,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setExtractingStreamIndex(streamIndex);
     setFlyExtractProgress(0);
 
+    const isNativePlayable = /aac|mp3|opus|flac|vorbis/i.test(codec || '');
     const wasPlaying = isPlaying;
-    if (videoRef.current && isPlaying) {
+    if (!isNativePlayable && videoRef.current && isPlaying) {
       videoRef.current.pause();
     }
 
@@ -761,7 +762,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } finally {
       setExtractingStreamIndex(null);
       setFlyExtractProgress(0);
-      if (wasPlaying && videoRef.current) {
+      if (!isNativePlayable && wasPlaying && videoRef.current) {
         videoRef.current.play().catch(console.error);
       }
     }
@@ -799,11 +800,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Otherwise, extract on the fly (non-blocking)
     setExtractingStreamIndex(streamIndex);
     setFlyExtractProgress(0);
-
-    const wasPlaying = isPlaying;
-    if (videoRef.current && isPlaying) {
-      videoRef.current.pause();
-    }
 
     try {
       if (!ffmpegService.isReady()) {
@@ -845,9 +841,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } finally {
       setExtractingStreamIndex(null);
       setFlyExtractProgress(0);
-      if (wasPlaying && videoRef.current) {
-        videoRef.current.play().catch(console.error);
-      }
     }
   };
 
