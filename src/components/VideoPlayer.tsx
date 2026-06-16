@@ -9,6 +9,7 @@ import { SubtitleOverlay } from './SubtitleOverlay';
 import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSyncEngine } from '../utils/audioSync';
 import { parseSubtitles } from '../utils/subtitleParser';
+import { parseMkv, parseMp4 } from '../utils/containerParser';
 import { ffmpegService } from '../services/ffmpeg';
 import { HttpByteSource, CachedByteSource, FileByteSource } from '../utils/remoteByteSource';
 import { logger } from '../utils/logger';
@@ -319,11 +320,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             await ffmpegService.load(video.id);
           }
           const result = await ffmpegService.probeFile(video.file, video.id);
+
+          let seekMap: any[] = [];
+          try {
+            const fileSource = new FileByteSource(video.file);
+            const cachedFileSource = new CachedByteSource(fileSource);
+            const containerType = (result.format || '').toLowerCase();
+            if (containerType.includes('mkv') || containerType.includes('matroska')) {
+              const mkvInfo = await parseMkv(cachedFileSource);
+              seekMap = mkvInfo.seekMap || [];
+            } else if (containerType.includes('mp4')) {
+              const mp4Info = await parseMp4(cachedFileSource);
+              seekMap = mp4Info.tracks[0]?.seekMap?.timeToOffset || [];
+            }
+          } catch (parseErr) {
+            logger.warn('Failed parsing local container for seekMap:', parseErr);
+          }
+
           const updatedVideo = {
             ...video,
             duration: result.duration,
             format: result.format,
             streams: result.streams,
+            seekMap: seekMap.length > 0 ? seekMap : undefined
           };
           onUpdateVideo(updatedVideo);
         } catch (err) {
@@ -458,7 +477,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       let audioUrl = '';
       let offsetTime = time;
 
-      const cachedSource = cachedSourceRef.current || new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16);
+      const cachedSource = cachedSourceRef.current || (
+        video.file
+          ? new CachedByteSource(new FileByteSource(video.file), 4 * 1024 * 1024, 16)
+          : new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16)
+      );
 
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
@@ -548,7 +571,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       let cues: any[] = [];
       let format: 'srt' | 'vtt' = 'srt';
 
-      const cachedSource = cachedSourceRef.current || new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16);
+      const cachedSource = cachedSourceRef.current || (
+        video.file
+          ? new CachedByteSource(new FileByteSource(video.file), 4 * 1024 * 1024, 16)
+          : new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16)
+      );
 
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
