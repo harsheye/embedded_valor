@@ -89,6 +89,7 @@ export class AudioSyncEngine {
   private handleSeeking = () => {
     this.isVideoSeeking = true;
     this.isVideoWaiting = false;
+    this.audio.pause();
     this.syncAudioTime(Math.max(0, this.video.currentTime - this.audioStartOffset));
   };
 
@@ -96,14 +97,22 @@ export class AudioSyncEngine {
     this.syncAudioTime(Math.max(0, this.video.currentTime - this.audioStartOffset));
     this.isVideoSeeking = false;
     this.isVideoWaiting = false;
+
+    if (!this.video.paused && !this.video.seeking && !this.isVideoSeeking && !this.isAudioSeeking && !this.isVideoWaiting) {
+      this.playAudio();
+    }
   };
 
   private handleAudioSeeking = () => {
     this.isAudioSeeking = true;
+    this.audio.pause();
   };
 
   private handleAudioSeeked = () => {
     this.isAudioSeeking = false;
+    if (!this.video.paused && !this.video.seeking && !this.isVideoSeeking && !this.isAudioSeeking && !this.isVideoWaiting) {
+      this.playAudio();
+    }
   };
 
   private handleRateChange = () => {
@@ -146,6 +155,7 @@ export class AudioSyncEngine {
   }
 
   private playAudio() {
+    if (this.isSeeking || this.video.seeking) return; // Don't play if seeking
     this.runWhenAudioReady(() => {
       this.audio.play().catch((err) => {
         if (err && err.name !== 'AbortError') {
