@@ -1,11 +1,86 @@
 import { createServer } from 'vite';
+import fs from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+
+const args = process.argv.slice(1).filter(arg => {
+  const lower = arg.toLowerCase();
+  return !lower.endsWith('node.exe') && !lower.endsWith('node') && !lower.endsWith('start-app.js') && !lower.endsWith('start-app.exe') && !lower.endsWith('start-app-exe');
+});
+
+const playWithVlc = args.includes('--vlc');
+const filePath = args.find(arg => arg !== '--vlc' && !arg.startsWith('--'));
+const resolvedFilePath = filePath ? path.resolve(filePath) : null;
+
+if (playWithVlc && resolvedFilePath) {
+  const vlcPaths = [
+    'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe',
+    'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe',
+    'vlc'
+  ];
+  let selectedPath = 'vlc';
+  for (const p of vlcPaths) {
+    if (p === 'vlc' || fs.existsSync(p)) {
+      selectedPath = p;
+      if (p !== 'vlc') break;
+    }
+  }
+  console.log(`[VLC] Launching VLC to play: ${resolvedFilePath}`);
+  const child = spawn(selectedPath, [resolvedFilePath], {
+    detached: true,
+    stdio: 'ignore'
+  });
+  child.unref();
+  process.exit(0);
+}
 
 async function start() {
   const server = await createServer({
     server: {
       port: 5174,
-      open: true, // Vite will automatically launch the default browser
+      open: resolvedFilePath ? `?file=${encodeURIComponent(resolvedFilePath)}` : true,
     },
+  });
+
+  // Local file streaming middleware
+  server.middlewares.use('/local-video-stream', (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const videoPath = url.searchParams.get('path');
+    if (!videoPath || !fs.existsSync(videoPath)) {
+      res.statusCode = 404;
+      res.end('File not found');
+      return;
+    }
+
+    const stat = fs.statSync(videoPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(videoPath, { start, end });
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Length': chunksize,
+        'Content-Type': 'video/mp4',
+      };
+      res.writeHead(206, head);
+      file.pipe(res);
+    } else {
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': 'video/mp4',
+      };
+      res.writeHead(200, head);
+      fs.createReadStream(videoPath).pipe(res);
+    }
   });
 
   await server.listen();

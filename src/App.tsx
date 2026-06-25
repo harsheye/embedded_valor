@@ -53,6 +53,16 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fileParam = params.get('file');
+    if (fileParam) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      const localStreamUrl = `${window.location.origin}/local-video-stream?path=${encodeURIComponent(fileParam)}`;
+      processRemoteUrl(localStreamUrl);
+    }
+  }, []);
+
+  useEffect(() => {
     const lastId = localStorage.getItem('valor_last_playing_id');
     if (lastId) {
       const match = videos.find(v => v.id === lastId);
@@ -750,7 +760,16 @@ function App() {
       const audioTracks: CustomAudioTrack[] = [];
       const subtitleTracks: CustomSubtitleTrack[] = [];
 
-      const title = url.substring(url.lastIndexOf('/') + 1) || 'Remote Stream';
+      let title = url.substring(url.lastIndexOf('/') + 1) || 'Remote Stream';
+      if (url.includes('path=')) {
+        try {
+          const u = new URL(url);
+          const p = u.searchParams.get('path');
+          if (p) {
+            title = p.split(/[/\\]/).pop() || p;
+          }
+        } catch {}
+      }
       const videoItem: VideoItem = {
         id: urlId,
         title,

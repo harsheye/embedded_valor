@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
-  MessageSquare, Maximize, Minimize, Loader, Check, MonitorPlay,
+  MessageSquare, Maximize, Minimize, Loader, MonitorPlay,
   Volume2, Volume1, VolumeX, AlertCircle
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import type { SubtitleSettings } from './SubtitleOverlay';
+import { AudioSubPopover } from './AudioSubPopover';
 import { AudioSyncEngine } from '../utils/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParser';
@@ -93,11 +94,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [activeSubStreamIndex, setActiveSubStreamIndex] = useState<number | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
-  const [subSearchQuery, setSubSearchQuery] = useState('');
 
-  useEffect(() => {
-    setSubSearchQuery('');
-  }, [selectedSubTrack?.id]);
 
   const subCues = selectedSubTrack?.cues || [];
   const activeCueIdx = subCues.findIndex(cue => currentTime >= cue.startTime && currentTime <= cue.endTime);
@@ -159,6 +156,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const cachedSourceRef = useRef<CachedByteSource | null>(null);
   const audioAbortControllerRef = useRef<AbortController | null>(null);
   const subAbortControllerRef = useRef<AbortController | null>(null);
+  const currentAudioOptionIndexRef = useRef<number>(-1);
+  const currentSubOptionIndexRef = useRef<number>(-1);
+  const audioDebounceTimeoutRef = useRef<any>(null);
+  const subDebounceTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
     if (video.isRemote) {
@@ -176,6 +177,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
       if (subAbortControllerRef.current) {
         subAbortControllerRef.current.abort();
+      }
+      if (audioDebounceTimeoutRef.current) {
+        clearTimeout(audioDebounceTimeoutRef.current);
+      }
+      if (subDebounceTimeoutRef.current) {
+        clearTimeout(subDebounceTimeoutRef.current);
       }
     };
   }, [video.url, video.isRemote, video.file, video.type]);
@@ -213,13 +220,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     if (isPlaying) {
       const isRemote = video.isRemote;
-      const audioDuration = isRemote ? 30 : 120;
+      const audioDuration = 30;
       
       const containerType = (video.containerType || '').toLowerCase();
       const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
       const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
 
-      if (activeAudioStreamIndex !== null) {
+      if (activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
         if (currentTime - activeAudioStartOffset > audioDuration - 5) {
           logger.player(`Playback crossed audio chunk boundary. Loading next chunk at ${currentTime}s.`);
           const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
@@ -227,14 +234,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       }
 
-      if (activeSubStreamIndex !== null && (isRemote || isMkv)) {
+      if (activeSubStreamIndex !== null && (isRemote || isMkv) && selectedSubTrack && selectedSubTrack.streamIndex === activeSubStreamIndex && (selectedSubTrack.url || selectedSubTrack.cues.length > 0)) {
         if (currentTime - activeSubtitleStartOffset > subDuration - 10) {
           logger.player(`Playback crossed subtitle chunk boundary. Loading next subtitles at ${currentTime}s.`);
           loadSubtitleChunk(currentTime, activeSubStreamIndex);
         }
       }
     }
-  }, [currentTime, isPlaying, activeAudioStreamIndex, activeSubStreamIndex, video.seekMap, activeAudioStartOffset, activeSubtitleStartOffset, video.isRemote, video.containerType, video.format]);
+  }, [currentTime, isPlaying, activeAudioStreamIndex, activeSubStreamIndex, video.seekMap, activeAudioStartOffset, activeSubtitleStartOffset, video.isRemote, video.containerType, video.format, selectedAudioTrack, selectedSubTrack]);
 
   const getLangLabel = (lang?: string, fallback: string = '') => {
     if (!lang) return fallback;
@@ -564,7 +571,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       } else if (!video.isRemote && video.file) {
         // LOCAL FILE FLOW: Extract chunk directly from mounted file
-        const audioDuration = 120;
+        const audioDuration = 30;
         offsetTime = Math.max(0, time - 5);
         logger.player(`Local file seek/load audio chunk starting at ${offsetTime}s`);
         
@@ -890,7 +897,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     });
 
     // Chunk-based dynamic loading on seek
-    if (activeAudioStreamIndex !== null) {
+    if (activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
@@ -914,7 +921,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     }
 
-    if (activeSubStreamIndex !== null && video.isRemote) {
+    if (activeSubStreamIndex !== null && video.isRemote && !subDebounceTimeoutRef.current) {
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
@@ -939,7 +946,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   // On-the-fly selection handlers for embedded streams selected in-player using container-direct chunk reading
-  const handleSelectEmbeddedAudio = async (streamIndex: number, codec: string, language?: string) => {
+  const handleSelectEmbeddedAudio = async (streamIndex: number, codec: string, language?: string, skipLoad = false) => {
+    if (audioDebounceTimeoutRef.current) {
+      clearTimeout(audioDebounceTimeoutRef.current);
+      audioDebounceTimeoutRef.current = null;
+    }
     setActiveAudioStreamIndex(streamIndex);
     const label = getLangLabel(language, `Track #${streamIndex}`);
     setSelectedAudioTrack({
@@ -950,10 +961,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       streamIndex,
       codec
     });
-    await loadAudioChunk(currentTime, streamIndex, codec);
+    syncAudioRef(null, streamIndex);
+    if (!skipLoad) {
+      await loadAudioChunk(currentTime, streamIndex, codec);
+    }
   };
 
-  const handleSelectEmbeddedSubtitle = async (streamIndex: number, codec: string, language?: string) => {
+  const handleSelectEmbeddedSubtitle = async (streamIndex: number, codec: string, language?: string, skipLoad = false) => {
+    if (subDebounceTimeoutRef.current) {
+      clearTimeout(subDebounceTimeoutRef.current);
+      subDebounceTimeoutRef.current = null;
+    }
     setActiveSubStreamIndex(streamIndex);
     const label = getLangLabel(language, `Track #${streamIndex}`);
     setSelectedSubTrack({
@@ -965,7 +983,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       streamIndex,
       format: /ass|ssa/i.test(codec) ? 'ass' : (/webvtt/i.test(codec) ? 'vtt' : 'srt')
     });
-    await loadSubtitleChunk(currentTime, streamIndex);
+    syncSubRef(null, streamIndex);
+    if (!skipLoad) {
+      await loadSubtitleChunk(currentTime, streamIndex);
+    }
   };
 
   const handleExit = () => {
@@ -1047,6 +1068,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
+  const handleCast = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current as any;
+    
+    // HTML5 Remote Playback Web API (Chrome/Edge Native Cast)
+    if (video.remote && typeof video.remote.prompt === 'function') {
+      video.remote.prompt().catch((err: any) => {
+        logger.player('Failed to trigger remote playback prompt:', err);
+      });
+    }
+    // Safari / iOS AirPlay target picker
+    else if (typeof video.webkitShowPlaybackTargetPicker === 'function') {
+      video.webkitShowPlaybackTargetPicker();
+    }
+    // Fallback: use togglePiP
+    else {
+      logger.player('Cast API not supported in this browser. Falling back to Picture-in-Picture.');
+      togglePiP();
+    }
+  };
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -1101,32 +1143,106 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return list;
   };
 
+  const syncAudioRef = (track: CustomAudioTrack | null, streamIndex: number | null) => {
+    const options = getAudioOptions();
+    let idx = 0;
+    if (streamIndex !== null) {
+      idx = options.findIndex(opt => opt.type === 'embedded' && opt.streamIndex === streamIndex);
+    } else if (track) {
+      idx = options.findIndex(opt => opt.type === 'custom' && opt.track?.id === track.id);
+    }
+    currentAudioOptionIndexRef.current = idx !== -1 ? idx : 0;
+  };
+
+  const syncSubRef = (track: CustomSubtitleTrack | null, streamIndex: number | null) => {
+    const options = getSubOptions();
+    let idx = 0;
+    if (streamIndex !== null) {
+      idx = options.findIndex(opt => opt.type === 'embedded' && opt.streamIndex === streamIndex);
+    } else if (track) {
+      idx = options.findIndex(opt => opt.type === 'custom' && opt.track?.id === track.id);
+    }
+    currentSubOptionIndexRef.current = idx !== -1 ? idx : 0;
+  };
+
+  const handleSelectAudioTrack = (track: CustomAudioTrack | null) => {
+    if (audioDebounceTimeoutRef.current) {
+      clearTimeout(audioDebounceTimeoutRef.current);
+      audioDebounceTimeoutRef.current = null;
+    }
+    setSelectedAudioTrack(track);
+    if (track === null) {
+      setActiveAudioStreamIndex(null);
+      syncAudioRef(null, null);
+    } else if (track.streamIndex !== undefined) {
+      setActiveAudioStreamIndex(track.streamIndex);
+      syncAudioRef(null, track.streamIndex);
+    } else {
+      setActiveAudioStreamIndex(null);
+      syncAudioRef(track, null);
+    }
+  };
+
+  const handleSelectSubTrack = (track: CustomSubtitleTrack | null) => {
+    if (subDebounceTimeoutRef.current) {
+      clearTimeout(subDebounceTimeoutRef.current);
+      subDebounceTimeoutRef.current = null;
+    }
+    setSelectedSubTrack(track);
+    if (track === null) {
+      setActiveSubStreamIndex(null);
+      syncSubRef(null, null);
+    } else if (track.streamIndex !== undefined) {
+      setActiveSubStreamIndex(track.streamIndex);
+      syncSubRef(null, track.streamIndex);
+    } else {
+      setActiveSubStreamIndex(null);
+      syncSubRef(track, null);
+    }
+  };
+
   const cycleSubtitles = () => {
     const options = getSubOptions();
     if (options.length === 0) return;
 
-    let currentIndex = 0;
-    if (selectedSubTrack) {
-      if (selectedSubTrack.streamIndex !== undefined) {
-        currentIndex = options.findIndex(opt => opt.type === 'embedded' && opt.streamIndex === selectedSubTrack.streamIndex);
-      } else {
-        currentIndex = options.findIndex(opt => opt.type === 'custom' && opt.track?.id === selectedSubTrack.id);
+    if (currentSubOptionIndexRef.current === -1 || currentSubOptionIndexRef.current >= options.length) {
+      let currentIndex = 0;
+      if (selectedSubTrack) {
+        if (selectedSubTrack.streamIndex !== undefined) {
+          currentIndex = options.findIndex(opt => opt.type === 'embedded' && opt.streamIndex === selectedSubTrack.streamIndex);
+        } else {
+          currentIndex = options.findIndex(opt => opt.type === 'custom' && opt.track?.id === selectedSubTrack.id);
+        }
       }
+      currentSubOptionIndexRef.current = currentIndex !== -1 ? currentIndex : 0;
     }
-    if (currentIndex === -1) currentIndex = 0;
 
-    const nextIndex = (currentIndex + 1) % options.length;
+    const nextIndex = (currentSubOptionIndexRef.current + 1) % options.length;
+    currentSubOptionIndexRef.current = nextIndex;
     const nextOpt = options[nextIndex];
 
     setIsKeyInitiated(true);
+    if (subDebounceTimeoutRef.current) {
+      clearTimeout(subDebounceTimeoutRef.current);
+      subDebounceTimeoutRef.current = null;
+    }
+
     if (nextOpt.type === 'off') {
       setSelectedSubTrack(null);
       setActiveSubStreamIndex(null);
+      setIsKeyInitiated(false);
     } else if (nextOpt.type === 'embedded') {
-      handleSelectEmbeddedSubtitle(nextOpt.streamIndex, nextOpt.codec, nextOpt.language);
+      handleSelectEmbeddedSubtitle(nextOpt.streamIndex, nextOpt.codec, nextOpt.language, true);
+      subDebounceTimeoutRef.current = setTimeout(async () => {
+        subDebounceTimeoutRef.current = null;
+        if (currentSubOptionIndexRef.current === nextIndex) {
+          await loadSubtitleChunk(videoRef.current ? videoRef.current.currentTime : currentTime, nextOpt.streamIndex);
+        }
+      }, 350);
     } else if (nextOpt.type === 'custom') {
       setSelectedSubTrack(nextOpt.track);
       setActiveSubStreamIndex(null);
+      setIsKeyInitiated(false);
     }
 
     triggerSwitchToast(nextOpt.name);
@@ -1136,28 +1252,44 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const options = getAudioOptions();
     if (options.length === 0) return;
 
-    let currentIndex = 0;
-    if (selectedAudioTrack) {
-      if (selectedAudioTrack.streamIndex !== undefined) {
-        currentIndex = options.findIndex(opt => opt.type === 'embedded' && opt.streamIndex === selectedAudioTrack.streamIndex);
-      } else {
-        currentIndex = options.findIndex(opt => opt.type === 'custom' && opt.track?.id === selectedAudioTrack.id);
+    if (currentAudioOptionIndexRef.current === -1 || currentAudioOptionIndexRef.current >= options.length) {
+      let currentIndex = 0;
+      if (selectedAudioTrack) {
+        if (selectedAudioTrack.streamIndex !== undefined) {
+          currentIndex = options.findIndex(opt => opt.type === 'embedded' && opt.streamIndex === selectedAudioTrack.streamIndex);
+        } else {
+          currentIndex = options.findIndex(opt => opt.type === 'custom' && opt.track?.id === selectedAudioTrack.id);
+        }
       }
+      currentAudioOptionIndexRef.current = currentIndex !== -1 ? currentIndex : 0;
     }
-    if (currentIndex === -1) currentIndex = 0;
 
-    const nextIndex = (currentIndex + 1) % options.length;
+    const nextIndex = (currentAudioOptionIndexRef.current + 1) % options.length;
+    currentAudioOptionIndexRef.current = nextIndex;
     const nextOpt = options[nextIndex];
 
     setIsKeyInitiated(true);
+    if (audioDebounceTimeoutRef.current) {
+      clearTimeout(audioDebounceTimeoutRef.current);
+      audioDebounceTimeoutRef.current = null;
+    }
+
     if (nextOpt.type === 'original') {
       setSelectedAudioTrack(null);
       setActiveAudioStreamIndex(null);
+      setIsKeyInitiated(false);
     } else if (nextOpt.type === 'embedded') {
-      handleSelectEmbeddedAudio(nextOpt.streamIndex, nextOpt.codec, nextOpt.language);
+      handleSelectEmbeddedAudio(nextOpt.streamIndex, nextOpt.codec, nextOpt.language, true);
+      audioDebounceTimeoutRef.current = setTimeout(async () => {
+        audioDebounceTimeoutRef.current = null;
+        if (currentAudioOptionIndexRef.current === nextIndex) {
+          await loadAudioChunk(videoRef.current ? videoRef.current.currentTime : currentTime, nextOpt.streamIndex, nextOpt.codec);
+        }
+      }, 350);
     } else if (nextOpt.type === 'custom') {
       setSelectedAudioTrack(nextOpt.track);
       setActiveAudioStreamIndex(null);
+      setIsKeyInitiated(false);
     }
 
     triggerSwitchToast(nextOpt.name);
@@ -1283,11 +1415,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [video.url]);
 
-  // Pause on Window Blur or Tab switch if enabled
+  // Pause on Window Blur or Tab switch if enabled (Fullscreen only)
   useEffect(() => {
     if (!pauseOnFocusChange) return;
 
     const handleFocusLoss = () => {
+      const isCurrentFullscreen = !!document.fullscreenElement || isFullscreen;
+      if (!isCurrentFullscreen) return;
       if (videoRef.current && !videoRef.current.paused) {
         logger.player('Focus lost, pausing video playback');
         videoRef.current.pause();
@@ -1296,6 +1430,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
 
     const handleVisibilityChange = () => {
+      const isCurrentFullscreen = !!document.fullscreenElement || isFullscreen;
+      if (!isCurrentFullscreen) return;
       if (document.visibilityState === 'hidden' && videoRef.current && !videoRef.current.paused) {
         logger.player('Tab hidden, pausing video playback');
         videoRef.current.pause();
@@ -1310,7 +1446,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       window.removeEventListener('blur', handleFocusLoss);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [pauseOnFocusChange]);
+  }, [pauseOnFocusChange, isFullscreen]);
 
   // Periodically save current playback position to parent state
   useEffect(() => {
@@ -1384,7 +1520,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         audioTracks: [...audioTracks, newTrack]
       };
       onUpdateVideo(updatedVideo);
-      setSelectedAudioTrack(newTrack);
+      handleSelectAudioTrack(newTrack);
     }
   };
 
@@ -1408,7 +1544,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         subtitleTracks: [...subtitleTracks, newTrack]
       };
       onUpdateVideo(updatedVideo);
-      setSelectedSubTrack(newTrack);
+      handleSelectSubTrack(newTrack);
     }
   };
   const formatTime = (secs: number) => {
@@ -1525,8 +1661,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className={`player-overlay top-overlay-clean ${showControls ? 'visible' : 'hidden'}`} 
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Chromecast trigger (acting as pip/dummy cast) */}
-          <button className="cast-btn" onClick={togglePiP} title="Chromecast">
+          {/* Chromecast trigger (acting as native browser cast prompt) */}
+          <button className="cast-btn" onClick={handleCast} title="Chromecast">
             <Cast size={24} />
           </button>
           
@@ -1737,142 +1873,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </button>
                   
                   {showAudioSubMenu && (
-                    <div 
-                      className={`audio-sub-popover-center animate-fade-in ${selectedSubTrack ? 'has-transcript' : ''}`}
-                      onMouseEnter={() => {
-                        if (audioSubTimeoutRef.current) clearTimeout(audioSubTimeoutRef.current);
-                      }}
-                    >
-                      <div className="popover-cols">
-                        {/* Audio Column */}
-                        <div className="popover-col">
-                          <h4>Audio</h4>
-                          <div className="popover-options">
-                            {/* Default Original Audio if streams are available, or default selector */}
-                            <label className="popover-option" onClick={() => { setSelectedAudioTrack(null); setActiveAudioStreamIndex(null); setShowAudioSubMenu(false); }}>
-                              <input type="radio" name="audio-lang" checked={selectedAudioTrack === null} readOnly />
-                              <span>Original</span>
-                              {selectedAudioTrack === null && <Check size={14} className="check-icon" />}
-                            </label>
-
-                            {/* Scanned/Probed Embedded Tracks */}
-                            {audioStreams.map((s) => {
-                              const active = selectedAudioTrack?.streamIndex === s.index;
-                              const label = getLangLabel(s.language, `Track #${s.index}`);
-                              return (
-                                <label key={`embed-aud-${s.index}`} className="popover-option" onClick={() => { handleSelectEmbeddedAudio(s.index, s.codec, s.language); setShowAudioSubMenu(false); }}>
-                                  <input type="radio" name="audio-lang" checked={active} readOnly />
-                                  <span>{label}</span>
-                                  {active && <Check size={14} className="check-icon" />}
-                                </label>
-                              );
-                            })}
-
-                            {/* Custom Uploaded Tracks */}
-                            {audioTracks.map((track) => {
-                              const active = selectedAudioTrack?.id === track.id;
-                              return (
-                                <label key={track.id} className="popover-option" onClick={() => { setSelectedAudioTrack(track); setShowAudioSubMenu(false); }}>
-                                  <input type="radio" name="audio-lang" checked={active} readOnly />
-                                  <span>{track.name}</span>
-                                  {active && <Check size={14} className="check-icon" />}
-                                </label>
-                              );
-                            })}
-
-                            {/* Custom Add Trigger */}
-                            <label className="popover-option add-custom-btn" onClick={() => { customAudioInputRef.current?.click(); setShowAudioSubMenu(false); }}>
-                              <span>+ Add Custom File</span>
-                            </label>
-                          </div>
-                        </div>
-
-                        {/* Subtitles Column */}
-                        <div className="popover-col">
-                          <h4>Subtitles</h4>
-                          <div className="popover-options">
-                            {/* Off */}
-                            <label className="popover-option" onClick={() => { setSelectedSubTrack(null); setActiveSubStreamIndex(null); setShowAudioSubMenu(false); }}>
-                              <input type="radio" name="sub-lang" checked={selectedSubTrack === null} readOnly />
-                              <span>Off</span>
-                              {selectedSubTrack === null && <Check size={14} className="check-icon" />}
-                            </label>
-
-                            {/* Scanned/Probed Embedded Tracks */}
-                            {subtitleStreams.map((s) => {
-                              const active = selectedSubTrack?.streamIndex === s.index;
-                              const label = getLangLabel(s.language, `Track #${s.index}`);
-                              return (
-                                <label key={`embed-sub-${s.index}`} className="popover-option" onClick={() => { handleSelectEmbeddedSubtitle(s.index, s.codec, s.language); setShowAudioSubMenu(false); }}>
-                                  <input type="radio" name="sub-lang" checked={active} readOnly />
-                                  <span>{label}</span>
-                                  {active && <Check size={14} className="check-icon" />}
-                                </label>
-                              );
-                            })}
-
-                            {/* Custom Uploaded Tracks */}
-                            {subtitleTracks.map((track) => {
-                              const active = selectedSubTrack?.id === track.id;
-                              return (
-                                <label key={track.id} className="popover-option" onClick={() => { setSelectedSubTrack(track); setShowAudioSubMenu(false); }}>
-                                  <input type="radio" name="sub-lang" checked={active} readOnly />
-                                  <span>{track.name}</span>
-                                  {active && <Check size={14} className="check-icon" />}
-                                </label>
-                              );
-                            })}
-
-                            {/* Custom Add Trigger */}
-                            <label className="popover-option add-custom-btn" onClick={() => { customSubInputRef.current?.click(); setShowAudioSubMenu(false); }}>
-                              <span>+ Add Custom File</span>
-                            </label>
-                          </div>
-                        </div>
-
-                        {/* Subtitle Cue Transcript Column */}
-                        {selectedSubTrack && (
-                          <div className="popover-col popover-transcript-col">
-                            <h4>Subtitle View</h4>
-                            <div className="transcript-search-box">
-                              <input 
-                                type="text" 
-                                placeholder="Search subtitles..." 
-                                value={subSearchQuery}
-                                onChange={(e) => setSubSearchQuery(e.target.value)}
-                                className="transcript-search-input"
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </div>
-                            <div className="transcript-cues-list">
-                              {(selectedSubTrack.cues || []).map((cue, originalIdx) => {
-                                const isMatched = cleanSubtitleText(cue.text).toLowerCase().includes(subSearchQuery.toLowerCase());
-                                if (!isMatched) return null;
-                                
-                                const isActive = currentTime >= cue.startTime && currentTime <= cue.endTime;
-                                return (
-                                  <div 
-                                    key={cue.id || originalIdx} 
-                                    id={`cue-item-${originalIdx}`}
-                                    className={`transcript-cue-item ${isActive ? 'active' : ''}`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (videoRef.current) {
-                                        videoRef.current.currentTime = cue.startTime;
-                                        setCurrentTime(cue.startTime);
-                                      }
-                                    }}
-                                  >
-                                    <span className="cue-time">{formatTime(cue.startTime)}</span>
-                                    <span className="cue-text">{cleanSubtitleText(cue.text)}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <AudioSubPopover
+                      audioStreams={audioStreams}
+                      audioTracks={audioTracks}
+                      selectedAudioTrack={selectedAudioTrack}
+                      setSelectedAudioTrack={handleSelectAudioTrack}
+                      setActiveAudioStreamIndex={setActiveAudioStreamIndex}
+                      handleSelectEmbeddedAudio={handleSelectEmbeddedAudio}
+                      customAudioInputRef={customAudioInputRef}
+                      subtitleStreams={subtitleStreams}
+                      subtitleTracks={subtitleTracks}
+                      selectedSubTrack={selectedSubTrack}
+                      setSelectedSubTrack={handleSelectSubTrack}
+                      setActiveSubStreamIndex={setActiveSubStreamIndex}
+                      handleSelectEmbeddedSubtitle={handleSelectEmbeddedSubtitle}
+                      customSubInputRef={customSubInputRef}
+                      currentTime={currentTime}
+                      videoRef={videoRef}
+                      setCurrentTime={setCurrentTime}
+                      setShowAudioSubMenu={setShowAudioSubMenu}
+                      audioSubTimeoutRef={audioSubTimeoutRef}
+                      getLangLabel={getLangLabel}
+                      formatTime={formatTime}
+                      cleanSubtitleText={cleanSubtitleText}
+                    />
                   )}
                 </div>
               </div>
