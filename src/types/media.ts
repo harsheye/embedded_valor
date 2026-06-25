@@ -37,6 +37,7 @@ export interface VideoItem {
   isRemote?: boolean;
   containerType?: 'mp4' | 'mkv' | 'ts' | 'hls' | 'unknown';
   seekMap?: { time: number; offset: number }[];
+  timecodeScale?: number;
   hlsPlaylist?: any;
   thumbnailUrl?: string;
   currentTime?: number;

@@ -203,13 +203,49 @@ function App() {
         duration: v.duration,
         format: v.format,
         streams: v.streams,
-        audioTracks: v.audioTracks || [],
-        subtitleTracks: v.subtitleTracks || [],
+        audioTracks: (v.audioTracks || []).map(t => ({
+          id: t.id,
+          name: t.name,
+          url: t.isExtracted ? '' : t.url,
+          isExtracted: t.isExtracted,
+          streamIndex: t.streamIndex,
+          language: t.language,
+          codec: t.codec
+        })),
+        subtitleTracks: (v.subtitleTracks || []).map(t => ({
+          id: t.id,
+          name: t.name,
+          url: t.isExtracted ? '' : t.url,
+          cues: [],
+          isExtracted: t.isExtracted,
+          streamIndex: t.streamIndex,
+          language: t.language,
+          format: t.format
+        })),
         currentTime: v.currentTime || 0
       }));
-      localStorage.setItem('valor_videos', JSON.stringify(serialized));
+      try {
+        localStorage.setItem('valor_videos', JSON.stringify(serialized));
+      } catch (err: any) {
+        if (err.name === 'QuotaExceededError' || err.code === 22) {
+          console.warn('LocalStorage quota exceeded. Evicting older video history...');
+          let currentList = [...serialized];
+          while (currentList.length > 1) {
+            currentList.pop();
+            try {
+              localStorage.setItem('valor_videos', JSON.stringify(currentList));
+              console.log('Successfully saved reduced video history list of size', currentList.length);
+              break;
+            } catch (retryErr) {
+              // keep popping
+            }
+          }
+        } else {
+          console.error('Failed to save videos to localStorage:', err);
+        }
+      }
     } catch (err) {
-      console.error('Failed to save videos to localStorage:', err);
+      console.error('Failed to serialize videos for localStorage:', err);
     }
   }, [videos, settings.historyLimit]);
 
@@ -599,6 +635,7 @@ function App() {
     setProcessingStep('Validating security protocols...');
     
     try {
+      const urlId = `url-${Date.now()}`;
       // Tighten up URL security - enforce HTTP/HTTPS to prevent protocol-based injection/SSRF/file disclosure
       let parsed: URL;
       try {
@@ -620,7 +657,7 @@ function App() {
         console.log('[App] Remote byte access blocked or failed. Engaging Native Playback Mode.');
         const title = url.substring(url.lastIndexOf('/') + 1) || 'Remote Stream';
         const nativeItem: VideoItem = {
-          id: `url-${Date.now()}`,
+          id: urlId,
           title,
           url,
           type: 'url',
@@ -654,6 +691,7 @@ function App() {
       let streams: any[] = [];
       let seekMap: any[] = [];
       let hlsPlaylist: any = null;
+      let timecodeScale: number | undefined = undefined;
 
       if (container === 'hls') {
         setProcessingStep('Parsing HLS manifest...');
@@ -676,7 +714,7 @@ function App() {
         
         setProcessingStep('Analyzing video streams...');
         if (!ffmpegService.isReady()) {
-          await ffmpegService.load();
+          await ffmpegService.load(urlId);
         }
         const probeResult = await ffmpegService.probeRemoteHeader(url, '.mp4', cachedSource);
         streams = probeResult.streams;
@@ -685,10 +723,11 @@ function App() {
         const mkvInfo = await parseMkv(cachedSource);
         duration = formatTime(mkvInfo.duration);
         seekMap = mkvInfo.seekMap || [];
+        timecodeScale = mkvInfo.timecodeScale;
         
         setProcessingStep('Analyzing video streams...');
         if (!ffmpegService.isReady()) {
-          await ffmpegService.load();
+          await ffmpegService.load(urlId);
         }
         const probeResult = await ffmpegService.probeRemoteHeader(url, '.mkv', cachedSource);
         streams = probeResult.streams;
@@ -696,7 +735,7 @@ function App() {
         setProcessingStep('Probing headers...');
         try {
           if (!ffmpegService.isReady()) {
-            await ffmpegService.load();
+            await ffmpegService.load(urlId);
           }
           const ext = url.split('.').pop()?.split('?')[0] || 'mp4';
           const probeResult = await ffmpegService.probeRemoteHeader(url, `.${ext}`, cachedSource);
@@ -713,7 +752,7 @@ function App() {
 
       const title = url.substring(url.lastIndexOf('/') + 1) || 'Remote Stream';
       const videoItem: VideoItem = {
-        id: `url-${Date.now()}`,
+        id: urlId,
         title,
         url,
         type: 'url',
@@ -727,6 +766,7 @@ function App() {
         audioTracks,
         subtitleTracks,
         currentTime: 0,
+        timecodeScale,
         playbackMode: 'advanced'
       };
 

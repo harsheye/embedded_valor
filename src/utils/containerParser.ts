@@ -1,4 +1,6 @@
 import type { ByteSource } from './remoteByteSource';
+import { cleanSubtitleText } from './subtitleParser';
+import type { SubtitleCue } from './subtitleParser';
 
 export type ContainerType = 'mp4' | 'mkv' | 'ts' | 'hls' | 'unknown';
 
@@ -475,7 +477,7 @@ export interface MKVTrackInfo {
   language?: string;
 }
 
-export async function parseMkv(source: ByteSource): Promise<{ duration: number; tracks: MKVTrackInfo[]; seekMap: { time: number; offset: number }[] }> {
+export async function parseMkv(source: ByteSource): Promise<{ duration: number; tracks: MKVTrackInfo[]; seekMap: { time: number; offset: number }[]; timecodeScale: number }> {
   const size = await source.getSize();
   let offset = 0;
   let duration = 0;
@@ -665,5 +667,207 @@ export async function parseMkv(source: ByteSource): Promise<{ duration: number; 
     }
   }
 
-  return { duration, tracks, seekMap };
+  return { duration, tracks, seekMap, timecodeScale };
+}
+
+// Helper to read ID and VINT size from a ByteSource
+async function readIdAndSize(
+  source: ByteSource,
+  offset: number,
+  signal?: AbortSignal
+): Promise<{ id: number; size: number; headerSize: number; vintLength: number }> {
+  // Read up to 12 bytes
+  const bytes = await source.read(offset, offset + 11, signal);
+  if (bytes.length === 0) {
+    throw new Error('EOF');
+  }
+  const r = new EbmlReader(bytes);
+  const id = r.readId();
+  const vint = r.readVint();
+  return {
+    id,
+    size: vint.value,
+    headerSize: r.offset,
+    vintLength: vint.length
+  };
+}
+
+function processSubtitleText(text: string): string {
+  if (/^\d+,\d+,/.test(text)) {
+    let commaCount = 0;
+    let pos = 0;
+    while (commaCount < 8 && pos < text.length) {
+      if (text[pos] === ',') {
+        commaCount++;
+      }
+      pos++;
+    }
+    if (commaCount === 8) {
+      return text.substring(pos);
+    }
+  }
+  return text;
+}
+
+export async function extractMkvSubtitles(
+  source: ByteSource,
+  targetTrackNumber: number,
+  timecodeScale: number,
+  seekMap: { time: number; offset: number }[],
+  time: number,
+  subDuration: number,
+  onCuesProgress?: (cues: SubtitleCue[]) => void,
+  signal?: AbortSignal
+): Promise<SubtitleCue[]> {
+  console.log('[extractMkvSubtitles] Started. TargetTrackNumber:', targetTrackNumber, 'SeekMap size:', seekMap.length, 'Time:', time);
+  const cues: SubtitleCue[] = [];
+  
+  // Find startOffset and endOffset using seekMap
+  const startEntry = seekMap.reduce((prev: any, curr: any) => {
+    if (curr.time <= Math.max(0, time - 10)) {
+      return curr;
+    }
+    return prev;
+  }, seekMap[0]);
+  const startOffset = startEntry ? startEntry.offset : 0;
+
+  const endEntry = seekMap.find(entry => entry.time >= time + subDuration);
+  const endOffset = endEntry ? endEntry.offset : await source.getSize();
+
+  console.log('[extractMkvSubtitles] Contiguous Range:', startOffset, 'to', endOffset);
+
+  let currentOffset = startOffset;
+  let clusterTimecode = 0;
+
+  while (currentOffset < endOffset) {
+    if (signal?.aborted) break;
+
+    try {
+      const sub = await readIdAndSize(source, currentOffset, signal);
+      const subHeaderOffset = currentOffset + sub.headerSize;
+
+      if (sub.id === 0x1F43B675) { // Cluster
+        // Move inside the Cluster payload contiguously
+        currentOffset += sub.headerSize;
+        continue;
+      }
+
+      if (sub.id === 0xE7) {
+        // Timecode of Cluster
+        const timecodeBytes = await source.read(subHeaderOffset, subHeaderOffset + sub.size - 1, signal);
+        clusterTimecode = new EbmlReader(timecodeBytes).readUint(sub.size);
+      } else if (sub.id === 0xA3 || sub.id === 0xA1) {
+        // SimpleBlock or Block
+        const headerLen = Math.min(8, sub.size);
+        const blockHeaderBytes = await source.read(subHeaderOffset, subHeaderOffset + headerLen - 1, signal);
+        
+        const br = new EbmlReader(blockHeaderBytes);
+        const trackNumVint = br.readVint();
+        const blockTrackNumber = trackNumVint.value;
+
+        console.log('[extractMkvSubtitles] Block track number:', blockTrackNumber, 'target:', targetTrackNumber);
+        if (blockTrackNumber === targetTrackNumber) {
+          let relativeTimecode = (blockHeaderBytes[br.offset] << 8) | blockHeaderBytes[br.offset + 1];
+          relativeTimecode = (relativeTimecode << 16) >> 16;
+
+          const payloadStart = subHeaderOffset + trackNumVint.length + 3;
+          const payloadEnd = subHeaderOffset + sub.size - 1;
+          
+          if (payloadEnd >= payloadStart) {
+            const payloadBytes = await source.read(payloadStart, payloadEnd, signal);
+            const text = new TextDecoder('utf-8').decode(payloadBytes);
+            console.log('[extractMkvSubtitles] Decoded text cue:', text);
+            
+            const startTime = ((clusterTimecode + relativeTimecode) * timecodeScale) / 1000000000;
+            
+            cues.push({
+              id: `mkv-sub-${startTime.toFixed(3)}-${Math.random().toString(36).substring(2, 5)}`,
+              startTime,
+              endTime: startTime + 4.0, // default duration, capped below
+              text: cleanSubtitleText(processSubtitleText(text))
+            });
+          }
+        }
+      } else if (sub.id === 0xA0) {
+        // BlockGroup
+        let bgOffset = subHeaderOffset;
+        const bgEnd = subHeaderOffset + sub.size;
+        let blockText = '';
+        let blockStartTime = 0;
+        let blockDurationVal: number | null = null;
+        let gotBlock = false;
+
+        while (bgOffset < bgEnd) {
+          if (signal?.aborted) break;
+          const bgSub = await readIdAndSize(source, bgOffset, signal);
+          const bgSubHeaderOffset = bgOffset + bgSub.headerSize;
+
+          if (bgSub.id === 0xA1) {
+            const headerLen = Math.min(8, bgSub.size);
+            const blockHeaderBytes = await source.read(bgSubHeaderOffset, bgSubHeaderOffset + headerLen - 1, signal);
+            
+            const br = new EbmlReader(blockHeaderBytes);
+            const trackNumVint = br.readVint();
+            const blockTrackNumber = trackNumVint.value;
+
+            if (blockTrackNumber === targetTrackNumber) {
+              let relativeTimecode = (blockHeaderBytes[br.offset] << 8) | blockHeaderBytes[br.offset + 1];
+              relativeTimecode = (relativeTimecode << 16) >> 16;
+
+              const payloadStart = bgSubHeaderOffset + trackNumVint.length + 3;
+              const payloadEnd = bgSubHeaderOffset + bgSub.size - 1;
+
+              if (payloadEnd >= payloadStart) {
+                const payloadBytes = await source.read(payloadStart, payloadEnd, signal);
+                blockText = new TextDecoder('utf-8').decode(payloadBytes);
+                blockStartTime = ((clusterTimecode + relativeTimecode) * timecodeScale) / 1000000000;
+                gotBlock = true;
+              }
+            }
+          } else if (bgSub.id === 0x9B) {
+            const durBytes = await source.read(bgSubHeaderOffset, bgSubHeaderOffset + bgSub.size - 1, signal);
+            blockDurationVal = new EbmlReader(durBytes).readUint(bgSub.size);
+          }
+          bgOffset += bgSub.headerSize + bgSub.size;
+        }
+
+        if (gotBlock && blockText) {
+          const duration = blockDurationVal !== null ? (blockDurationVal * timecodeScale) / 1000000000 : 4.0;
+          cues.push({
+            id: `mkv-sub-${blockStartTime.toFixed(3)}-${Math.random().toString(36).substring(2, 5)}`,
+            startTime: blockStartTime,
+            endTime: blockStartTime + duration,
+            text: cleanSubtitleText(processSubtitleText(blockText))
+          });
+        }
+      }
+
+      currentOffset += sub.headerSize + sub.size;
+    } catch (err) {
+      currentOffset += 1;
+    }
+
+    if (onCuesProgress && cues.length > 0 && cues.length % 5 === 0) {
+      const sortedCues = [...cues].sort((a, b) => a.startTime - b.startTime);
+      for (let j = 0; j < sortedCues.length - 1; j++) {
+        if (sortedCues[j].endTime > sortedCues[j + 1].startTime) {
+          sortedCues[j].endTime = sortedCues[j + 1].startTime;
+        }
+      }
+      onCuesProgress(sortedCues);
+    }
+  }
+
+  cues.sort((a, b) => a.startTime - b.startTime);
+  for (let j = 0; j < cues.length - 1; j++) {
+    if (cues[j].endTime > cues[j + 1].startTime) {
+      cues[j].endTime = cues[j + 1].startTime;
+    }
+  }
+
+  if (onCuesProgress && cues.length > 0) {
+    onCuesProgress([...cues]);
+  }
+
+  return cues;
 }

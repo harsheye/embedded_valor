@@ -55,9 +55,6 @@ export interface ProbeResult {
 /** Codecs browsers can play natively — use stream copy, no transcode */
 const COPY_CODEC_RE = /aac|mp3|mpeg|opus|flac|vorbis/i;
 
-/** Codecs that must be transcoded (Dolby/DTS — not supported natively) */
-const TRANSCODE_CODEC_RE = /ac3|eac3|dts|truehd|mlp/i;
-
 function getOutputFormat(codec: string): { ext: string; mimeType: string } {
   if (/aac/i.test(codec))    return { ext: "m4a",  mimeType: "audio/mp4" };
   if (/mp3|mpeg/i.test(codec)) return { ext: "mp3",  mimeType: "audio/mpeg" };
@@ -69,10 +66,6 @@ function getOutputFormat(codec: string): { ext: string; mimeType: string } {
 
 function isCopyCodec(codec: string): boolean {
   return COPY_CODEC_RE.test(codec);
-}
-
-function isTranscodeCodec(codec: string): boolean {
-  return TRANSCODE_CODEC_RE.test(codec);
 }
 
 // ─── Promise-based mutex ──────────────────────────────────────────────────────
@@ -277,168 +270,7 @@ export class FFmpegService {
 
   // ── Audio extraction ────────────────────────────────────────────────────────
 
-  /**
-   * Extract an audio track from a video File.
-   *
-   * @param file        The source video File object
-   * @param videoId     Stable identifier for the video (e.g. file name + size)
-   * @param stream      Stream info from FFprobe (codec, index, etc.)
-   * @param onProgress  Optional progress callback
-   * @returns           Blob URL + revoke helper
-   */
-  extractAudio(
-    file: File,
-    videoId: string,
-    stream: StreamInfo,
-    onProgress?: (progress: number) => void
-  ): Promise<ExtractionResult> {
-    return this.lock.run(async () => {
-      const ff = await this.ensureLoaded(videoId);
-      const uniqueId = Math.random().toString(36).substring(2, 9);
-      const inputPath = await this.mountFile(ff, file, uniqueId);
-      const { ext, mimeType } = getOutputFormat(stream.codec);
-      const outputPath = `/output_audio_${stream.index}_${uniqueId}.${ext}`;
 
-      if (onProgress) {
-        ff.on("progress", ({ progress }) => {
-          onProgress(Math.round(progress * 100));
-        });
-      }
-
-      try {
-        const args = this.buildAudioArgs(inputPath, stream, outputPath, ext);
-        const code = await ff.exec(args);
-        if (code !== 0) {
-          throw new Error(`Audio extraction failed. FFmpeg exited with code ${code}`);
-        }
-
-        const data = await ff.readFile(outputPath);
-        const blob = new Blob([data as any], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-
-        return {
-          url,
-          mimeType,
-          revoke: () => URL.revokeObjectURL(url),
-        };
-      } finally {
-        await this.cleanupSession(ff, inputPath, outputPath);
-      }
-    });
-  }
-
-  /**
-   * Build FFmpeg args for the audio extraction pass.
-   *
-   * Copy path  — browser-native codecs:  < 100ms (demux only)
-   * Transcode  — Dolby/DTS:              stereo downmix, 128k
-   */
-  private buildAudioArgs(inputPath: string, stream: StreamInfo, outputPath: string, ext: string): string[] {
-    const selectStream = [`-map`, `0:${stream.index}`];
-
-    if (isCopyCodec(stream.codec)) {
-      // Fast path: pure demux, no decode/encode
-      const args = [
-        "-i", inputPath,
-        ...selectStream,
-        "-vn",
-        "-acodec", "copy",
-      ];
-      if (ext === "m4a") {
-        args.push("-bsf:a", "aac_adtstoasc");
-      }
-      args.push(outputPath);
-      return args;
-    }
-
-    if (isTranscodeCodec(stream.codec)) {
-      // Transcode path: downmix to stereo, encode to AAC (3x faster than MP3 on WASM)
-      return [
-        "-i", inputPath,
-        ...selectStream,
-        "-vn",
-        "-ac", "2",          // stereo downmix
-        "-ab", "128k",       // compact bitrate
-        "-acodec", "aac",    // fast native AAC encoder
-        outputPath,
-      ];
-    }
-
-    // Unknown codec — attempt a generic transcode to stereo AAC
-    logger.warn(`[ffmpeg] Unknown codec "${stream.codec}" — attempting generic transcode`);
-    return [
-      "-i", inputPath,
-      ...selectStream,
-      "-vn",
-      "-ac", "2",
-      "-ab", "128k",
-      "-acodec", "aac",
-      outputPath,
-    ];
-  }
-
-  // ── Subtitle extraction ─────────────────────────────────────────────────────
-
-  /**
-   * Extract a subtitle track from a video File.
-   * Pure stream copy — near-instant (<50ms).
-   *
-   * @param file      The source video File object
-   * @param videoId   Stable identifier for the video
-   * @param stream    Stream info from FFprobe (codec, index)
-   * @returns         Raw subtitle text + detected format
-   */
-  extractSubtitle(
-    file: File,
-    videoId: string,
-    stream: StreamInfo
-  ): Promise<SubtitleResult> {
-    return this.lock.run(async () => {
-      const ff = await this.ensureLoaded(videoId);
-      const uniqueId = Math.random().toString(36).substring(2, 9);
-      const inputPath = await this.mountFile(ff, file, uniqueId);
-      let format = this.detectSubtitleFormat(stream.codec);
-      let outputPath = `/output_sub_${stream.index}_${uniqueId}.${format}`;
-
-      try {
-        const code = await ff.exec([
-          "-probesize", "1000000",
-          "-analyzeduration", "1000000",
-          "-vn", "-an",
-          "-i", inputPath,
-          "-map", `0:${stream.index}`,
-          "-c:s", "copy",
-          outputPath,
-        ]);
-
-        if (code !== 0) {
-          logger.warn("[ffmpeg] Subtitle copy failed, attempting transcode to srt...");
-          const fallbackPath = `/output_sub_${stream.index}_${uniqueId}.srt`;
-          const fallbackCode = await ff.exec([
-            "-probesize", "1000000",
-            "-analyzeduration", "1000000",
-            "-vn", "-an",
-            "-i", inputPath,
-            "-map", `0:${stream.index}`,
-            "-c:s", "srt",
-            fallbackPath,
-          ]);
-          if (fallbackCode !== 0) {
-            throw new Error(`Subtitle extraction failed. FFmpeg exited with code ${fallbackCode}`);
-          }
-          outputPath = fallbackPath;
-          format = 'srt';
-        }
-
-        const data = await ff.readFile(outputPath);
-        const text = new TextDecoder().decode(data as Uint8Array);
-
-        return { text, format };
-      } finally {
-        await this.cleanupSession(ff, inputPath, outputPath);
-      }
-    });
-  }
 
   private detectSubtitleFormat(codec: string): "ass" | "srt" | "vtt" {
     if (/ass|ssa/i.test(codec))  return "ass";
@@ -581,6 +413,7 @@ export class FFmpegService {
    * Extract audio segment from a remote byte source using a seek offset
    */
   async extractRemoteAudioSegment(
+    videoId: string,
     source: ByteSource,
     startOffset: number,
     endOffset: number,
@@ -588,13 +421,28 @@ export class FFmpegService {
     signal?: AbortSignal
   ): Promise<ExtractionResult> {
     return this.lock.run(async () => {
-      const ff = await this.ensureLoaded("remote-stream");
+      const ff = await this.ensureLoaded(videoId);
       const tempInFile = "chunk.bin";
       const { ext, mimeType } = getOutputFormat(stream.codec);
       const tempOutFile = `audio_remote_${stream.index}.${ext}`;
 
-      const chunkBytes = await source.read(startOffset, endOffset, signal);
-      await ff.writeFile(tempInFile, chunkBytes);
+      // Read headers (first 1MB) and target chunk, then concatenate them
+      const size = await source.getSize();
+      const headerLimit = Math.min(1024 * 1024, size - 1);
+      
+      let concatenated: Uint8Array;
+      if (startOffset < headerLimit) {
+        concatenated = await source.read(0, endOffset, signal);
+      } else {
+        const headerBytes = await source.read(0, headerLimit, signal);
+        const chunkBytes = await source.read(startOffset, endOffset, signal);
+
+        concatenated = new Uint8Array(headerBytes.length + chunkBytes.length);
+        concatenated.set(headerBytes, 0);
+        concatenated.set(chunkBytes, headerBytes.length);
+      }
+
+      await ff.writeFile(tempInFile, concatenated);
 
       try {
         const selectStream = [`-map`, `0:${stream.index}`];
@@ -602,6 +450,7 @@ export class FFmpegService {
 
         if (isCopyCodec(stream.codec)) {
           args = [
+            '-fflags', '+ignidx',
             '-i', tempInFile,
             ...selectStream,
             '-vn',
@@ -610,6 +459,7 @@ export class FFmpegService {
           ];
         } else {
           args = [
+            '-fflags', '+ignidx',
             '-i', tempInFile,
             ...selectStream,
             '-vn',
@@ -647,6 +497,7 @@ export class FFmpegService {
    * Extract subtitle segment from a remote byte source using a seek offset
    */
   async extractRemoteSubtitleSegment(
+    videoId: string,
     source: ByteSource,
     startOffset: number,
     endOffset: number,
@@ -654,16 +505,32 @@ export class FFmpegService {
     signal?: AbortSignal
   ): Promise<string> {
     return this.lock.run(async () => {
-      const ff = await this.ensureLoaded("remote-stream");
+      console.log('[extractRemoteSubtitleSegment] source:', source, 'type:', typeof source, 'methods:', Object.keys(source || {}), 'proto:', Object.getPrototypeOf(source));
+      const ff = await this.ensureLoaded(videoId);
       const tempInFile = "chunk.bin";
       let format = this.detectSubtitleFormat(stream.codec);
       let tempOutFile = `sub_remote_${stream.index}.${format}`;
 
-      const chunkBytes = await source.read(startOffset, endOffset, signal);
-      await ff.writeFile(tempInFile, chunkBytes);
+      const size = await source.getSize();
+      const headerLimit = Math.min(1024 * 1024, size - 1);
+
+      let concatenated: Uint8Array;
+      if (startOffset < headerLimit) {
+        concatenated = await source.read(0, endOffset, signal);
+      } else {
+        const headerBytes = await source.read(0, headerLimit, signal);
+        const chunkBytes = await source.read(startOffset, endOffset, signal);
+
+        concatenated = new Uint8Array(headerBytes.length + chunkBytes.length);
+        concatenated.set(headerBytes, 0);
+        concatenated.set(chunkBytes, headerBytes.length);
+      }
+
+      await ff.writeFile(tempInFile, concatenated);
 
       try {
         const code = await ff.exec([
+          '-fflags', '+ignidx',
           '-i', tempInFile,
           '-map', `0:${stream.index}`,
           '-c:s', 'copy',
@@ -673,6 +540,7 @@ export class FFmpegService {
           logger.warn("[ffmpeg] Remote subtitle copy failed, attempting transcode to srt...");
           const fallbackOutFile = `sub_remote_${stream.index}.srt`;
           const fallbackCode = await ff.exec([
+            '-fflags', '+ignidx',
             '-i', tempInFile,
             '-map', `0:${stream.index}`,
             '-c:s', 'srt',
@@ -696,14 +564,125 @@ export class FFmpegService {
   }
 
   /**
+   * Extract audio segment from a local file using WORKERFS zero-copy mount and fast seeking
+   */
+  async extractLocalAudioSegment(
+    videoId: string,
+    file: File,
+    startTime: number,
+    duration: number,
+    stream: StreamInfo
+  ): Promise<ExtractionResult> {
+    return this.lock.run(async () => {
+      const ff = await this.ensureLoaded(videoId);
+      const uniqueId = Math.random().toString(36).substring(2, 9);
+      const inputPath = await this.mountFile(ff, file, uniqueId);
+      const { ext, mimeType } = getOutputFormat(stream.codec);
+      const tempOutFile = `audio_local_${stream.index}.${ext}`;
+
+      try {
+        const selectStream = [`-map`, `0:${stream.index}`];
+        let args: string[];
+
+        if (isCopyCodec(stream.codec)) {
+          args = [
+            '-ss', startTime.toFixed(3),
+            '-i', inputPath,
+            '-t', duration.toFixed(3),
+            ...selectStream,
+            '-vn',
+            '-acodec', 'copy',
+            tempOutFile
+          ];
+        } else {
+          args = [
+            '-ss', startTime.toFixed(3),
+            '-i', inputPath,
+            '-t', duration.toFixed(3),
+            ...selectStream,
+            '-vn',
+            '-acodec', 'aac',
+            '-ac', '2',
+            '-ab', '128k',
+            tempOutFile
+          ];
+        }
+
+        const code = await ff.exec(args);
+        if (code !== 0) {
+          throw new Error(`Local audio chunk extraction failed. Exit code ${code}`);
+        }
+
+        const data = await ff.readFile(tempOutFile);
+        const blob = new Blob([data as any], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+
+        return {
+          url,
+          mimeType,
+          revoke: () => URL.revokeObjectURL(url),
+        };
+      } finally {
+        await this.cleanupSession(ff, inputPath, tempOutFile);
+      }
+    });
+  }
+
+  /**
+   * Extract the entire subtitle track from a local file in one go (fast & persistent)
+   */
+  async extractLocalSubtitleTrack(
+    videoId: string,
+    file: File,
+    stream: StreamInfo
+  ): Promise<string> {
+    return this.lock.run(async () => {
+      const ff = await this.ensureLoaded(videoId);
+      const uniqueId = Math.random().toString(36).substring(2, 9);
+      const inputPath = await this.mountFile(ff, file, uniqueId);
+      let format = this.detectSubtitleFormat(stream.codec);
+      let tempOutFile = `sub_local_${stream.index}.${format}`;
+
+      try {
+        const code = await ff.exec([
+          '-i', inputPath,
+          '-map', `0:${stream.index}`,
+          '-c:s', 'copy',
+          tempOutFile
+        ]);
+        if (code !== 0) {
+          logger.warn("[ffmpeg] Local subtitle copy failed, attempting transcode to srt...");
+          const fallbackOutFile = `sub_local_${stream.index}.srt`;
+          const fallbackCode = await ff.exec([
+            '-i', inputPath,
+            '-map', `0:${stream.index}`,
+            '-c:s', 'srt',
+            fallbackOutFile
+          ]);
+          if (fallbackCode !== 0) {
+            throw new Error(`Local subtitle extraction failed. Exit code ${fallbackCode}`);
+          }
+          tempOutFile = fallbackOutFile;
+        }
+
+        const data = await ff.readFile(tempOutFile);
+        return new TextDecoder("utf-8").decode(data as Uint8Array);
+      } finally {
+        await this.cleanupSession(ff, inputPath, tempOutFile);
+      }
+    });
+  }
+
+  /**
    * Extract audio segment from a single HLS TS segment URL
    */
   async extractHlsAudioSegment(
+    videoId: string,
     segmentUrl: string,
     stream: StreamInfo
   ): Promise<{ url: string; mimeType: string }> {
     return this.lock.run(async () => {
-      const ff = await this.ensureLoaded("remote-stream");
+      const ff = await this.ensureLoaded(videoId);
       const tempInFile = "segment.ts";
       const { ext, mimeType } = getOutputFormat(stream.codec);
       const tempOutFile = `audio_hls_${stream.index}.${ext}`;
