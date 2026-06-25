@@ -7,7 +7,8 @@ export class AudioSyncEngine {
   private isSyncingEnabled = true;
   private isVideoWaiting = false;
   private audioStartOffset = 0;
-  private pendingReadyAction: (() => void) | null = null;
+  private pendingSeekTime: number | null = null;
+  private pendingPlay = false;
 
   get isSeeking() {
     return this.isVideoSeeking || this.isAudioSeeking;
@@ -45,6 +46,7 @@ export class AudioSyncEngine {
     this.audio.addEventListener('seeking', this.handleAudioSeeking);
     this.audio.addEventListener('seeked', this.handleAudioSeeked);
     this.audio.addEventListener('loadedmetadata', this.onAudioReady);
+    this.audio.addEventListener('canplay', this.onAudioReady);
 
     // Initial play state sync
     if (!this.video.paused) {
@@ -69,6 +71,7 @@ export class AudioSyncEngine {
     this.audio.removeEventListener('seeking', this.handleAudioSeeking);
     this.audio.removeEventListener('seeked', this.handleAudioSeeked);
     this.audio.removeEventListener('loadedmetadata', this.onAudioReady);
+    this.audio.removeEventListener('canplay', this.onAudioReady);
     
     this.stopSyncLoop();
     this.audio.pause();
@@ -83,12 +86,14 @@ export class AudioSyncEngine {
   };
 
   private handlePause = () => {
+    this.pendingPlay = false;
     this.audio.pause();
   };
 
   private handleSeeking = () => {
     this.isVideoSeeking = true;
     this.isVideoWaiting = false;
+    this.pendingPlay = false;
     this.audio.pause();
     this.syncAudioTime(Math.max(0, this.video.currentTime - this.audioStartOffset));
   };
@@ -122,6 +127,7 @@ export class AudioSyncEngine {
   private handleWaiting = () => {
     // Video is buffering, pause audio
     this.isVideoWaiting = true;
+    this.pendingPlay = false;
     this.audio.pause();
   };
 
@@ -134,35 +140,44 @@ export class AudioSyncEngine {
   };
 
   private onAudioReady = () => {
-    if (this.pendingReadyAction) {
-      this.pendingReadyAction();
-      this.pendingReadyAction = null;
+    if (this.audio.readyState >= 1) {
+      if (this.pendingSeekTime !== null) {
+        const targetTime = this.pendingSeekTime;
+        this.pendingSeekTime = null;
+        this.audio.currentTime = targetTime;
+      }
+      if (this.pendingPlay) {
+        this.pendingPlay = false;
+        this.audio.play().catch((err) => {
+          if (err && err.name !== 'AbortError') {
+            console.error(err);
+          }
+        });
+      }
     }
   };
 
-  private runWhenAudioReady(action: () => void) {
-    if (this.audio.readyState >= 1) {
-      action();
-    } else {
-      this.pendingReadyAction = action;
-    }
-  }
-
   private syncAudioTime(targetTime: number) {
-    this.runWhenAudioReady(() => {
+    if (this.audio.readyState >= 1) {
+      this.pendingSeekTime = null;
       this.audio.currentTime = targetTime;
-    });
+    } else {
+      this.pendingSeekTime = targetTime;
+    }
   }
 
   private playAudio() {
     if (this.isSeeking || this.video.seeking) return; // Don't play if seeking
-    this.runWhenAudioReady(() => {
+    if (this.audio.readyState >= 1) {
+      this.pendingPlay = false;
       this.audio.play().catch((err) => {
         if (err && err.name !== 'AbortError') {
           console.error(err);
         }
       });
-    });
+    } else {
+      this.pendingPlay = true;
+    }
   }
 
   // Background drift sync loop

@@ -52,11 +52,20 @@ function App() {
     return () => window.removeEventListener('ffmpeg-status-change', handleStatusChange);
   }, []);
 
+  // Heartbeat to keep the server alive while the app is active
+  useEffect(() => {
+    const ping = () => {
+      fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+    };
+    ping();
+    const interval = setInterval(ping, 2500);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fileParam = params.get('file');
     if (fileParam) {
-      window.history.replaceState({}, document.title, window.location.pathname);
       const localStreamUrl = `${window.location.origin}/local-video-stream?path=${encodeURIComponent(fileParam)}`;
       processRemoteUrl(localStreamUrl);
     }
@@ -850,7 +859,11 @@ function App() {
       <VideoPlayer 
         key={playingVideo.id}
         video={playingVideo} 
-        onBack={() => setPlayingVideo(null)} 
+        onBack={() => {
+          setPlayingVideo(null);
+          // Clear query parameter when returning to library
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }} 
         onUpdateVideo={handleUpdateVideo}
         hideUIOverlays={settings.hideUIOverlays}
         hideVideoName={settings.hideVideoName}
@@ -920,37 +933,8 @@ function App() {
           )}
         </div>
 
-        {/* Sidebar Footer - Extractor Status & Settings */}
+        {/* Sidebar Footer - Settings */}
         <div className="sidebar-footer">
-          <div className="sidebar-extractor-status">
-            <div className="status-light-row">
-              <span className={`status-light ${
-                ffmpegStatus === 'ready' ? 'ready' : 
-                ffmpegStatus === 'loading' ? 'loading' : 'offline'
-              }`}></span>
-              <span className="status-light-label">
-                {ffmpegStatus === 'ready' && 'Extractor Active'}
-                {ffmpegStatus === 'loading' && `Loading Extractor (${ffmpegProgress}%)`}
-                {ffmpegStatus === 'idle' && 'Extractor Offline'}
-                {ffmpegStatus === 'error' && 'Extractor Error'}
-              </span>
-            </div>
-            
-            {ffmpegStatus === 'idle' && (
-              <button className="sidebar-status-btn" onClick={handleInitFFmpeg} title="Load Extractor">
-                <RefreshCw size={12} className="icon-spin-hover" />
-                <span>Load Extractor</span>
-              </button>
-            )}
-            
-            {ffmpegStatus === 'error' && (
-              <button className="sidebar-status-btn btn-retry" onClick={handleInitFFmpeg} title="Retry Loading Extractor">
-                <RefreshCw size={12} />
-                <span>Retry Loading</span>
-              </button>
-            )}
-          </div>
-
           <button className="sidebar-settings-btn" onClick={() => setShowSettings(true)} title="Preferences">
             <Settings size={16} />
             <span>Settings</span>

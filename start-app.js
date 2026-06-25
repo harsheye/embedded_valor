@@ -3,6 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 
+process.on('uncaughtException', (err) => {
+  console.error('[Server Uncaught Exception]', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server Unhandled Rejection]', reason);
+});
+
 const args = process.argv.slice(1).filter(arg => {
   const lower = arg.toLowerCase();
   return !lower.endsWith('node.exe') && !lower.endsWith('node') && !lower.endsWith('start-app.js') && !lower.endsWith('start-app.exe') && !lower.endsWith('start-app-exe');
@@ -66,6 +73,12 @@ async function start() {
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       const chunksize = (end - start) + 1;
       const file = fs.createReadStream(videoPath, { start, end });
+      file.on('error', (err) => {
+        console.error('[Server Stream Error]', err.message);
+      });
+      res.on('error', (err) => {
+        console.error('[Server Response Error]', err.message);
+      });
       const head = {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Content-Length': chunksize,
@@ -79,7 +92,14 @@ async function start() {
         'Content-Type': 'video/mp4',
       };
       res.writeHead(200, head);
-      fs.createReadStream(videoPath).pipe(res);
+      const file = fs.createReadStream(videoPath);
+      file.on('error', (err) => {
+        console.error('[Server Stream Error]', err.message);
+      });
+      res.on('error', (err) => {
+        console.error('[Server Response Error]', err.message);
+      });
+      file.pipe(res);
     }
   });
 

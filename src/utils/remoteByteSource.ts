@@ -78,7 +78,7 @@ export class CachedByteSource implements ByteSource {
   private cacheLimit: number;
   private cache: Map<number, Uint8Array> = new Map();
   private lruList: number[] = [];
-  private lastRequestedChunk: number | null = null;
+  private activeChunks: Map<number, number> = new Map();
 
   constructor(source: ByteSource, chunkSize = 1024 * 1024, cacheLimit = 8) {
     this.source = source;
@@ -99,48 +99,68 @@ export class CachedByteSource implements ByteSource {
 
     const startChunk = Math.floor(start / this.chunkSize);
     const endChunk = Math.floor(actualEnd / this.chunkSize);
-    this.lastRequestedChunk = startChunk;
 
-    const chunksToRead: { index: number; startByte: number; endByte: number }[] = [];
+    // Track active chunks to avoid eviction during read/copy
     for (let c = startChunk; c <= endChunk; c++) {
-      chunksToRead.push({
-        index: c,
-        startByte: c * this.chunkSize,
-        endByte: Math.min((c + 1) * this.chunkSize - 1, size - 1)
-      });
+      this.activeChunks.set(c, (this.activeChunks.get(c) || 0) + 1);
     }
 
-    await Promise.all(
-      chunksToRead.map(async (chunk) => {
-        if (!this.cache.has(chunk.index)) {
-          const chunkData = await this.source.read(chunk.startByte, chunk.endByte, signal);
-          this.cache.set(chunk.index, chunkData);
-          this.updateLru(chunk.index);
-        } else {
-          this.touchLru(chunk.index);
+    try {
+      const chunksToRead: { index: number; startByte: number; endByte: number }[] = [];
+      for (let c = startChunk; c <= endChunk; c++) {
+        chunksToRead.push({
+          index: c,
+          startByte: c * this.chunkSize,
+          endByte: Math.min((c + 1) * this.chunkSize - 1, size - 1)
+        });
+      }
+
+      await Promise.all(
+        chunksToRead.map(async (chunk) => {
+          if (!this.cache.has(chunk.index)) {
+            const chunkData = await this.source.read(chunk.startByte, chunk.endByte, signal);
+            this.cache.set(chunk.index, chunkData);
+            this.updateLru(chunk.index, startChunk);
+          } else {
+            this.touchLru(chunk.index);
+          }
+        })
+      );
+
+      const totalLength = actualEnd - start + 1;
+      const result = new Uint8Array(totalLength);
+      let resultOffset = 0;
+
+      for (const chunk of chunksToRead) {
+        let chunkData = this.cache.get(chunk.index);
+        if (!chunkData) {
+          console.warn(`Chunk ${chunk.index} was evicted during concurrent read, fetching directly`);
+          chunkData = await this.source.read(chunk.startByte, chunk.endByte, signal);
         }
-      })
-    );
+        const chunkStartOffset = chunk.startByte;
+        
+        const readStartInChunk = Math.max(0, start - chunkStartOffset);
+        const readEndInChunk = Math.min(chunkData.length - 1, actualEnd - chunkStartOffset);
+        
+        const lengthToCopy = readEndInChunk - readStartInChunk + 1;
+        if (lengthToCopy > 0) {
+          result.set(chunkData.subarray(readStartInChunk, readStartInChunk + lengthToCopy), resultOffset);
+          resultOffset += lengthToCopy;
+        }
+      }
 
-    const totalLength = actualEnd - start + 1;
-    const result = new Uint8Array(totalLength);
-    let resultOffset = 0;
-
-    for (const chunk of chunksToRead) {
-      const chunkData = this.cache.get(chunk.index)!;
-      const chunkStartOffset = chunk.startByte;
-      
-      const readStartInChunk = Math.max(0, start - chunkStartOffset);
-      const readEndInChunk = Math.min(chunkData.length - 1, actualEnd - chunkStartOffset);
-      
-      const lengthToCopy = readEndInChunk - readStartInChunk + 1;
-      if (lengthToCopy > 0) {
-        result.set(chunkData.subarray(readStartInChunk, readStartInChunk + lengthToCopy), resultOffset);
-        resultOffset += lengthToCopy;
+      return result;
+    } finally {
+      // Decrement reference count of active chunks
+      for (let c = startChunk; c <= endChunk; c++) {
+        const count = this.activeChunks.get(c) || 0;
+        if (count <= 1) {
+          this.activeChunks.delete(c);
+        } else {
+          this.activeChunks.set(c, count - 1);
+        }
       }
     }
-
-    return result;
   }
 
   private touchLru(index: number) {
@@ -148,29 +168,29 @@ export class CachedByteSource implements ByteSource {
     this.lruList.push(index);
   }
 
-  private updateLru(index: number) {
+  private updateLru(index: number, current: number) {
     this.touchLru(index);
     if (this.cache.size > this.cacheLimit) {
-      const current = this.lastRequestedChunk;
-      if (current !== null) {
-        // Eviction policy: Keep current chunk, previous 3, next 10.
-        // Evict the oldest chunk that is outside this window.
-        const evictIndex = this.lruList.findIndex(idx => {
-          const inRange = idx >= current - 3 && idx <= current + 10;
-          return !inRange;
-        });
+      // Eviction policy: Keep current chunk, previous 3, next 10.
+      // Evict the oldest chunk that is outside this window and not active.
+      const evictIndex = this.lruList.findIndex(idx => {
+        if (this.activeChunks.has(idx)) return false;
+        const inRange = idx >= current - 3 && idx <= current + 10;
+        return !inRange;
+      });
 
-        if (evictIndex !== -1) {
-          const chunkToEvict = this.lruList[evictIndex];
-          this.lruList.splice(evictIndex, 1);
-          this.cache.delete(chunkToEvict);
-          return;
-        }
+      if (evictIndex !== -1) {
+        const chunkToEvict = this.lruList[evictIndex];
+        this.lruList.splice(evictIndex, 1);
+        this.cache.delete(chunkToEvict);
+        return;
       }
 
-      // Fallback: evict oldest
-      const oldest = this.lruList.shift();
-      if (oldest !== undefined) {
+      // Fallback: evict oldest that is not active
+      const oldestEvictIndex = this.lruList.findIndex(idx => !this.activeChunks.has(idx));
+      if (oldestEvictIndex !== -1) {
+        const oldest = this.lruList[oldestEvictIndex];
+        this.lruList.splice(oldestEvictIndex, 1);
         this.cache.delete(oldest);
       }
     }
