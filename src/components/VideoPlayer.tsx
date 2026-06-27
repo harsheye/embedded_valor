@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, Loader, MonitorPlay,
-  Volume2, Volume1, VolumeX, AlertCircle
+  Volume2, Volume1, VolumeX, AlertCircle, Lock
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -81,6 +81,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 1500);
   };
   const [showControls, setShowControls] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hoverTime, setHoverTime] = useState<string | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
@@ -1319,6 +1320,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       };
 
       const pressedKey = e.key.toLowerCase();
+      
+      if (pressedKey === 'w') {
+        e.preventDefault();
+        setIsLocked(prev => {
+          const next = !prev;
+          triggerSwitchToast(next ? "Controls Locked (W)" : "Controls Unlocked (W)");
+          return next;
+        });
+        return;
+      }
+
+      if (isLocked) {
+        e.preventDefault();
+        return;
+      }
       const playPauseKey = (keybinds.playPause || ' ').toLowerCase();
       const rewindKey = (keybinds.rewind || 'arrowleft').toLowerCase();
       const forwardKey = (keybinds.forward || 'arrowright').toLowerCase();
@@ -1580,11 +1596,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
 
 
+  const controlsVisible = showControls && !isLocked;
+
   return (
     <div 
       ref={containerRef} 
-      className={`player-container ${showControls && !hideUIOverlays ? 'show-cursor' : 'hide-cursor'} ${hideUIOverlays ? 'keyboard-only' : ''} ${disableAnimations ? 'no-animations' : ''}`}
-      onMouseMove={handleMouseMove}
+      className={`player-container ${controlsVisible && !hideUIOverlays ? 'show-cursor' : 'hide-cursor'} ${hideUIOverlays ? 'keyboard-only' : ''} ${disableAnimations ? 'no-animations' : ''}`}
+      onMouseMove={() => {
+        if (!isLocked) handleMouseMove();
+      }}
     >
       {/* Actual HTML5 Video Element */}
       <video
@@ -1643,8 +1663,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           cues={selectedSubTrack.cues} 
           currentTime={currentTime} 
           settings={subSettings} 
-          controlsVisible={showControls}
+          controlsVisible={controlsVisible}
         />
+      )}
+
+      {/* Lock Indicator Button */}
+      {isLocked && (
+        <button 
+          className="player-lock-indicator"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsLocked(false);
+            triggerSwitchToast("Controls Unlocked (W)");
+          }}
+          title="Unlock Controls (Shortcut: W)"
+        >
+          <Lock size={20} />
+        </button>
       )}
 
       {/* Buffering ring loader */}
@@ -1657,7 +1692,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Top Header Overlay */}
       {!hideUIOverlays && (
         <div 
-          className={`player-overlay top-overlay-clean ${showControls ? 'visible' : 'hidden'}`} 
+          className={`player-overlay top-overlay-clean ${controlsVisible ? 'visible' : 'hidden'}`} 
           onClick={(e) => e.stopPropagation()}
         >
           {/* Chromecast trigger (acting as native browser cast prompt) */}
@@ -1708,7 +1743,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Center Screen HUD Controls */}
       {!hideUIOverlays && showPlayButton && (
         <div 
-          className={`center-controls-hud ${showControls ? 'visible' : 'hidden'}`} 
+          className={`center-controls-hud ${controlsVisible ? 'visible' : 'hidden'}`} 
           onClick={(e) => {
             e.stopPropagation();
             togglePlay();
@@ -1737,7 +1772,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Bottom Controls Overlay */}
       {!hideUIOverlays && (showPlayBar || showTimeDisplay || showVolumeControl || showFullscreen || video.isRemote) && (
         <div 
-          className={`player-overlay bottom-overlay ${showControls ? 'visible' : 'hidden'}`} 
+          className={`player-overlay bottom-overlay ${controlsVisible ? 'visible' : 'hidden'}`} 
           onClick={(e) => e.stopPropagation()}
         >
           
@@ -2171,6 +2206,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           transform: scale(1.15);
           opacity: 0.8;
         }
+        .player-lock-indicator {
+          position: absolute;
+          top: 1.5rem;
+          right: 1.5rem;
+          background: rgba(0, 0, 0, 0.6);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: #ffffff;
+          padding: 0.55rem;
+          border-radius: 50%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+          z-index: 200;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .player-lock-indicator:hover {
+          background: rgba(229, 9, 20, 0.95);
+          border-color: rgba(229, 9, 20, 0.95);
+          transform: scale(1.1);
+        }
 
         .bottom-overlay {
           bottom: 0;
@@ -2509,11 +2566,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           display: flex;
           flex-direction: column;
         }
+        .style-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          padding-bottom: 0.35rem;
+          margin-bottom: 0.25rem;
+        }
+        .style-header-row h4 {
+          margin: 0 !important;
+          border-bottom: none !important;
+          padding-bottom: 0 !important;
+        }
+        .style-reset-btn-header {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.72rem;
+          font-weight: 600;
+          padding: 0.2rem 0.5rem;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+        }
+        .style-reset-btn-header:hover {
+          background: rgba(255, 255, 255, 0.12);
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.25);
+        }
         .style-customizer {
           display: flex;
           flex-direction: column;
           gap: 0.75rem;
           margin-top: 0.5rem;
+        }
+        .style-font-size-row {
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          gap: 0.85rem;
         }
         .style-row {
           display: flex;

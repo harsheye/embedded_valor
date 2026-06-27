@@ -202,55 +202,77 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
         {/* Subtitle Style Customization Column */}
         {selectedSubTrack && (
           <div className="popover-col popover-style-col">
-            <h4>Subtitle Style</h4>
+            <div className="style-header-row">
+              <h4>Subtitle Style</h4>
+              <button 
+                className="style-reset-btn-header"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUpdateSubSettings({
+                    fontSize: 'medium',
+                    color: 'white',
+                    backdrop: 'shadow',
+                    fontFamily: 'poppins',
+                    fontStyle: 'normal',
+                    customTextColor: '',
+                    customBgColor: '',
+                    customSize: 100
+                  });
+                }}
+                title="Reset styles to defaults"
+              >
+                Reset
+              </button>
+            </div>
+            
             <div className="style-customizer">
-              
-              {/* Font Size with + and - Buttons */}
-              <div className="style-row size-row-premium">
-                <span className="style-label">Size</span>
-                <div className="size-btn-group">
-                  <button 
-                    className="size-action-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const currentSize = subSettings.customSize || 100;
-                      onUpdateSubSettings({ customSize: Math.max(50, currentSize - 10) });
-                    }}
-                    title="Decrease font size"
+              {/* Font and Size in 1 Row */}
+              <div className="style-font-size-row">
+                <div className="style-row">
+                  <span className="style-label">Font</span>
+                  <select 
+                    value={subSettings.fontFamily}
+                    onChange={(e) => onUpdateSubSettings({ fontFamily: e.target.value as any })}
+                    className="style-select-premium"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    -
-                  </button>
-                  <span className="size-value-display">{subSettings.customSize || 100}%</span>
-                  <button 
-                    className="size-action-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const currentSize = subSettings.customSize || 100;
-                      onUpdateSubSettings({ customSize: Math.min(300, currentSize + 10) });
-                    }}
-                    title="Increase font size"
-                  >
-                    +
-                  </button>
+                    <option value="poppins">Poppins</option>
+                    <option value="montserrat">Montserrat</option>
+                    <option value="outfit">Outfit</option>
+                    <option value="cinzel">Cinzel</option>
+                    <option value="serif">Playfair</option>
+                    <option value="monospace">Mono</option>
+                  </select>
                 </div>
-              </div>
 
-              {/* Font Family Selection */}
-              <div className="style-row">
-                <span className="style-label">Font</span>
-                <select 
-                  value={subSettings.fontFamily}
-                  onChange={(e) => onUpdateSubSettings({ fontFamily: e.target.value as any })}
-                  className="style-select-premium"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <option value="poppins">Poppins (Default)</option>
-                  <option value="montserrat">Montserrat</option>
-                  <option value="outfit">Outfit</option>
-                  <option value="cinzel">Cinzel</option>
-                  <option value="serif">Playfair Display</option>
-                  <option value="monospace">Roboto Mono</option>
-                </select>
+                <div className="style-row">
+                  <span className="style-label">Size</span>
+                  <div className="size-btn-group">
+                    <button 
+                      className="size-action-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const currentSize = subSettings.customSize || 100;
+                        onUpdateSubSettings({ customSize: Math.max(50, currentSize - 10) });
+                      }}
+                      title="Decrease size"
+                    >
+                      -
+                    </button>
+                    <span className="size-value-display">{subSettings.customSize || 100}%</span>
+                    <button 
+                      className="size-action-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const currentSize = subSettings.customSize || 100;
+                        onUpdateSubSettings({ customSize: Math.min(300, currentSize + 10) });
+                      }}
+                      title="Increase size"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Text Color & Background on 1 Line */}
@@ -295,40 +317,6 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Font Weight/Style toggles */}
-              <div className="style-row toggles-row-premium">
-                <button 
-                  className={`style-toggle-btn-premium ${subSettings.fontStyle === 'bold' ? 'active' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); onUpdateSubSettings({ fontStyle: subSettings.fontStyle === 'bold' ? 'normal' : 'bold' }); }}
-                >
-                  Bold
-                </button>
-                <button 
-                  className={`style-toggle-btn-premium ${subSettings.fontStyle === 'italic' ? 'active' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); onUpdateSubSettings({ fontStyle: subSettings.fontStyle === 'italic' ? 'normal' : 'italic' }); }}
-                >
-                  Italic
-                </button>
-                <button 
-                  className="style-reset-btn-premium"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdateSubSettings({
-                      fontSize: 'medium',
-                      color: 'white',
-                      backdrop: 'shadow',
-                      fontFamily: 'poppins',
-                      fontStyle: 'normal',
-                      customTextColor: '',
-                      customBgColor: '',
-                      customSize: 100
-                    });
-                  }}
-                >
-                  Reset
-                </button>
               </div>
 
             </div>
