@@ -122,7 +122,7 @@ function App() {
       fontSize: 'medium' as 'small' | 'medium' | 'large' | 'extra-large',
       color: 'white' as 'white' | 'yellow' | 'cyan' | 'green',
       backdrop: 'shadow' as 'none' | 'shadow' | 'opaque',
-      fontFamily: 'sans-serif' as 'sans-serif' | 'serif' | 'monospace',
+      fontFamily: 'sans-serif' as 'sans-serif' | 'serif' | 'monospace' | 'poppins' | 'montserrat' | 'outfit' | 'cinzel',
       fontStyle: 'normal' as 'normal' | 'italic' | 'bold',
       customTextColor: '',
       customBgColor: '',

@@ -2518,124 +2518,188 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         .style-row {
           display: flex;
           flex-direction: column;
-          gap: 0.3rem;
+          gap: 0.35rem;
         }
         .style-label {
-          font-size: 0.8rem;
-          color: rgba(255, 255, 255, 0.6);
-          font-weight: 500;
+          font-size: 0.78rem;
+          color: rgba(255, 255, 255, 0.45);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          font-weight: 600;
         }
-        .style-slider {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 100%;
-          height: 4px;
-          background: rgba(255, 255, 255, 0.15);
-          border-radius: 2px;
-          outline: none;
-        }
-        .style-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          background: #ffffff;
-          cursor: pointer;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-          transition: transform 0.1s ease;
-        }
-        .style-slider::-webkit-slider-thumb:hover {
-          transform: scale(1.2);
-        }
-        .style-select {
-          background: rgba(30, 30, 30, 0.7);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 4px;
-          color: #ffffff;
-          padding: 0.3rem 0.5rem;
-          font-size: 0.85rem;
-          outline: none;
-          cursor: pointer;
-        }
-        .color-palette {
+        
+        /* Font Size Control - Premium Button Group */
+        .size-btn-group {
           display: flex;
           align-items: center;
-          gap: 0.4rem;
-          flex-wrap: wrap;
+          background: rgba(0, 0, 0, 0.25);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 6px;
+          overflow: hidden;
+          padding: 2px;
+          align-self: flex-start;
         }
-        .color-dot {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          border: 1px solid rgba(255,255,255,0.1);
+        .size-action-btn {
+          background: transparent;
+          border: none;
+          color: #ffffff;
+          width: 32px;
+          height: 28px;
+          font-size: 1.15rem;
+          font-weight: 500;
           cursor: pointer;
-          position: relative;
-          transition: transform 0.15s ease;
-          padding: 0;
+          transition: background 0.15s ease, color 0.15s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
         }
-        .color-dot:hover {
-          transform: scale(1.15);
+        .size-action-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
         }
-        .color-dot.active {
-          transform: scale(1.15);
-          box-shadow: 0 0 0 2px #3b82f6;
+        .size-action-btn:active {
+          background: rgba(255, 255, 255, 0.15);
         }
-        .color-picker-input {
+        .size-value-display {
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: #ffffff;
+          padding: 0 0.85rem;
+          min-width: 46px;
+          text-align: center;
+        }
+        
+        /* Font Family Select Premium */
+        .style-select-premium {
+          background: rgba(0, 0, 0, 0.25);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 6px;
+          color: #ffffff;
+          padding: 0.45rem 0.6rem;
+          font-size: 0.88rem;
+          outline: none;
+          cursor: pointer;
+          transition: border-color 0.2s ease, background-color 0.2s;
+          width: 100%;
+        }
+        .style-select-premium:hover {
+          border-color: rgba(255, 255, 255, 0.25);
+          background: rgba(0, 0, 0, 0.35);
+        }
+        .style-select-premium option {
+          background: #181818;
+          color: #ffffff;
+        }
+        
+        /* Subtitle Color Selector - 1 line Text & Background */
+        .style-colors-row {
+          display: grid;
+          grid-template-columns: 1.2fr 2fr;
+          gap: 1rem;
+        }
+        .color-picker-item {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+        .picker-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+        }
+        .color-picker-input-premium {
           -webkit-appearance: none;
           appearance: none;
-          border: none;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
           cursor: pointer;
           background: none;
           padding: 0;
+          transition: transform 0.15s ease, border-color 0.15s;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
-        .color-picker-input::-webkit-color-swatch-wrapper {
+        .color-picker-input-premium:hover {
+          transform: scale(1.08);
+          border-color: rgba(255,255,255,0.3);
+        }
+        .color-picker-input-premium:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+          transform: none;
+        }
+        .color-picker-input-premium::-webkit-color-swatch-wrapper {
           padding: 0;
         }
-        .color-picker-input::-webkit-color-swatch {
-          border: 1px solid rgba(255,255,255,0.2);
-          border-radius: 50%;
+        .color-picker-input-premium::-webkit-color-swatch {
+          border: none;
+          border-radius: 5px;
         }
-        .toggles-row {
-          flex-direction: row !important;
-          gap: 0.4rem;
-          margin-top: 0.3rem;
-        }
-        .style-toggle-btn {
+        .bg-clear-btn {
           flex: 1;
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 4px;
-          color: rgba(255, 255, 255, 0.8);
-          padding: 0.35rem;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 6px;
+          color: rgba(255, 255, 255, 0.5);
+          padding: 0 0.6rem;
+          height: 28px;
           font-size: 0.8rem;
+          font-weight: 500;
           cursor: pointer;
           transition: all 0.15s ease;
         }
-        .style-toggle-btn:hover {
-          background: rgba(255, 255, 255, 0.12);
+        .bg-clear-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
         }
-        .style-toggle-btn.active {
+        .bg-clear-btn.active {
           background: #3b82f6;
           border-color: #3b82f6;
           color: #ffffff;
         }
-        .style-reset-btn {
+        
+        /* Font weight & style buttons row */
+        .toggles-row-premium {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          margin-top: 0.4rem;
+        }
+        .style-toggle-btn-premium {
+          flex: 1;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 6px;
+          color: rgba(255, 255, 255, 0.8);
+          padding: 0.45rem;
+          font-size: 0.8rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .style-toggle-btn-premium:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+        .style-toggle-btn-premium.active {
+          background: #3b82f6;
+          border-color: #3b82f6;
+          color: #ffffff;
+        }
+        .style-reset-btn-premium {
           background: transparent;
           border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 4px;
-          color: rgba(255, 255, 255, 0.5);
-          padding: 0.35rem 0.6rem;
+          border-radius: 6px;
+          color: rgba(255, 255, 255, 0.4);
+          padding: 0.45rem 0.75rem;
           font-size: 0.8rem;
           cursor: pointer;
           transition: all 0.15s ease;
         }
-        .style-reset-btn:hover {
+        .style-reset-btn-premium:hover {
           color: #ffffff;
-          border-color: rgba(255, 255, 255, 0.3);
+          border-color: rgba(255, 255, 255, 0.25);
+          background: rgba(255, 255, 255, 0.04);
         }
         .transcript-search-box {
           margin-bottom: 0.5rem;
@@ -2735,16 +2799,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0.6rem 0.8rem;
+          padding: 0.55rem 0.75rem;
           border-radius: 6px;
           cursor: pointer;
-          font-size: 1.05rem;
-          color: #cccccc;
+          font-size: 0.95rem;
+          color: rgba(255, 255, 255, 0.7);
           transition: all 0.15s ease;
+          border: 1px solid transparent;
         }
         .popover-option:hover {
-          background: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.06);
           color: #ffffff;
+        }
+        .popover-option.active {
+          background: rgba(59, 130, 246, 0.08);
+          border-color: rgba(59, 130, 246, 0.2);
+          color: #ffffff;
+          font-weight: 500;
         }
         .popover-option input {
           display: none;

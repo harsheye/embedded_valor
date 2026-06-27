@@ -5,7 +5,7 @@ export interface SubtitleSettings {
   fontSize: 'small' | 'medium' | 'large' | 'extra-large';
   color: 'white' | 'yellow' | 'cyan' | 'green';
   backdrop: 'none' | 'shadow' | 'opaque';
-  fontFamily: 'sans-serif' | 'serif' | 'monospace';
+  fontFamily: 'sans-serif' | 'serif' | 'monospace' | 'poppins' | 'montserrat' | 'outfit' | 'cinzel';
   fontStyle: 'normal' | 'italic' | 'bold';
   customTextColor?: string;
   customBgColor?: string;
@@ -40,8 +40,17 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
     </React.Fragment>
   ));
 
+  let selectedFont = '"Poppins", system-ui, sans-serif';
+  if (settings.fontFamily === 'poppins') selectedFont = '"Poppins", system-ui, sans-serif';
+  else if (settings.fontFamily === 'montserrat') selectedFont = '"Montserrat", sans-serif';
+  else if (settings.fontFamily === 'outfit') selectedFont = '"Outfit", sans-serif';
+  else if (settings.fontFamily === 'cinzel') selectedFont = '"Cinzel", serif';
+  else if (settings.fontFamily === 'serif') selectedFont = '"Playfair Display", Georgia, serif';
+  else if (settings.fontFamily === 'monospace') selectedFont = '"Roboto Mono", Courier New, monospace';
+  else if (settings.fontFamily === 'sans-serif') selectedFont = '"Poppins", system-ui, sans-serif';
+
   const fontStyleStyles: React.CSSProperties = {
-    fontFamily: settings.fontFamily === 'monospace' ? 'Courier New, monospace' : settings.fontFamily === 'serif' ? 'Georgia, serif' : 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    fontFamily: selectedFont,
     fontWeight: settings.fontStyle === 'bold' ? 700 : 500,
     fontStyle: settings.fontStyle === 'italic' ? 'italic' : 'normal',
   };
