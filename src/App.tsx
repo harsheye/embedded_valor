@@ -102,6 +102,8 @@ function App() {
   // Onboarding states
   const [onboardingCompletedSteps, setOnboardingCompletedSteps] = useState<string[]>([]);
   const [openStepId, setOpenStepId] = useState<string | null>('storage');
+  const [dismissed, setDismissed] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
 
   // Heartbeat to keep the server alive while the app is active
   useEffect(() => {
@@ -1211,6 +1213,24 @@ function App() {
   ];
 
   if (!settings.isOnboarded) {
+    if (dismissed) {
+      return (
+        <div className="onboarding-overlay">
+          <div className="onboarding-card" style={{ textAlign: 'center', padding: '2rem 1.5rem' }}>
+            <p className="step-desc" style={{ marginBottom: '1.25rem' }}>Checklist dismissed</p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ background: '#3b82f6', border: 'none', color: '#fff', padding: '0.5rem 1.25rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+              onClick={() => setDismissed(false)}
+            >
+              Show again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const completedCount = onboardingCompletedSteps.length;
     const progressPercent = (completedCount / 4) * 100;
     const strokeDashoffset = 100 - progressPercent;
@@ -1218,17 +1238,71 @@ function App() {
     return (
       <div className="onboarding-overlay">
         <div className="onboarding-card">
-          <div className="onboarding-header">
-            <h3 className="onboarding-title">Get started with Valor</h3>
-            <div className="onboarding-progress-container">
+          <div className="onboarding-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', marginRight: '0.5rem' }}>
+            <h3 className="onboarding-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Get started with Valor</h3>
+            <div className="onboarding-progress-container" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
               <svg className="progress-ring-svg" height="14" viewBox="0 0 14 14" width="14">
                 <circle cx="7" cy="7" fill="none" r="6" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
                 <circle cx="7" cy="7" fill="none" r="6" stroke="#3b82f6" strokeDasharray="100" strokeDashoffset={strokeDashoffset} strokeLinecap="round" strokeWidth="2" />
               </svg>
-              <div className="progress-text" style={{ marginLeft: '6px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>
+              <div className="progress-text" style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', display: 'flex', gap: '4px' }}>
                 <span style={{ fontWeight: 600, color: '#fff' }}>{completedCount}</span>
                 {' / '}
                 <span style={{ fontWeight: 600, color: '#fff' }}>4</span> completed
+              </div>
+              
+              {/* Dropdown Options menu */}
+              <div style={{ position: 'relative', marginLeft: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowOptions(!showOptions)}
+                  style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', width: '24px', height: '24px' }}
+                  className="options-trigger-btn"
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <circle cx="12" cy="5" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="12" cy="19" r="2" />
+                  </svg>
+                </button>
+                {showOptions && (
+                  <>
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }} onClick={() => setShowOptions(false)} />
+                    <div className="options-dropdown-content" style={{ position: 'absolute', right: 0, top: '100%', marginTop: '4px', zIndex: 11, background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '4px', minWidth: '120px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                      <button 
+                        type="button"
+                        className="dropdown-item"
+                        style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#fff', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '4px' }}
+                        onClick={() => {
+                          setShowOptions(false);
+                          setDismissed(true);
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                          <polyline points="21 8 21 21 3 21 3 8" />
+                          <rect x="1" y="3" width="22" height="5" />
+                          <line x1="10" y1="12" x2="14" y2="12" />
+                        </svg>
+                        Dismiss
+                      </button>
+                      <button 
+                        type="button"
+                        className="dropdown-item"
+                        style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#fff', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '4px' }}
+                        onClick={() => {
+                          setShowOptions(false);
+                          window.open('mailto:support@valor.com?subject=Feedback');
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        Feedback
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1247,40 +1321,42 @@ function App() {
                   className={`onboarding-step-row ${showBorderTop ? 'border-t' : ''}`}
                 >
                   <div 
-                    className={`onboarding-step-container ${isOpen ? 'open' : ''}`}
+                    className="onboarding-step-container"
                     onClick={() => setOpenStepId(openStepId === step.id ? null : step.id)}
                   >
-                    <div className="onboarding-step-header">
-                      <div className="step-indicator-wrapper">
-                        <div className="step-dot-wrapper">
-                          {step.completed ? (
-                            <svg className="mt-1 shrink-0 text-primary" viewBox="0 0 24 24" fill="currentColor" style={{ width: '18px', height: '18px', color: '#3b82f6', display: 'block' }}>
-                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                            </svg>
-                          ) : (
-                            <svg className="mt-1 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '18px', height: '18px', color: 'rgba(255,255,255,0.25)', display: 'block' }}>
-                              <circle cx="12" cy="12" r="10" strokeDasharray="4 4" />
-                            </svg>
-                          )}
+                    <div className={`onboarding-step-inner ${isOpen ? 'open' : ''}`}>
+                      <div className="onboarding-step-header">
+                        <div className="step-indicator-wrapper">
+                          <div className="step-dot-wrapper">
+                            {step.completed ? (
+                              <svg className="step-icon-check" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                              </svg>
+                            ) : (
+                              <svg className="step-icon-dashed" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10" strokeDasharray="4 4" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="step-title-wrapper">
+                            <h4 className={`step-title ${step.completed ? 'completed' : ''}`}>{step.title}</h4>
+                          </div>
                         </div>
-                        <div className="step-title-wrapper">
-                          <h4 className={`step-title ${step.completed ? 'completed' : ''}`}>{step.title}</h4>
-                        </div>
+                        {!isOpen && (
+                          <svg className="step-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '16px', height: '16px' }}>
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        )}
                       </div>
-                      {!isOpen && (
-                        <svg className="step-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '16px', height: '16px', color: 'rgba(255,255,255,0.4)', display: 'block' }}>
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
+                      {isOpen && (
+                        <div className="onboarding-step-body animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                          <p className="step-desc">{step.description}</p>
+                          <div className="step-controls-wrapper">
+                            {step.renderContent()}
+                          </div>
+                        </div>
                       )}
                     </div>
-                    {isOpen && (
-                      <div className="onboarding-step-body animate-fade-in" onClick={(e) => e.stopPropagation()}>
-                        <p className="step-desc">{step.description}</p>
-                        <div className="step-controls-wrapper">
-                          {step.renderContent()}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -2320,121 +2396,165 @@ function App() {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(8, 8, 8, 0.85);
-          backdrop-filter: blur(25px);
-          -webkit-backdrop-filter: blur(25px);
+          background: rgba(8, 8, 8, 0.82);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
           z-index: 9999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 1.5rem;
+          padding: 1rem;
         }
         .onboarding-card {
           width: 100%;
           max-width: 480px;
-          background: rgba(18, 18, 18, 0.65);
+          background: #181818;
           border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 12px;
-          padding: 1.75rem;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+          border-radius: 8px;
+          padding: 1.25rem;
+          color: #ffffff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 20px 40px rgba(0,0,0,0.8);
         }
         .onboarding-header {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1.75rem;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          padding-bottom: 1rem;
+          flex-direction: column;
+          margin-bottom: 1.25rem;
+        }
+        @media (min-width: 640px) {
+          .onboarding-header {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+          }
         }
         .onboarding-title {
-          font-size: 1.25rem;
-          font-weight: 700;
+          font-size: 1.05rem;
+          font-weight: 600;
           color: #ffffff;
-          margin: 0;
+          margin: 0 0 0.5rem 0;
+        }
+        @media (min-width: 640px) {
+          .onboarding-title {
+            margin-bottom: 0;
+          }
         }
         .onboarding-progress-container {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
+          justify-content: flex-end;
+          margin-top: 0.25rem;
+        }
+        @media (min-width: 640px) {
+          .onboarding-progress-container {
+            margin-top: 0;
+          }
         }
         .progress-ring-svg {
           transform: rotate(-90deg);
         }
         .progress-text {
-          font-size: 0.8rem;
-          color: rgba(255,255,255,0.6);
+          margin-left: 0.375rem;
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.85rem;
+        }
+        .progress-text span {
           font-weight: 500;
+          color: #ffffff;
         }
         .onboarding-steps-list {
           display: flex;
           flex-direction: column;
-          gap: 0.5rem;
+          gap: 0;
         }
         .onboarding-step-row {
-          border-radius: 8px;
-          border: 1px solid transparent;
-          transition: all 0.2s ease;
+          transition: all 0.2s;
         }
-        .onboarding-step-row.open {
-          background: rgba(255, 255, 255, 0.03);
-          border-color: rgba(255, 255, 255, 0.06);
+        .onboarding-step-row.border-t {
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .onboarding-step-container {
+          display: block;
+          width: 100%;
+          text-align: left;
+          cursor: pointer;
+          outline: none;
+          border-radius: 8px;
+        }
+        .onboarding-step-inner {
+          position: relative;
+          overflow: hidden;
+          border-radius: 8px;
+          transition: background-color 0.2s, border-color 0.2s;
+          border: 1px solid transparent;
+        }
+        .onboarding-step-inner.open {
+          border-color: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.02);
+          margin: 4px 0;
+        }
+        .onboarding-step-inner:hover {
+          background: rgba(255, 255, 255, 0.025);
+        }
+        .onboarding-step-inner.open:hover {
+          background: rgba(255, 255, 255, 0.02);
         }
         .onboarding-step-header {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          padding: 0.85rem 1rem;
-          cursor: pointer;
+          justify-content: space-between;
+          padding: 0.75rem 0.5rem 0.75rem 1rem;
         }
         .step-indicator-wrapper {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 0.75rem;
+          flex: 1;
         }
-        .step-dot {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 0.75rem;
-          font-weight: bold;
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.4);
-          border: 1px solid rgba(255,255,255,0.1);
+        .step-dot-wrapper {
+          margin-top: 2px;
+          flex-shrink: 0;
         }
-        .step-dot.completed {
-          background: #3b82f6;
-          color: #ffffff;
-          border-color: #3b82f6;
-          box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        .step-title-wrapper {
+          flex-grow: 1;
+          min-width: 0;
         }
         .step-title {
-          font-size: 0.95rem;
+          font-size: 0.92rem;
           font-weight: 600;
-          color: rgba(255,255,255,0.85);
+          color: #ffffff;
+          margin: 0;
           transition: color 0.2s;
         }
         .step-title.completed {
           color: #3b82f6;
         }
-        .step-chevron {
-          font-size: 1.2rem;
-          color: rgba(255,255,255,0.3);
-          line-height: 1;
+        .step-chevron-right {
+          flex-shrink: 0;
+          color: rgba(255, 255, 255, 0.4);
         }
         .onboarding-step-body {
-          padding: 0 1rem 1rem 2.75rem;
+          padding: 0 1rem 1.25rem 2.75rem;
         }
         .step-desc {
-          font-size: 0.82rem;
-          color: rgba(255,255,255,0.5);
-          line-height: 1.4;
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.55);
+          line-height: 1.45;
           margin: 0 0 1rem 0;
+        }
+        @media (min-width: 640px) {
+          .step-desc {
+            max-width: 20rem;
+          }
         }
         .step-controls-wrapper {
           width: 100%;
+        }
+        .options-trigger-btn:hover {
+          background: rgba(255,255,255,0.06) !important;
+          color: #fff !important;
+        }
+        .dropdown-item:hover {
+          background: rgba(255,255,255,0.05) !important;
         }
 
         /* Subtitle Live Preview styles */
