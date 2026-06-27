@@ -1,8 +1,7 @@
 import { useState } from "react"
-import { ChevronLeft, ChevronRight, Clock, Star, Film, Play } from "lucide-react"
-import { Button } from "../../ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card"
+import { ChevronLeft, ChevronRight, Clock, Star, Play, Film, Calendar } from "lucide-react"
 import type { VideoItem } from "../../../types/media"
+import { classifyVideoTitle } from "../../../utils/libraryClassifier"
 
 interface Calendar02Props {
   videos: VideoItem[];
@@ -39,7 +38,7 @@ export default function Calendar02({ videos, onPlayVideo }: Calendar02Props) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Find and group videos for the current month by day
+  // Filter and group videos for the current month
   const monthVideos = videos.filter(video => {
     if (!(video as any).lastPlayedDate) return false;
     const d = new Date((video as any).lastPlayedDate);
@@ -72,96 +71,251 @@ export default function Calendar02({ videos, onPlayVideo }: Calendar02Props) {
   };
 
   return (
-    <Card className="mx-auto w-full border" style={{ background: 'rgba(255,255,255,0.01)', borderColor: 'rgba(255,255,255,0.06)' }}>
-      <CardHeader className="m-0 w-full flex flex-row items-center justify-between gap-6 p-6 border-b border-neutral-800" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <CardTitle className="mb-1 text-xl font-semibold text-white">
-            Upcoming Events and Activities
-          </CardTitle>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.88rem', margin: 0 }}>
-            List of watched media streams for {monthNames[month]} {year}.
-          </p>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Header Panel */}
+      <div 
+        className="glass-panel" 
+        style={{ 
+          display: 'flex', 
+          flexDirection: 'row', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          padding: '1.25rem 1.5rem',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.08)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '8px', borderRadius: '8px', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Calendar size={20} />
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#fff' }}>
+              Viewing Timeline
+            </h3>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.78rem', margin: 0 }}>
+              Chronological schedule of watched media streams
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Button variant="outline" onClick={handlePrevMonth} style={{ width: '32px', height: '32px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600, minWidth: '100px', textAlign: 'center', color: '#fff' }}>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button 
+            className="settings-close-btn" 
+            onClick={handlePrevMonth} 
+            style={{ width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: '110px', textAlign: 'center', color: '#fff' }}>
             {monthNames[month]} {year}
           </span>
-          <Button variant="outline" onClick={handleNextMonth} style={{ width: '32px', height: '32px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <button 
+            className="settings-close-btn" 
+            onClick={handleNextMonth} 
+            style={{ width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
-      </CardHeader>
-      
-      <CardContent className="px-6 pt-6 pb-6" style={{ maxHeight: '65vh', overflowY: 'auto', scrollbarWidth: 'thin' }}>
+      </div>
+
+      {/* Main Timeline List */}
+      <div 
+        className="glass-panel" 
+        style={{ 
+          padding: '1.5rem', 
+          borderRadius: '12px', 
+          maxHeight: '65vh', 
+          overflowY: 'auto', 
+          scrollbarWidth: 'thin',
+          border: '1px solid rgba(255, 255, 255, 0.08)'
+        }}
+      >
         {sortedDays.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'rgba(255,255,255,0.4)' }}>
-            <Film size={44} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-            <span>No viewing events tracked for this month.</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 1rem', color: 'rgba(255,255,255,0.4)' }}>
+            <Film size={48} style={{ marginBottom: '1rem', opacity: 0.3, color: '#3b82f6' }} />
+            <span style={{ fontSize: '0.9rem' }}>No viewing activity logged for {monthNames[month]} {year}</span>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {sortedDays.map(day => (
-              <div key={day} style={{ display: 'flex', gap: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '1.25rem', flexWrap: 'wrap' }}>
-                {/* Date card bubble */}
-                <Card className="shrink-0 rounded-md border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', height: 'fit-content', minWidth: '110px' }}>
-                  <p className="mb-1 font-semibold text-white" style={{ fontSize: '0.9rem', margin: 0 }}>{getDayName(day)}</p>
-                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', margin: '4px 0 0 0' }}>{getMonthAbbr()} {day}</p>
-                </Card>
-                
-                {/* Video events lists */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, minWidth: '220px' }}>
-                  {groupedByDay[day].map((video, vIdx) => {
-                    const playTime = (video as any).lastPlayedDate ? new Date((video as any).lastPlayedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown';
-                    const rating = (video as any).rating || 0;
-                    const watchedSeconds = (video as any).totalTimeWatched || 0;
-                    const durationStr = typeof video.duration === 'number' ? formatTime(video.duration) : video.duration || 'Unknown';
-                    
-                    return (
-                      <Card key={vIdx} className="rounded-md border p-4" style={{ background: 'rgba(255,255,255,0.01)', borderColor: 'rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-                          <div style={{ flex: 1, minWidth: '180px' }}>
-                            <h3 className="text-base font-semibold text-white" style={{ margin: '0 0 0.5rem 0', lineHeight: 1.3 }}>
-                              {video.title}
-                            </h3>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>
-                                <Clock className="h-3.5 w-3.5" style={{ color: '#3b82f6' }} />
-                                <span>Time: <b>{playTime}</b></span>
+          <div style={{ position: 'relative', paddingLeft: '1rem' }}>
+            {/* Threaded Timeline Line */}
+            <div 
+              style={{ 
+                position: 'absolute', 
+                left: '28px', 
+                top: '12px', 
+                bottom: '12px', 
+                width: '2px', 
+                background: 'linear-gradient(to bottom, rgba(59, 130, 246, 0.4) 0%, rgba(59, 130, 246, 0.05) 100%)' 
+              }} 
+            />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+              {sortedDays.map(day => (
+                <div key={day} style={{ display: 'flex', gap: '1.5rem', position: 'relative', flexWrap: 'wrap' }}>
+                  {/* Timeline Date Bullet Node */}
+                  <div 
+                    style={{ 
+                      flex: '0 0 36px', 
+                      height: '36px', 
+                      borderRadius: '50%', 
+                      background: 'rgba(59, 130, 246, 0.15)', 
+                      border: '2px solid #3b82f6', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      justifyContent: 'center', 
+                      alignItems: 'center', 
+                      zIndex: 2,
+                      boxShadow: '0 0 10px rgba(59, 130, 246, 0.3)'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff' }}>{day}</span>
+                  </div>
+
+                  {/* Day Info & Cards Column */}
+                  <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '4px' }}>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#3b82f6' }}>{getDayName(day)}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>• {getMonthAbbr()} {day}</span>
+                    </div>
+
+                    {/* Dynamic Event Video Cards */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {groupedByDay[day].map((video, vIdx) => {
+                        const playTime = (video as any).lastPlayedDate ? new Date((video as any).lastPlayedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown';
+                        const rating = (video as any).rating || 0;
+                        const watchedSeconds = (video as any).totalTimeWatched || 0;
+                        const durationSeconds = typeof video.duration === 'number' ? video.duration : parseFloat(video.duration || '0');
+                        const durationStr = typeof video.duration === 'number' ? formatTime(video.duration) : video.duration || 'Unknown';
+                        const classification = classifyVideoTitle(video.title);
+
+                        const progress = durationSeconds > 0 && video.currentTime
+                          ? Math.round((video.currentTime / durationSeconds) * 100)
+                          : 0;
+
+                        return (
+                          <div 
+                            key={vIdx} 
+                            style={{ 
+                              background: 'rgba(255, 255, 255, 0.02)', 
+                              border: '1px solid rgba(255, 255, 255, 0.05)', 
+                              borderRadius: '8px', 
+                              padding: '1rem',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '1.25rem',
+                              flexWrap: 'wrap',
+                              transition: 'all 0.2s',
+                              position: 'relative',
+                              overflow: 'hidden'
+                            }}
+                            className="timeline-card-hover"
+                          >
+                            <div style={{ flex: 1, minWidth: '200px' }}>
+                              {/* Classified Beautiful Title */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                <span style={{ fontSize: '0.92rem', fontWeight: 600, color: '#fff' }}>
+                                  {classification.displayTitle}
+                                </span>
+                                <span 
+                                  style={{ 
+                                    fontSize: '0.62rem', 
+                                    fontWeight: 700, 
+                                    textTransform: 'uppercase', 
+                                    background: classification.type === 'series' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(46, 204, 113, 0.15)', 
+                                    color: classification.type === 'series' ? '#3b82f6' : '#2ecc71',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    border: classification.type === 'series' ? '1px solid rgba(59, 130, 246, 0.2)' : '1px solid rgba(46, 204, 113, 0.2)'
+                                  }}
+                                >
+                                  {classification.type}
+                                </span>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>
-                                <Play className="h-3.5 w-3.5" style={{ color: '#2ecc71' }} />
-                                <span>Watched: <b>{formatTime(watchedSeconds)}</b> (Length: {durationStr})</span>
+
+                              {/* Muted Raw Filename */}
+                              <div 
+                                style={{ 
+                                  fontSize: '0.68rem', 
+                                  color: 'rgba(255,255,255,0.3)', 
+                                  fontFamily: 'monospace', 
+                                  marginBottom: '0.6rem', 
+                                  overflow: 'hidden', 
+                                  textOverflow: 'ellipsis', 
+                                  whiteSpace: 'nowrap',
+                                  maxWidth: '480px' 
+                                }}
+                                title={video.title}
+                              >
+                                {video.title}
                               </div>
-                              {rating > 0 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: '#f59e0b' }}>
-                                  <Star className="h-3.5 w-3.5" fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
-                                  <span>Rating: <b>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</b></span>
+
+                              {/* Metas display */}
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1.25rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>
+                                  <Clock size={12} style={{ color: '#3b82f6' }} />
+                                  <span>Viewed at <b>{playTime}</b></span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>
+                                  <Play size={12} style={{ color: '#2ecc71' }} />
+                                  <span>Watched: <b>{formatTime(watchedSeconds)}</b> / {durationStr}</span>
+                                </div>
+                                {rating > 0 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#f59e0b' }}>
+                                    <Star size={12} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
+                                    <span>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</span>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Progress bar */}
+                              {progress > 0 && (
+                                <div style={{ height: '3px', width: '100%', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden', marginTop: '0.65rem' }}>
+                                  <div style={{ height: '100%', width: `${progress}%`, background: '#3b82f6' }} />
                                 </div>
                               )}
                             </div>
+
+                            {/* Resume button */}
+                            <button 
+                              className="btn btn-primary btn-sm"
+                              onClick={() => onPlayVideo(video)}
+                              style={{ 
+                                padding: '0.4rem 0.85rem', 
+                                fontSize: '0.75rem', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '4px', 
+                                cursor: 'pointer',
+                                height: 'fit-content',
+                                alignSelf: 'center',
+                                boxShadow: '0 4px 12px rgba(59,130,246,0.2)'
+                              }}
+                            >
+                              <Play size={10} fill="white" />
+                              <span>Resume</span>
+                            </button>
                           </div>
-                          
-                          <Button 
-                            variant="outline"
-                            onClick={() => onPlayVideo(video)}
-                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', height: 'fit-content' }}
-                          >
-                            <Play size={10} fill="white" />
-                            <span>Resume</span>
-                          </Button>
-                        </div>
-                      </Card>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      <style>{`
+        .timeline-card-hover:hover {
+          background: rgba(255, 255, 255, 0.04) !important;
+          border-color: rgba(255, 255, 255, 0.08) !important;
+          transform: translateX(2px);
+        }
+      `}</style>
+    </div>
   )
 }
