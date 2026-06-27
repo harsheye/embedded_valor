@@ -15,14 +15,14 @@ import { parseHlsManifest } from './utils/hlsParser';
 
 const audioOptions = [
   { value: 'Original', label: 'Original' },
-  { value: 'ENG', label: 'English' },
+  { value: 'ENG', label: 'English (Default)' },
   { value: 'JAP', label: 'Japanese' },
   { value: 'CHN', label: 'Chinese' }
 ];
 
 const subOptions = [
   { value: 'Off', label: 'Off' },
-  { value: 'ENG', label: 'English' },
+  { value: 'ENG', label: 'English (Default)' },
   { value: 'JAP', label: 'Japanese' },
   { value: 'CHN', label: 'Chinese' }
 ];
@@ -1085,7 +1085,7 @@ function App() {
     return (
       <Onboarding01 
         settings={settings}
-        handleDefaultLangChange={handleDefaultLangChange}
+        handleDefaultLangChange={handleDefaultLangChange as any}
         audioOptions={audioOptions}
         subOptions={subOptions}
         onComplete={() => {

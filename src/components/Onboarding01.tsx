@@ -64,7 +64,7 @@ interface OnboardingStep {
 
 interface Onboarding01Props {
   settings: any;
-  handleDefaultLangChange: (key: any, val: any) => void;
+  handleDefaultLangChange: (key: string, val: any) => void;
   audioOptions: any[];
   subOptions: any[];
   onComplete: () => void;
@@ -145,6 +145,10 @@ export function Onboarding01({
   });
   const [dismissed, setDismissed] = useState(false);
 
+  // Configuration tracking to prevent moving forward without configuring
+  const [hasConfiguredStorage, setHasConfiguredStorage] = useState(false);
+  const [hasConfiguredLanguages, setHasConfiguredLanguages] = useState(false);
+
   const completedCount = currentSteps.filter((s) => s.completed).length;
   const remainingCount = currentSteps.length - completedCount;
 
@@ -165,41 +169,62 @@ export function Onboarding01({
     }
   };
 
+  const isStepConfigured = (stepId: string) => {
+    if (stepId === 'storage') return hasConfiguredStorage;
+    if (stepId === 'languages') return hasConfiguredLanguages;
+    return true; // Hotkeys and Ready steps require no special setup to proceed
+  };
+
   const renderValorControls = (stepId: string) => {
     if (stepId === 'storage') {
       return (
-        <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem' }}>
+        <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem', paddingTop: '6px' }}>
+            {/* Local Storage option with Default floating badge and star icon */}
+            <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '0.6rem', background: '#3b82f6', color: '#fff', padding: '1px 5px', borderRadius: '3px', position: 'absolute', top: '-9px', left: '10px', fontWeight: 600, zIndex: 1, display: 'flex', alignItems: 'center', gap: '3px', letterSpacing: '0.3px' }}>
+                <svg viewBox="0 0 24 24" width="8" height="8" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                DEFAULT
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  handleDefaultLangChange('storageMode', 'localstorage');
+                  setHasConfiguredStorage(true);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.45rem',
+                  border: settings.storageMode === 'localstorage' && hasConfiguredStorage ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                  background: settings.storageMode === 'localstorage' && hasConfiguredStorage ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 500
+                }}
+              >
+                Local Storage
+              </button>
+            </div>
+            
             <button
               type="button"
-              onClick={() => handleDefaultLangChange('storageMode', 'localstorage')}
-              style={{
-                flex: 1,
-                padding: '0.45rem',
-                border: settings.storageMode === 'localstorage' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                background: settings.storageMode === 'localstorage' ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)',
-                borderRadius: '6px',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 500
+              onClick={() => {
+                handleDefaultLangChange('storageMode', 'file');
+                setHasConfiguredStorage(true);
               }}
-            >
-              Local Storage
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDefaultLangChange('storageMode', 'file')}
               style={{
                 flex: 1,
                 padding: '0.45rem',
-                border: settings.storageMode === 'file' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                background: settings.storageMode === 'file' ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)',
+                border: settings.storageMode === 'file' && hasConfiguredStorage ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                background: settings.storageMode === 'file' && hasConfiguredStorage ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)',
                 borderRadius: '6px',
                 color: '#fff',
                 cursor: 'pointer',
                 fontSize: '0.8rem',
-                fontWeight: 500
+                fontWeight: 500,
+                alignSelf: 'flex-end'
               }}
             >
               Server File
@@ -215,7 +240,10 @@ export function Onboarding01({
             <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>Audio Language</span>
             <CustomSelect
               value={settings.defaultAudio}
-              onChange={(val) => handleDefaultLangChange('defaultAudio', val)}
+              onChange={(val) => {
+                handleDefaultLangChange('defaultAudio', val);
+                setHasConfiguredLanguages(true);
+              }}
               options={audioOptions}
             />
           </div>
@@ -223,7 +251,10 @@ export function Onboarding01({
             <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>Subtitle Language</span>
             <CustomSelect
               value={settings.defaultSub}
-              onChange={(val) => handleDefaultLangChange('defaultSub', val)}
+              onChange={(val) => {
+                handleDefaultLangChange('defaultSub', val);
+                setHasConfiguredLanguages(true);
+              }}
               options={subOptions}
             />
           </div>
@@ -271,6 +302,20 @@ export function Onboarding01({
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background p-4" style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: 'rgba(8, 8, 8, 0.85)', padding: '1rem', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}>
+      {/* Stylesheet to ensure pointer hand (cursor pointer) when hovering over all onboarding components and items */}
+      <style>{`
+        .onboarding-step-row,
+        .onboarding-step-container,
+        .onboarding-step-inner,
+        .onboarding-step-header,
+        .step-dot-wrapper,
+        .step-title-wrapper,
+        .dropdown-item,
+        .btn {
+          cursor: pointer !important;
+        }
+      `}</style>
+      
       <div className="w-full max-w-lg" style={{ width: '100%', maxWidth: '480px' }}>
         <div className="w-md rounded-lg border bg-card p-4 text-card-foreground shadow-xs" style={{ background: '#181818', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '1rem', color: '#fff', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
           <div className="mr-2 mb-4 flex flex-col justify-between sm:flex-row sm:items-center" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
@@ -333,6 +378,7 @@ export function Onboarding01({
               const isPrevOpen = prevStep && openStepId === prevStep.id;
 
               const showBorderTop = !(isFirst || isOpen || isPrevOpen);
+              const isConfigured = isStepConfigured(step.id);
 
               return (
                 <div
@@ -405,12 +451,19 @@ export function Onboarding01({
                                   className="mt-3"
                                   onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
+                                    if (!isConfigured) return;
                                     handleStepAction(step);
                                   }}
                                   size="sm"
-                                  style={{ marginTop: '12px', padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
+                                  style={{
+                                    marginTop: '12px',
+                                    padding: '0.35rem 0.85rem',
+                                    fontSize: '0.8rem',
+                                    opacity: isConfigured ? 1 : 0.4,
+                                    cursor: isConfigured ? 'pointer' : 'not-allowed'
+                                  }}
                                 >
-                                  <span style={{ cursor: 'pointer' }}>
+                                  <span style={{ cursor: isConfigured ? 'pointer' : 'not-allowed' }}>
                                     {step.actionLabel}
                                   </span>
                                 </Button>
