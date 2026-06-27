@@ -3,6 +3,7 @@ import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from './types/m
 import { ffmpegService } from './services/ffmpeg';
 import { VideoPlayer } from './components/VideoPlayer';
 import { CustomSelect } from './components/CustomSelect';
+import { Onboarding01 } from './components/Onboarding01';
 import { 
   Film, UploadCloud, Play, Settings, X,
   RefreshCw, History, Home
@@ -99,11 +100,6 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
   
-  // Onboarding states
-  const [onboardingCompletedSteps, setOnboardingCompletedSteps] = useState<string[]>([]);
-  const [openStepId, setOpenStepId] = useState<string | null>('storage');
-  const [dismissed, setDismissed] = useState(false);
-  const [showOptions, setShowOptions] = useState(false);
 
   // Heartbeat to keep the server alive while the app is active
   useEffect(() => {
@@ -1085,285 +1081,19 @@ function App() {
     );
   }
 
-  const onboardingSteps = [
-    {
-      id: 'storage',
-      title: 'Choose Storage Location',
-      description: 'Select how Valor should save your settings, ratings, and playback history.',
-      completed: onboardingCompletedSteps.includes('storage'),
-      renderContent: () => (
-        <div className="onboarding-step-options" style={{ marginTop: '0.5rem' }}>
-          <div className="flex gap-2" style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <button 
-              type="button"
-              className={`btn btn-secondary ${settings.storageMode === 'localstorage' ? 'active' : ''}`}
-              onClick={() => handleDefaultLangChange('storageMode', 'localstorage')}
-              style={{ flex: 1, padding: '0.55rem', border: settings.storageMode === 'localstorage' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', background: settings.storageMode === 'localstorage' ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}
-            >
-              Local Storage
-            </button>
-            <button 
-              type="button"
-              className={`btn btn-secondary ${settings.storageMode === 'file' ? 'active' : ''}`}
-              onClick={() => handleDefaultLangChange('storageMode', 'file')}
-              style={{ flex: 1, padding: '0.55rem', border: settings.storageMode === 'file' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', background: settings.storageMode === 'file' ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}
-            >
-              Server File
-            </button>
-          </div>
-          <button 
-            type="button"
-            className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
-            onClick={() => {
-              setOnboardingCompletedSteps(prev => [...prev, 'storage']);
-              setOpenStepId('languages');
-            }}
-          >
-            Confirm Storage Location
-          </button>
-        </div>
-      )
-    },
-    {
-      id: 'languages',
-      title: 'Preferred Languages',
-      description: 'Set your preferred default audio track and subtitle language.',
-      completed: onboardingCompletedSteps.includes('languages'),
-      renderContent: () => (
-        <div className="onboarding-step-options" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-          <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="pref-label text-sm" style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>Default Audio</span>
-            <CustomSelect 
-              value={settings.defaultAudio} 
-              onChange={(val) => handleDefaultLangChange('defaultAudio', val)}
-              options={audioOptions}
-            />
-          </div>
-          <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="pref-label text-sm" style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>Default Subtitles</span>
-            <CustomSelect 
-              value={settings.defaultSub} 
-              onChange={(val) => handleDefaultLangChange('defaultSub', val)}
-              options={subOptions}
-            />
-          </div>
-          <button 
-            type="button"
-            className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', marginTop: '0.25rem' }}
-            onClick={() => {
-              setOnboardingCompletedSteps(prev => [...prev, 'languages']);
-              setOpenStepId('keybinds');
-            }}
-          >
-            Save Preferences
-          </button>
-        </div>
-      )
-    },
-    {
-      id: 'keybinds',
-      title: 'Keyboard Controls Profile',
-      description: 'Review default keyboard hotkeys for player controls.',
-      completed: onboardingCompletedSteps.includes('keybinds'),
-      renderContent: () => (
-        <div className="onboarding-step-options" style={{ marginTop: '0.5rem' }}>
-          <div className="keybind-summary" style={{ background: 'rgba(0,0,0,0.3)', padding: '0.6rem', borderRadius: '6px', fontSize: '0.78rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginBottom: '0.75rem', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div>Play/Pause: <b>Space</b></div>
-            <div>Fullscreen: <b>F</b></div>
-            <div>Lock Player: <b>W</b></div>
-            <div>Exit / Back: <b>Esc</b></div>
-          </div>
-          <button 
-            type="button"
-            className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
-            onClick={() => {
-              setOnboardingCompletedSteps(prev => [...prev, 'keybinds']);
-              setOpenStepId('ready');
-            }}
-          >
-            Acknowledge Hotkeys
-          </button>
-        </div>
-      )
-    },
-    {
-      id: 'ready',
-      title: 'Ready to stream!',
-      description: 'You are all set to start using Valor.',
-      completed: onboardingCompletedSteps.includes('ready'),
-      renderContent: () => (
-        <div className="onboarding-step-options" style={{ marginTop: '0.5rem' }}>
-          <button 
-            type="button"
-            className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#2ecc71', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
-            onClick={() => {
-              setOnboardingCompletedSteps(prev => [...prev, 'ready']);
-              handleDefaultLangChange('isOnboarded', true);
-            }}
-          >
-            Get Started with Valor
-          </button>
-        </div>
-      )
-    }
-  ];
-
   if (!settings.isOnboarded) {
-    if (dismissed) {
-      return (
-        <div className="onboarding-overlay">
-          <div className="onboarding-card" style={{ textAlign: 'center', padding: '2rem 1.5rem' }}>
-            <p className="step-desc" style={{ marginBottom: '1.25rem' }}>Checklist dismissed</p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ background: '#3b82f6', border: 'none', color: '#fff', padding: '0.5rem 1.25rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
-              onClick={() => setDismissed(false)}
-            >
-              Show again
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    const completedCount = onboardingCompletedSteps.length;
-    const progressPercent = (completedCount / 4) * 100;
-    const strokeDashoffset = 100 - progressPercent;
-
     return (
-      <div className="onboarding-overlay">
-        <div className="onboarding-card">
-          <div className="onboarding-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', marginRight: '0.5rem' }}>
-            <h3 className="onboarding-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Get started with Valor</h3>
-            <div className="onboarding-progress-container" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <svg className="progress-ring-svg" height="14" viewBox="0 0 14 14" width="14">
-                <circle cx="7" cy="7" fill="none" r="6" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
-                <circle cx="7" cy="7" fill="none" r="6" stroke="#3b82f6" strokeDasharray="100" strokeDashoffset={strokeDashoffset} strokeLinecap="round" strokeWidth="2" />
-              </svg>
-              <div className="progress-text" style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', display: 'flex', gap: '4px' }}>
-                <span style={{ fontWeight: 600, color: '#fff' }}>{completedCount}</span>
-                {' / '}
-                <span style={{ fontWeight: 600, color: '#fff' }}>4</span> completed
-              </div>
-              
-              {/* Dropdown Options menu */}
-              <div style={{ position: 'relative', marginLeft: '0.5rem', display: 'flex', alignItems: 'center' }}>
-                <button 
-                  type="button" 
-                  onClick={() => setShowOptions(!showOptions)}
-                  style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', width: '24px', height: '24px' }}
-                  className="options-trigger-btn"
-                >
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <circle cx="12" cy="5" r="2" />
-                    <circle cx="12" cy="12" r="2" />
-                    <circle cx="12" cy="19" r="2" />
-                  </svg>
-                </button>
-                {showOptions && (
-                  <>
-                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }} onClick={() => setShowOptions(false)} />
-                    <div className="options-dropdown-content" style={{ position: 'absolute', right: 0, top: '100%', marginTop: '4px', zIndex: 11, background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '4px', minWidth: '120px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
-                      <button 
-                        type="button"
-                        className="dropdown-item"
-                        style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#fff', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '4px' }}
-                        onClick={() => {
-                          setShowOptions(false);
-                          setDismissed(true);
-                        }}
-                      >
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                          <polyline points="21 8 21 21 3 21 3 8" />
-                          <rect x="1" y="3" width="22" height="5" />
-                          <line x1="10" y1="12" x2="14" y2="12" />
-                        </svg>
-                        Dismiss
-                      </button>
-                      <button 
-                        type="button"
-                        className="dropdown-item"
-                        style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#fff', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '4px' }}
-                        onClick={() => {
-                          setShowOptions(false);
-                          window.open('mailto:support@valor.com?subject=Feedback');
-                        }}
-                      >
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                          <polyline points="22,6 12,13 2,6" />
-                        </svg>
-                        Feedback
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="onboarding-steps-list">
-            {onboardingSteps.map((step, index) => {
-              const isOpen = openStepId === step.id;
-              const isFirst = index === 0;
-              const prevStep = onboardingSteps[index - 1];
-              const isPrevOpen = prevStep && openStepId === prevStep.id;
-              const showBorderTop = !(isFirst || isOpen || isPrevOpen);
-
-              return (
-                <div 
-                  key={step.id} 
-                  className={`onboarding-step-row ${showBorderTop ? 'border-t' : ''}`}
-                >
-                  <div 
-                    className="onboarding-step-container"
-                    onClick={() => setOpenStepId(openStepId === step.id ? null : step.id)}
-                  >
-                    <div className={`onboarding-step-inner ${isOpen ? 'open' : ''}`}>
-                      <div className="onboarding-step-header">
-                        <div className="step-indicator-wrapper">
-                          <div className="step-dot-wrapper">
-                            {step.completed ? (
-                              <svg className="step-icon-check" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                              </svg>
-                            ) : (
-                              <svg className="step-icon-dashed" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <circle cx="12" cy="12" r="10" strokeDasharray="4 4" />
-                              </svg>
-                            )}
-                          </div>
-                          <div className="step-title-wrapper">
-                            <h4 className={`step-title ${step.completed ? 'completed' : ''}`}>{step.title}</h4>
-                          </div>
-                        </div>
-                        {!isOpen && (
-                          <svg className="step-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '16px', height: '16px' }}>
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                        )}
-                      </div>
-                      {isOpen && (
-                        <div className="onboarding-step-body animate-fade-in" onClick={(e) => e.stopPropagation()}>
-                          <p className="step-desc">{step.description}</p>
-                          <div className="step-controls-wrapper">
-                            {step.renderContent()}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <Onboarding01 
+        settings={settings}
+        handleDefaultLangChange={handleDefaultLangChange}
+        audioOptions={audioOptions}
+        subOptions={subOptions}
+        onComplete={() => {
+          const updated = { ...settings, isOnboarded: true };
+          setSettings(updated);
+          saveSettingsToStorage(updated);
+        }}
+      />
     );
   }
 
