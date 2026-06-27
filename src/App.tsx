@@ -430,8 +430,22 @@ function App() {
           language: t.language,
           format: t.format
         })),
-        currentTime: v.currentTime || 0
+        currentTime: v.currentTime || 0,
+        lastPlayedDate: v.lastPlayedDate,
+        totalTimeWatched: (v as any).totalTimeWatched,
+        rating: (v as any).rating,
+        timeToFinish: (v as any).timeToFinish
       }));
+
+      // Sync to backend file if storageMode is file
+      if (settings.storageMode === 'file') {
+        fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(serialized)
+        }).catch(err => console.error('Failed to sync history to server file:', err));
+      }
+
       try {
         localStorage.setItem('valor_videos', JSON.stringify(serialized));
       } catch (err: any) {
@@ -442,6 +456,13 @@ function App() {
             currentList.pop();
             try {
               localStorage.setItem('valor_videos', JSON.stringify(currentList));
+              if (settings.storageMode === 'file') {
+                fetch('/api/history', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(currentList)
+                }).catch(() => {});
+              }
               console.log('Successfully saved reduced video history list of size', currentList.length);
               break;
             } catch (retryErr) {
