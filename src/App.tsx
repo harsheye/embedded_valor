@@ -101,7 +101,7 @@ function App() {
   
   // Onboarding states
   const [onboardingCompletedSteps, setOnboardingCompletedSteps] = useState<string[]>([]);
-  const [openStepId, setOpenStepId] = useState<string>('storage');
+  const [openStepId, setOpenStepId] = useState<string | null>('storage');
 
   // Heartbeat to keep the server alive while the app is active
   useEffect(() => {
@@ -1090,14 +1090,13 @@ function App() {
       description: 'Select how Valor should save your settings, ratings, and playback history.',
       completed: onboardingCompletedSteps.includes('storage'),
       renderContent: () => (
-        <div className="onboarding-step-options">
-          <p className="text-muted text-sm mb-3" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.75rem' }}>Choose whether to store history in your local browser sandbox or directly as server files (allows unlimited storage + advanced cumulative stats).</p>
-          <div className="flex gap-2" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+        <div className="onboarding-step-options" style={{ marginTop: '0.5rem' }}>
+          <div className="flex gap-2" style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <button 
               type="button"
               className={`btn btn-secondary ${settings.storageMode === 'localstorage' ? 'active' : ''}`}
               onClick={() => handleDefaultLangChange('storageMode', 'localstorage')}
-              style={{ flex: 1, padding: '0.65rem', border: settings.storageMode === 'localstorage' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', background: settings.storageMode === 'localstorage' ? 'rgba(59,130,246,0.15)' : 'rgba(0,0,0,0.3)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+              style={{ flex: 1, padding: '0.55rem', border: settings.storageMode === 'localstorage' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', background: settings.storageMode === 'localstorage' ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}
             >
               Local Storage
             </button>
@@ -1105,7 +1104,7 @@ function App() {
               type="button"
               className={`btn btn-secondary ${settings.storageMode === 'file' ? 'active' : ''}`}
               onClick={() => handleDefaultLangChange('storageMode', 'file')}
-              style={{ flex: 1, padding: '0.65rem', border: settings.storageMode === 'file' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', background: settings.storageMode === 'file' ? 'rgba(59,130,246,0.15)' : 'rgba(0,0,0,0.3)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+              style={{ flex: 1, padding: '0.55rem', border: settings.storageMode === 'file' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', background: settings.storageMode === 'file' ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}
             >
               Server File
             </button>
@@ -1113,7 +1112,7 @@ function App() {
           <button 
             type="button"
             className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.65rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
             onClick={() => {
               setOnboardingCompletedSteps(prev => [...prev, 'storage']);
               setOpenStepId('languages');
@@ -1130,9 +1129,9 @@ function App() {
       description: 'Set your preferred default audio track and subtitle language.',
       completed: onboardingCompletedSteps.includes('languages'),
       renderContent: () => (
-        <div className="onboarding-step-options" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="onboarding-step-options" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
           <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="pref-label text-sm" style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>Default Audio</span>
+            <span className="pref-label text-sm" style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>Default Audio</span>
             <CustomSelect 
               value={settings.defaultAudio} 
               onChange={(val) => handleDefaultLangChange('defaultAudio', val)}
@@ -1140,7 +1139,7 @@ function App() {
             />
           </div>
           <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="pref-label text-sm" style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>Default Subtitles</span>
+            <span className="pref-label text-sm" style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>Default Subtitles</span>
             <CustomSelect 
               value={settings.defaultSub} 
               onChange={(val) => handleDefaultLangChange('defaultSub', val)}
@@ -1150,7 +1149,7 @@ function App() {
           <button 
             type="button"
             className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.65rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, marginTop: '0.5rem' }}
+            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', marginTop: '0.25rem' }}
             onClick={() => {
               setOnboardingCompletedSteps(prev => [...prev, 'languages']);
               setOpenStepId('keybinds');
@@ -1167,9 +1166,8 @@ function App() {
       description: 'Review default keyboard hotkeys for player controls.',
       completed: onboardingCompletedSteps.includes('keybinds'),
       renderContent: () => (
-        <div className="onboarding-step-options">
-          <p className="text-muted text-sm mb-3" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.75rem' }}>Valor supports rebinding key shortcuts in settings at any time. Lock controls shortcut defaults to "W".</p>
-          <div className="keybind-summary" style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '6px', fontSize: '0.8rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="onboarding-step-options" style={{ marginTop: '0.5rem' }}>
+          <div className="keybind-summary" style={{ background: 'rgba(0,0,0,0.3)', padding: '0.6rem', borderRadius: '6px', fontSize: '0.78rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginBottom: '0.75rem', border: '1px solid rgba(255,255,255,0.06)' }}>
             <div>Play/Pause: <b>Space</b></div>
             <div>Fullscreen: <b>F</b></div>
             <div>Lock Player: <b>W</b></div>
@@ -1178,7 +1176,7 @@ function App() {
           <button 
             type="button"
             className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.65rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            style={{ width: '100%', background: '#3b82f6', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
             onClick={() => {
               setOnboardingCompletedSteps(prev => [...prev, 'keybinds']);
               setOpenStepId('ready');
@@ -1195,12 +1193,11 @@ function App() {
       description: 'You are all set to start using Valor.',
       completed: onboardingCompletedSteps.includes('ready'),
       renderContent: () => (
-        <div className="onboarding-step-options">
-          <p className="text-muted text-sm mb-3" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.75rem' }}>Click below to finish setting up and access the main player workspace.</p>
+        <div className="onboarding-step-options" style={{ marginTop: '0.5rem' }}>
           <button 
             type="button"
             className="btn btn-primary w-full"
-            style={{ width: '100%', background: '#2ecc71', border: 'none', color: '#fff', padding: '0.65rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            style={{ width: '100%', background: '#2ecc71', border: 'none', color: '#fff', padding: '0.55rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
             onClick={() => {
               setOnboardingCompletedSteps(prev => [...prev, 'ready']);
               handleDefaultLangChange('isOnboarded', true);
@@ -1220,42 +1217,71 @@ function App() {
 
     return (
       <div className="onboarding-overlay">
-        <div className="onboarding-card glass-panel">
+        <div className="onboarding-card">
           <div className="onboarding-header">
             <h3 className="onboarding-title">Get started with Valor</h3>
             <div className="onboarding-progress-container">
-              <svg className="progress-ring-svg" height="18" viewBox="0 0 14 14" width="18">
-                <circle cx="7" cy="7" fill="none" r="6" stroke="rgba(255,255,255,0.1)" strokeWidth="2" />
+              <svg className="progress-ring-svg" height="14" viewBox="0 0 14 14" width="14">
+                <circle cx="7" cy="7" fill="none" r="6" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
                 <circle cx="7" cy="7" fill="none" r="6" stroke="#3b82f6" strokeDasharray="100" strokeDashoffset={strokeDashoffset} strokeLinecap="round" strokeWidth="2" />
               </svg>
-              <span className="progress-text">{completedCount} / 4 completed</span>
+              <div className="progress-text" style={{ marginLeft: '6px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>
+                <span style={{ fontWeight: 600, color: '#fff' }}>{completedCount}</span>
+                {' / '}
+                <span style={{ fontWeight: 600, color: '#fff' }}>4</span> completed
+              </div>
             </div>
           </div>
 
           <div className="onboarding-steps-list">
-            {onboardingSteps.map((step) => {
+            {onboardingSteps.map((step, index) => {
               const isOpen = openStepId === step.id;
+              const isFirst = index === 0;
+              const prevStep = onboardingSteps[index - 1];
+              const isPrevOpen = prevStep && openStepId === prevStep.id;
+              const showBorderTop = !(isFirst || isOpen || isPrevOpen);
+
               return (
-                <div key={step.id} className={`onboarding-step-row ${isOpen ? 'open' : ''}`}>
-                  <div className="onboarding-step-header" onClick={() => setOpenStepId(step.id)}>
-                    <div className="step-indicator-wrapper">
-                      {step.completed ? (
-                        <span className="step-dot completed">✓</span>
-                      ) : (
-                        <span className="step-dot">•</span>
-                      )}
-                      <span className={`step-title ${step.completed ? 'completed' : ''}`}>{step.title}</span>
-                    </div>
-                    {!isOpen && <span className="step-chevron">›</span>}
-                  </div>
-                  {isOpen && (
-                    <div className="onboarding-step-body animate-fade-in">
-                      <p className="step-desc">{step.description}</p>
-                      <div className="step-controls-wrapper">
-                        {step.renderContent()}
+                <div 
+                  key={step.id} 
+                  className={`onboarding-step-row ${showBorderTop ? 'border-t' : ''}`}
+                >
+                  <div 
+                    className={`onboarding-step-container ${isOpen ? 'open' : ''}`}
+                    onClick={() => setOpenStepId(openStepId === step.id ? null : step.id)}
+                  >
+                    <div className="onboarding-step-header">
+                      <div className="step-indicator-wrapper">
+                        <div className="step-dot-wrapper">
+                          {step.completed ? (
+                            <svg className="mt-1 shrink-0 text-primary" viewBox="0 0 24 24" fill="currentColor" style={{ width: '18px', height: '18px', color: '#3b82f6', display: 'block' }}>
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                            </svg>
+                          ) : (
+                            <svg className="mt-1 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '18px', height: '18px', color: 'rgba(255,255,255,0.25)', display: 'block' }}>
+                              <circle cx="12" cy="12" r="10" strokeDasharray="4 4" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="step-title-wrapper">
+                          <h4 className={`step-title ${step.completed ? 'completed' : ''}`}>{step.title}</h4>
+                        </div>
                       </div>
+                      {!isOpen && (
+                        <svg className="step-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '16px', height: '16px', color: 'rgba(255,255,255,0.4)', display: 'block' }}>
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      )}
                     </div>
-                  )}
+                    {isOpen && (
+                      <div className="onboarding-step-body animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                        <p className="step-desc">{step.description}</p>
+                        <div className="step-controls-wrapper">
+                          {step.renderContent()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
