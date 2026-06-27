@@ -34,6 +34,7 @@ function App() {
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
   const [lastPlayingVideo, setLastPlayingVideo] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings'>('home');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage'>('general');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
 
@@ -68,11 +69,7 @@ function App() {
     }
   }, [videos]);
 
-  useEffect(() => {
-    if (playingVideo) {
-      localStorage.setItem('valor_last_playing_id', playingVideo.id);
-    }
-  }, [playingVideo]);
+
 
   const formatTime = (secs: number) => {
     if (isNaN(secs) || secs < 0) return '00:00';
@@ -102,11 +99,13 @@ function App() {
       fullscreen: 'f',
       exit: 'Escape',
       nextSubtitle: 'b',
-      nextAudio: 'v'
+      nextAudio: 'v',
+      lockControls: 'w'
     },
     defaultAudio: 'ENG',
     defaultSub: 'ENG',
     historyLimit: 10 as number | 'Infinite',
+    historySaveInterval: 5 as number,
     hideUIOverlays: false,
     hideVideoName: false,
     toastDuration: 0.5,
@@ -117,6 +116,10 @@ function App() {
     showPlayBar: true,
     showVolumeControl: true,
     showFullscreen: true,
+    saveHistory: true,
+    saveTrackPreferences: true,
+    saveVolume: true,
+    saveSettings: true,
     subSettings: {
       fontSize: 'medium' as 'small' | 'medium' | 'large' | 'extra-large',
       color: 'white' as 'white' | 'yellow' | 'cyan' | 'green',
@@ -155,6 +158,25 @@ function App() {
     }
   });
 
+  const saveSettingsToStorage = (state: typeof defaultSettings) => {
+    if (!state.saveSettings) {
+      localStorage.removeItem('valor_settings');
+      return;
+    }
+
+    const stateToSave = { ...state };
+    if (!state.saveTrackPreferences) {
+      stateToSave.defaultAudio = defaultSettings.defaultAudio;
+      stateToSave.defaultSub = defaultSettings.defaultSub;
+    }
+    if (!state.saveHistory) {
+      stateToSave.historyLimit = defaultSettings.historyLimit;
+      stateToSave.historySaveInterval = defaultSettings.historySaveInterval;
+    }
+
+    localStorage.setItem('valor_settings', JSON.stringify(stateToSave));
+  };
+
   // Keybind rebinder event listener
   useEffect(() => {
     if (!listeningKeyFor) return;
@@ -172,7 +194,7 @@ function App() {
             [listeningKeyFor]: pressedKey
           }
         };
-        localStorage.setItem('valor_settings', JSON.stringify(updated));
+        saveSettingsToStorage(updated);
         return updated;
       });
       setListeningKeyFor(null);
@@ -184,7 +206,7 @@ function App() {
 
   const handleResetSettings = () => {
     setSettings(defaultSettings);
-    localStorage.setItem('valor_settings', JSON.stringify(defaultSettings));
+    saveSettingsToStorage(defaultSettings);
   };
 
   const handleDefaultLangChange = (field: keyof typeof defaultSettings, val: any) => {
@@ -193,10 +215,16 @@ function App() {
         ...prev,
         [field]: val
       };
-      localStorage.setItem('valor_settings', JSON.stringify(updated));
+      saveSettingsToStorage(updated);
       return updated;
     });
   };
+
+  useEffect(() => {
+    if (playingVideo && settings.saveHistory) {
+      localStorage.setItem('valor_last_playing_id', playingVideo.id);
+    }
+  }, [playingVideo, settings.saveHistory]);
 
   useEffect(() => {
     const limit = settings.historyLimit;
@@ -206,6 +234,11 @@ function App() {
   }, [videos, settings.historyLimit]);
 
   useEffect(() => {
+    if (!settings.saveHistory) {
+      localStorage.removeItem('valor_videos');
+      localStorage.removeItem('valor_last_playing_id');
+      return;
+    }
     try {
       const limit = settings.historyLimit;
       let targetVideos = videos;
@@ -872,6 +905,8 @@ function App() {
         showVolumeControl={settings.showVolumeControl}
         showFullscreen={settings.showFullscreen}
         subSettings={settings.subSettings}
+        historySaveInterval={settings.historySaveInterval}
+        saveVolume={settings.saveVolume}
         onUpdateSubSettings={(newSubSettings) => {
           const updated = {
             ...settings,
@@ -881,7 +916,7 @@ function App() {
             }
           };
           setSettings(updated);
-          localStorage.setItem('valor_settings', JSON.stringify(updated));
+          saveSettingsToStorage(updated);
         }}
       />
     );
@@ -1100,287 +1135,398 @@ function App() {
             {activeTab === 'settings' && (
               <div className="workspace-panel-wrapper">
                 <div className="glass-panel workspace-panel scrollable-panel">
-                  <div className="panel-header border-b">
-                    <h2>Preferences</h2>
-                    <p className="text-muted">Customize hotkeys, default languages, display options, and default subtitle style controls.</p>
-                  </div>
                   
-                  <div className="settings-page-grid">
-                    {/* Column 1: Keybinds & Defaults */}
-                    <div className="settings-grid-col">
-                      <div className="settings-section">
-                        <h3>Keyboard Customization</h3>
-                        <p className="settings-section-desc">Click on a key box and press any key to rebind it.</p>
-                        <div className="keybind-list">
-                          {Object.entries(settings.keybinds).map(([key, value]) => {
-                            const labelMap: Record<string, string> = {
-                              playPause: 'Play / Pause',
-                              rewind: 'Rewind 10s',
-                              forward: 'Forward 10s',
-                              fullscreen: 'Toggle Fullscreen',
-                              exit: 'Exit Player / Back',
-                              nextSubtitle: 'Cycle Subtitles',
-                              nextAudio: 'Cycle Audio'
-                            };
-                            return (
-                              <div className="keybind-row" key={key}>
-                                <span className="keybind-label">{labelMap[key] || key}</span>
-                                <button 
-                                  className={`keybind-capture-btn ${listeningKeyFor === key ? 'listening' : ''}`}
-                                  onClick={() => setListeningKeyFor(key as any)}
+                  {/* Sexy Inner Tab Navigation */}
+                  <div className="settings-tab-nav">
+                    <button 
+                      className={`settings-nav-btn ${settingsTab === 'general' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('general')}
+                    >
+                      General
+                    </button>
+                    <button 
+                      className={`settings-nav-btn ${settingsTab === 'hotkeys' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('hotkeys')}
+                    >
+                      Hotkeys
+                    </button>
+                    <button 
+                      className={`settings-nav-btn ${settingsTab === 'subtitle' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('subtitle')}
+                    >
+                      Subtitle Style
+                    </button>
+                    <button 
+                      className={`settings-nav-btn ${settingsTab === 'storage' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('storage')}
+                    >
+                      Storage & Saves
+                    </button>
+                  </div>
+
+                  <div className="settings-page-content-wrapper">
+                    
+                    {/* General Section */}
+                    {settingsTab === 'general' && (
+                      <div className="settings-tab-content animate-fade-in">
+                        <div className="settings-page-grid">
+                          <div className="settings-grid-col">
+                            <div className="settings-section">
+                              <h3>Preferred Languages</h3>
+                              <p className="settings-section-desc">Default selections when loading a new video file.</p>
+                              <div className="pref-row">
+                                <span className="pref-label">Default Audio</span>
+                                <select 
+                                  className="pref-select"
+                                  value={settings.defaultAudio} 
+                                  onChange={(e) => handleDefaultLangChange('defaultAudio', e.target.value)}
                                 >
-                                  {listeningKeyFor === key ? 'Press any key...' : value === ' ' ? 'Space' : value}
-                                </button>
+                                  <option value="Original">Original</option>
+                                  <option value="ENG">English</option>
+                                  <option value="JAP">Japanese</option>
+                                  <option value="CHN">Chinese</option>
+                                </select>
                               </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Default Subtitles</span>
+                                <select 
+                                  className="pref-select"
+                                  value={settings.defaultSub} 
+                                  onChange={(e) => handleDefaultLangChange('defaultSub', e.target.value)}
+                                >
+                                  <option value="Off">Off</option>
+                                  <option value="ENG">English</option>
+                                  <option value="JAP">Japanese</option>
+                                  <option value="CHN">Chinese</option>
+                                </select>
+                              </div>
+                            </div>
 
-                      <div className="settings-section">
-                        <h3>Preferred Languages</h3>
-                        <p className="settings-section-desc">Default selections when loading a new video file.</p>
-                        <div className="pref-row">
-                          <span className="pref-label">Default Audio</span>
-                          <select 
-                            className="pref-select"
-                            value={settings.defaultAudio} 
-                            onChange={(e) => handleDefaultLangChange('defaultAudio', e.target.value)}
-                          >
-                            <option value="Original">Original</option>
-                            <option value="ENG">English</option>
-                            <option value="JAP">Japanese</option>
-                            <option value="CHN">Chinese</option>
-                          </select>
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Default Subtitles</span>
-                          <select 
-                            className="pref-select"
-                            value={settings.defaultSub} 
-                            onChange={(e) => handleDefaultLangChange('defaultSub', e.target.value)}
-                          >
-                            <option value="Off">Off</option>
-                            <option value="ENG">English</option>
-                            <option value="JAP">Japanese</option>
-                            <option value="CHN">Chinese</option>
-                          </select>
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">History Limit</span>
-                          <select 
-                            className="pref-select"
-                            value={settings.historyLimit} 
-                            onChange={(e) => handleDefaultLangChange('historyLimit', e.target.value === 'Infinite' ? 'Infinite' : parseInt(e.target.value, 10))}
-                          >
-                            <option value="5">5 items</option>
-                            <option value="10">10 items (Default)</option>
-                            <option value="20">20 items</option>
-                            <option value="50">50 items</option>
-                            <option value="Infinite">Infinite</option>
-                          </select>
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Toast Duration (Seconds)</span>
-                          <select 
-                            className="pref-select"
-                            value={settings.toastDuration} 
-                            onChange={(e) => handleDefaultLangChange('toastDuration', parseFloat(e.target.value))}
-                          >
-                            <option value="0.5">0.5 seconds (Default)</option>
-                            <option value="1">1.0 second</option>
-                            <option value="1.5">1.5 seconds</option>
-                            <option value="2">2.0 seconds</option>
-                            <option value="3">3.0 seconds</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Column 2: Video Controls & Subtitle Default Styling */}
-                    <div className="settings-grid-col">
-                      <div className="settings-section">
-                        <h3>Player Display & Controls</h3>
-                        <p className="settings-section-desc">Toggle display components visible on the video screen.</p>
-                        <div className="pref-row">
-                          <span className="pref-label">Hide All Overlays (Keyboard Only Mode)</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.hideUIOverlays} 
-                            onChange={(e) => handleDefaultLangChange('hideUIOverlays', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Hide Video Name</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.hideVideoName} 
-                            onChange={(e) => handleDefaultLangChange('hideVideoName', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Play Button Overlay</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.showPlayButton} 
-                            onChange={(e) => handleDefaultLangChange('showPlayButton', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Time Display</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.showTimeDisplay} 
-                            onChange={(e) => handleDefaultLangChange('showTimeDisplay', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Timeline Scrub Bar</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.showPlayBar} 
-                            onChange={(e) => handleDefaultLangChange('showPlayBar', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Volume Control</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.showVolumeControl} 
-                            onChange={(e) => handleDefaultLangChange('showVolumeControl', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Fullscreen Toggle Button</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.showFullscreen} 
-                            onChange={(e) => handleDefaultLangChange('showFullscreen', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Disable Hover & Floating Animations</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.disableAnimations} 
-                            onChange={(e) => handleDefaultLangChange('disableAnimations', e.target.checked)}
-                          />
-                        </div>
-                        <div className="pref-row">
-                          <span className="pref-label">Pause Video on Focus Loss</span>
-                          <input 
-                            type="checkbox" 
-                            className="pref-checkbox"
-                            checked={settings.pauseOnFocusChange} 
-                            onChange={(e) => handleDefaultLangChange('pauseOnFocusChange', e.target.checked)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="settings-section">
-                        <h3>Default Subtitle Style</h3>
-                        <p className="settings-section-desc">Default appearance applied to all tracks.</p>
-                        
-                        <div className="pref-row-vertical">
-                          <span className="pref-label">Font Family</span>
-                          <select 
-                            className="pref-select"
-                            value={settings.subSettings.fontFamily}
-                            onChange={(e) => {
-                              const updatedSub = { ...settings.subSettings, fontFamily: e.target.value as any };
-                              handleDefaultLangChange('subSettings', updatedSub);
-                            }}
-                          >
-                            <option value="poppins">Poppins (Default)</option>
-                            <option value="montserrat">Montserrat</option>
-                            <option value="outfit">Outfit</option>
-                            <option value="cinzel">Cinzel</option>
-                            <option value="serif">Playfair Display</option>
-                            <option value="monospace">Roboto Mono</option>
-                          </select>
-                        </div>
-
-                        <div className="pref-row">
-                          <span className="pref-label">Size</span>
-                          <div className="size-btn-group size-btn-group-page">
-                            <button 
-                              className="size-action-btn size-action-btn-page"
-                              onClick={() => {
-                                const currentSize = settings.subSettings.customSize || 100;
-                                const updatedSub = { ...settings.subSettings, customSize: Math.max(50, currentSize - 10) };
-                                handleDefaultLangChange('subSettings', updatedSub);
-                              }}
-                            >
-                              -
-                            </button>
-                            <span className="size-value-display size-value-display-page">{settings.subSettings.customSize || 100}%</span>
-                            <button 
-                              className="size-action-btn size-action-btn-page"
-                              onClick={() => {
-                                const currentSize = settings.subSettings.customSize || 100;
-                                const updatedSub = { ...settings.subSettings, customSize: Math.min(300, currentSize + 10) };
-                                handleDefaultLangChange('subSettings', updatedSub);
-                              }}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="style-colors-row style-colors-row-page">
-                          <div className="color-picker-item">
-                            <span className="pref-label">Text Color</span>
-                            <div className="picker-wrapper">
-                              <input 
-                                type="color" 
-                                value={settings.subSettings.customTextColor || '#ffffff'}
-                                onChange={(e) => {
-                                  const updatedSub = { ...settings.subSettings, customTextColor: e.target.value };
-                                  handleDefaultLangChange('subSettings', updatedSub);
-                                }}
-                                className="color-picker-input-premium"
-                              />
+                            <div className="settings-section">
+                              <h3>History & Toast Preferences</h3>
+                              <p className="settings-section-desc">Configure library limits and playback auto-save frequency.</p>
+                              <div className="pref-row">
+                                <span className="pref-label">History Limit</span>
+                                <select 
+                                  className="pref-select"
+                                  value={settings.historyLimit} 
+                                  onChange={(e) => handleDefaultLangChange('historyLimit', e.target.value === 'Infinite' ? 'Infinite' : parseInt(e.target.value, 10))}
+                                >
+                                  <option value="5">5 items</option>
+                                  <option value="10">10 items (Default)</option>
+                                  <option value="20">20 items</option>
+                                  <option value="50">50 items</option>
+                                  <option value="Infinite">Infinite</option>
+                                </select>
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">History Position Auto-Save Interval</span>
+                                <select 
+                                  className="pref-select"
+                                  value={settings.historySaveInterval || 5} 
+                                  onChange={(e) => handleDefaultLangChange('historySaveInterval', parseInt(e.target.value, 10))}
+                                >
+                                  <option value="2">Every 2 seconds</option>
+                                  <option value="5">Every 5 seconds (Default)</option>
+                                  <option value="10">Every 10 seconds</option>
+                                  <option value="30">Every 30 seconds</option>
+                                  <option value="60">Every 60 seconds</option>
+                                </select>
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Toast Duration (Seconds)</span>
+                                <select 
+                                  className="pref-select"
+                                  value={settings.toastDuration} 
+                                  onChange={(e) => handleDefaultLangChange('toastDuration', parseFloat(e.target.value))}
+                                >
+                                  <option value="0.5">0.5 seconds (Default)</option>
+                                  <option value="1">1.0 second</option>
+                                  <option value="1.5">1.5 seconds</option>
+                                  <option value="2">2.0 seconds</option>
+                                  <option value="3">3.0 seconds</option>
+                                </select>
+                              </div>
                             </div>
                           </div>
+
+                          <div className="settings-grid-col">
+                            <div className="settings-section">
+                              <h3>Player Display & Controls</h3>
+                              <p className="settings-section-desc">Toggle display components visible on the video screen.</p>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable All Overlays (Keyboard Only Mode)</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={settings.hideUIOverlays} 
+                                  onChange={(e) => handleDefaultLangChange('hideUIOverlays', e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Video Name Display</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={settings.hideVideoName} 
+                                  onChange={(e) => handleDefaultLangChange('hideVideoName', e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Play Button Overlay</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={!settings.showPlayButton} 
+                                  onChange={(e) => handleDefaultLangChange('showPlayButton', !e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Time Display</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={!settings.showTimeDisplay} 
+                                  onChange={(e) => handleDefaultLangChange('showTimeDisplay', !e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Timeline Scrub Bar</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={!settings.showPlayBar} 
+                                  onChange={(e) => handleDefaultLangChange('showPlayBar', !e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Volume Control</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={!settings.showVolumeControl} 
+                                  onChange={(e) => handleDefaultLangChange('showVolumeControl', !e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Fullscreen Toggle Button</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={!settings.showFullscreen} 
+                                  onChange={(e) => handleDefaultLangChange('showFullscreen', !e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Floating & Hover Animations</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={settings.disableAnimations} 
+                                  onChange={(e) => handleDefaultLangChange('disableAnimations', e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Disable Focus Loss Auto-Pause</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={!settings.pauseOnFocusChange} 
+                                  onChange={(e) => handleDefaultLangChange('pauseOnFocusChange', !e.target.checked)}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Hotkeys Section */}
+                    {settingsTab === 'hotkeys' && (
+                      <div className="settings-tab-content animate-fade-in">
+                        <div className="settings-section max-w-md">
+                          <h3>Keyboard Customization</h3>
+                          <p className="settings-section-desc">Click on a key box and press any key to rebind it.</p>
+                          <div className="keybind-list">
+                            {Object.entries(settings.keybinds).map(([key, value]) => {
+                              const labelMap: Record<string, string> = {
+                                playPause: 'Play / Pause',
+                                rewind: 'Rewind 10s',
+                                forward: 'Forward 10s',
+                                fullscreen: 'Toggle Fullscreen',
+                                exit: 'Exit Player / Back',
+                                nextSubtitle: 'Cycle Subtitles',
+                                nextAudio: 'Cycle Audio',
+                                lockControls: 'Toggle Lock Screen / Controls (W)'
+                              };
+                              return (
+                                <div className="keybind-row" key={key}>
+                                  <span className="keybind-label">{labelMap[key] || key}</span>
+                                  <button 
+                                    className={`keybind-capture-btn ${listeningKeyFor === key ? 'listening' : ''}`}
+                                    onClick={() => setListeningKeyFor(key as any)}
+                                  >
+                                    {listeningKeyFor === key ? 'Press any key...' : value === ' ' ? 'Space' : value}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subtitle Style Section */}
+                    {settingsTab === 'subtitle' && (
+                      <div className="settings-tab-content animate-fade-in">
+                        <div className="settings-section max-w-md">
+                          <h3>Default Subtitle Style</h3>
+                          <p className="settings-section-desc">Appearance defaults applied to all media tracks.</p>
                           
-                          <div className="color-picker-item bg-picker-item">
-                            <span className="pref-label">Background</span>
-                            <div className="picker-wrapper">
-                              <input 
-                                type="color" 
-                                value={settings.subSettings.customBgColor && !settings.subSettings.customBgColor.startsWith('rgba') && settings.subSettings.customBgColor !== 'transparent' ? settings.subSettings.customBgColor : '#000000'}
-                                onChange={(e) => {
-                                  const updatedSub = { ...settings.subSettings, customBgColor: e.target.value };
-                                  handleDefaultLangChange('subSettings', updatedSub);
-                                }}
-                                className="color-picker-input-premium"
-                                disabled={settings.subSettings.customBgColor === 'transparent'}
-                              />
+                          <div className="pref-row-vertical">
+                            <span className="pref-label">Font Family</span>
+                            <select 
+                              className="pref-select"
+                              value={settings.subSettings.fontFamily}
+                              onChange={(e) => {
+                                const updatedSub = { ...settings.subSettings, fontFamily: e.target.value as any };
+                                handleDefaultLangChange('subSettings', updatedSub);
+                              }}
+                            >
+                              <option value="poppins">Poppins (Default)</option>
+                              <option value="montserrat">Montserrat</option>
+                              <option value="outfit">Outfit</option>
+                              <option value="cinzel">Cinzel</option>
+                              <option value="serif">Playfair Display</option>
+                              <option value="monospace">Roboto Mono</option>
+                            </select>
+                          </div>
+
+                          <div className="pref-row">
+                            <span className="pref-label">Size</span>
+                            <div className="size-btn-group size-btn-group-page">
                               <button 
-                                className={`bg-clear-btn ${settings.subSettings.customBgColor === 'transparent' ? 'active' : ''}`}
+                                className="size-action-btn size-action-btn-page"
                                 onClick={() => {
-                                  const updatedSub = { 
-                                    ...settings.subSettings, 
-                                    customBgColor: settings.subSettings.customBgColor === 'transparent' ? '#000000' : 'transparent' 
-                                  };
+                                  const currentSize = settings.subSettings.customSize || 100;
+                                  const updatedSub = { ...settings.subSettings, customSize: Math.max(50, currentSize - 10) };
                                   handleDefaultLangChange('subSettings', updatedSub);
                                 }}
                               >
-                                None
+                                -
                               </button>
+                              <span className="size-value-display size-value-display-page">{settings.subSettings.customSize || 100}%</span>
+                              <button 
+                                className="size-action-btn size-action-btn-page"
+                                onClick={() => {
+                                  const currentSize = settings.subSettings.customSize || 100;
+                                  const updatedSub = { ...settings.subSettings, customSize: Math.min(300, currentSize + 10) };
+                                  handleDefaultLangChange('subSettings', updatedSub);
+                                }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="style-colors-row style-colors-row-page">
+                            <div className="color-picker-item">
+                              <span className="pref-label">Text Color</span>
+                              <div className="picker-wrapper">
+                                <input 
+                                  type="color" 
+                                  value={settings.subSettings.customTextColor || '#ffffff'}
+                                  onChange={(e) => {
+                                    const updatedSub = { ...settings.subSettings, customTextColor: e.target.value };
+                                    handleDefaultLangChange('subSettings', updatedSub);
+                                  }}
+                                  className="color-picker-input-premium"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="color-picker-item bg-picker-item">
+                              <span className="pref-label">Background</span>
+                              <div className="picker-wrapper">
+                                <input 
+                                  type="color" 
+                                  value={settings.subSettings.customBgColor && !settings.subSettings.customBgColor.startsWith('rgba') && settings.subSettings.customBgColor !== 'transparent' ? settings.subSettings.customBgColor : '#000000'}
+                                  onChange={(e) => {
+                                    const updatedSub = { ...settings.subSettings, customBgColor: e.target.value };
+                                    handleDefaultLangChange('subSettings', updatedSub);
+                                  }}
+                                  className="color-picker-input-premium"
+                                  disabled={settings.subSettings.customBgColor === 'transparent'}
+                                />
+                                <button 
+                                  className={`bg-clear-btn ${settings.subSettings.customBgColor === 'transparent' ? 'active' : ''}`}
+                                  onClick={() => {
+                                    const updatedSub = { 
+                                      ...settings.subSettings, 
+                                      customBgColor: settings.subSettings.customBgColor === 'transparent' ? '#000000' : 'transparent' 
+                                    };
+                                    handleDefaultLangChange('subSettings', updatedSub);
+                                  }}
+                                >
+                                  None
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Storage & Saves Section */}
+                    {settingsTab === 'storage' && (
+                      <div className="settings-tab-content animate-fade-in">
+                        <div className="settings-section max-w-md">
+                          <h3>Storage & Saves Preferences</h3>
+                          <p className="settings-section-desc">Toggle what data is saved in local storage. Disabling options clears their stored data immediately.</p>
+                          
+                          <div className="pref-row">
+                            <span className="pref-label">Save Playback Position & History</span>
+                            <input 
+                              type="checkbox" 
+                              className="pref-checkbox"
+                              checked={settings.saveHistory} 
+                              onChange={(e) => handleDefaultLangChange('saveHistory', e.target.checked)}
+                            />
+                          </div>
+
+                          <div className="pref-row">
+                            <span className="pref-label">Save Audio/Subtitle Track Preferences</span>
+                            <input 
+                              type="checkbox" 
+                              className="pref-checkbox"
+                              checked={settings.saveTrackPreferences} 
+                              onChange={(e) => handleDefaultLangChange('saveTrackPreferences', e.target.checked)}
+                            />
+                          </div>
+
+                          <div className="pref-row">
+                            <span className="pref-label">Save Player Volume & Mute States</span>
+                            <input 
+                              type="checkbox" 
+                              className="pref-checkbox"
+                              checked={settings.saveVolume} 
+                              onChange={(e) => handleDefaultLangChange('saveVolume', e.target.checked)}
+                            />
+                          </div>
+
+                          <div className="pref-row">
+                            <span className="pref-label">Save UI Customization Preferences</span>
+                            <input 
+                              type="checkbox" 
+                              className="pref-checkbox"
+                              checked={settings.saveSettings} 
+                              onChange={(e) => handleDefaultLangChange('saveSettings', e.target.checked)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
 
                   <div className="settings-page-footer">
@@ -1760,6 +1906,43 @@ function App() {
           max-height: 82vh;
           overflow-y: auto;
           scrollbar-width: thin;
+        }
+        .settings-tab-nav {
+          display: flex;
+          gap: 0.5rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          padding-bottom: 0.75rem;
+          margin-bottom: 1.5rem;
+        }
+        .settings-nav-btn {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 6px;
+          color: rgba(255, 255, 255, 0.6);
+          padding: 0.5rem 1.25rem;
+          font-size: 0.88rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .settings-nav-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: #ffffff;
+        }
+        .settings-nav-btn.active {
+          background: #3b82f6;
+          border-color: #3b82f6;
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+        }
+        .settings-page-content-wrapper {
+          min-height: 400px;
+        }
+        .settings-tab-content {
+          width: 100%;
+        }
+        .max-w-md {
+          max-width: 480px;
         }
         .settings-page-grid {
           display: grid;

@@ -31,6 +31,8 @@ interface VideoPlayerProps {
   showFullscreen?: boolean;
   subSettings: SubtitleSettings;
   onUpdateSubSettings: (settings: Partial<SubtitleSettings>) => void;
+  historySaveInterval?: number;
+  saveVolume?: boolean;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
@@ -48,7 +50,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   showVolumeControl = true,
   showFullscreen = true,
   subSettings,
-  onUpdateSubSettings
+  onUpdateSubSettings,
+  historySaveInterval = 5,
+  saveVolume = true
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -410,24 +414,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [selectedAudioTrack, activeAudioStartOffset]);
 
   useEffect(() => {
-    localStorage.setItem('valor_volume', volume.toString());
+    if (saveVolume) {
+      localStorage.setItem('valor_volume', volume.toString());
+    } else {
+      localStorage.removeItem('valor_volume');
+    }
     if (videoRef.current) {
       videoRef.current.volume = volume;
     }
     if (audioRef.current) {
       audioRef.current.volume = volume;
     }
-  }, [volume]);
+  }, [volume, saveVolume]);
 
   useEffect(() => {
-    localStorage.setItem('valor_muted', isMuted ? 'true' : 'false');
+    if (saveVolume) {
+      localStorage.setItem('valor_muted', isMuted ? 'true' : 'false');
+    } else {
+      localStorage.removeItem('valor_muted');
+    }
     if (videoRef.current) {
       videoRef.current.muted = isMuted;
     }
     if (audioRef.current) {
       audioRef.current.muted = isMuted;
     }
-  }, [isMuted]);
+  }, [isMuted, saveVolume]);
 
   // RequestAnimationFrame tick loop for micro-fine time updates (essential for subtitles)
   useEffect(() => {
@@ -1000,6 +1012,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onBack();
   };
 
+  const getLockShortcutKey = () => {
+    try {
+      const saved = localStorage.getItem('valor_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.keybinds?.lockControls) {
+          return parsed.keybinds.lockControls.toUpperCase();
+        }
+      }
+    } catch {}
+    return 'W';
+  };
+
   // Playback Control Handlers
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -1311,7 +1336,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         fullscreen: 'f',
         exit: 'Escape',
         nextSubtitle: 'b',
-        nextAudio: 'v'
+        nextAudio: 'v',
+        lockControls: 'w'
       };
       const parsed = saved ? JSON.parse(saved) : {};
       const keybinds = {
@@ -1320,12 +1346,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       };
 
       const pressedKey = e.key.toLowerCase();
+      const lockControlsKey = (keybinds.lockControls || 'w').toLowerCase();
       
-      if (pressedKey === 'w') {
+      if (pressedKey === lockControlsKey) {
         e.preventDefault();
         setIsLocked(prev => {
           const next = !prev;
-          triggerSwitchToast(next ? "Controls Locked (W)" : "Controls Unlocked (W)");
+          triggerSwitchToast(next ? `Controls Locked (${lockControlsKey.toUpperCase()})` : `Controls Unlocked (${lockControlsKey.toUpperCase()})`);
           return next;
         });
         return;
@@ -1465,6 +1492,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Periodically save current playback position to parent state
   useEffect(() => {
+    const intervalMs = (historySaveInterval || 5) * 1000;
     const interval = setInterval(() => {
       if (videoRef.current && !videoRef.current.paused) {
         onUpdateVideo({
@@ -1472,9 +1500,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           currentTime: videoRef.current.currentTime
         });
       }
-    }, 5000);
+    }, intervalMs);
     return () => clearInterval(interval);
-  }, [video, onUpdateVideo]);
+  }, [video, onUpdateVideo, historySaveInterval]);
 
   // Auto-select preferred default audio/subtitle streams
   useEffect(() => {
@@ -1674,9 +1702,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             setIsLocked(false);
-            triggerSwitchToast("Controls Unlocked (W)");
+            triggerSwitchToast(`Controls Unlocked (${getLockShortcutKey()})`);
           }}
-          title="Unlock Controls (Shortcut: W)"
+          title={`Unlock Controls (Shortcut: ${getLockShortcutKey()})`}
         >
           <Lock size={20} />
         </button>

@@ -60,10 +60,14 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
   }
   if (settings.customBgColor) {
     fontStyleStyles.backgroundColor = settings.customBgColor;
-    fontStyleStyles.padding = '0.45rem 1.2rem';
-    fontStyleStyles.borderRadius = '6px';
-    fontStyleStyles.boxShadow = '0 8px 20px rgba(0,0,0,0.4)';
-    fontStyleStyles.border = '1px solid rgba(255,255,255,0.06)';
+    if (settings.customBgColor !== 'transparent') {
+      fontStyleStyles.padding = '0.45rem 1.2rem';
+      fontStyleStyles.borderRadius = '6px';
+      fontStyleStyles.boxShadow = '0 8px 20px rgba(0,0,0,0.4)';
+      fontStyleStyles.border = '1px solid rgba(255,255,255,0.06)';
+    } else {
+      fontStyleStyles.textShadow = '0px 2px 4px rgba(0,0,0,0.9), -1px -1px 0px rgba(0,0,0,0.9), 1px -1px 0px rgba(0,0,0,0.9), -1px 1px 0px rgba(0,0,0,0.9), 1px 1px 0px rgba(0,0,0,0.9)';
+    }
   }
   if (settings.customSize && settings.customSize > 0) {
     fontStyleStyles.fontSize = `${(settings.customSize / 100) * 1.65}rem`;

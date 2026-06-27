@@ -45,7 +45,7 @@ async function start() {
   const server = await createServer({
     server: {
       port: 5174,
-      open: resolvedFilePath ? `?file=${encodeURIComponent(resolvedFilePath)}` : true,
+      open: false,
     },
   });
 
