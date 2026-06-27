@@ -1,5 +1,5 @@
 {
-  "main": "wrapper.js",
+  "main": "wrapper.cjs",
   "output": "sea-prep.blob",
   "disableExperimentalSEAWarning": true
 }
