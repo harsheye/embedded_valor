@@ -45,6 +45,7 @@ async function start() {
   const server = await createServer({
     server: {
       port: 5174,
+      host: true,
       open: false,
     },
   });
