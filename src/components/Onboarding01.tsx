@@ -442,31 +442,33 @@ export function Onboarding01({
                             </h4>
                             <Collapsible open={isOpen}>
                               <CollapsibleContent>
-                                <p className="mt-2 text-pretty text-muted-foreground text-sm sm:max-w-64 md:max-w-xs" style={{ margin: 0, marginTop: '8px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.4 }}>
-                                  {step.description}
-                                </p>
-                                {renderValorControls(step.id)}
-                                <Button
-                                  asChild
-                                  className="mt-3"
-                                  onClick={(e: React.MouseEvent) => {
-                                    e.stopPropagation();
-                                    if (!isConfigured) return;
-                                    handleStepAction(step);
-                                  }}
-                                  size="sm"
-                                  style={{
-                                    marginTop: '12px',
-                                    padding: '0.35rem 0.85rem',
-                                    fontSize: '0.8rem',
-                                    opacity: isConfigured ? 1 : 0.4,
-                                    cursor: isConfigured ? 'pointer' : 'not-allowed'
-                                  }}
-                                >
-                                  <span style={{ cursor: isConfigured ? 'pointer' : 'not-allowed' }}>
-                                    {step.actionLabel}
-                                  </span>
-                                </Button>
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <p className="mt-2 text-pretty text-muted-foreground text-sm sm:max-w-64 md:max-w-xs" style={{ margin: 0, marginTop: '8px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.4 }}>
+                                    {step.description}
+                                  </p>
+                                  {renderValorControls(step.id)}
+                                  <Button
+                                    asChild
+                                    className="mt-3"
+                                    onClick={(e: React.MouseEvent) => {
+                                      e.stopPropagation();
+                                      if (!isConfigured) return;
+                                      handleStepAction(step);
+                                    }}
+                                    size="sm"
+                                    style={{
+                                      marginTop: '12px',
+                                      padding: '0.35rem 0.85rem',
+                                      fontSize: '0.8rem',
+                                      opacity: isConfigured ? 1 : 0.4,
+                                      cursor: isConfigured ? 'pointer' : 'not-allowed'
+                                    }}
+                                  >
+                                    <span style={{ cursor: isConfigured ? 'pointer' : 'not-allowed' }}>
+                                      {step.actionLabel}
+                                    </span>
+                                  </Button>
+                                </div>
                               </CollapsibleContent>
                             </Collapsible>
                           </div>
