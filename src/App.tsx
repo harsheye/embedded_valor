@@ -5,6 +5,8 @@ import { VideoPlayer } from './components/VideoPlayer';
 import { CustomSelect } from './components/CustomSelect';
 import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
+import { LibraryView } from './components/LibraryView';
+import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { 
   Film, UploadCloud, Play, Settings, X,
   RefreshCw, History, Home
@@ -26,6 +28,11 @@ const subOptions = [
   { value: 'ENG', label: 'English (Default)' },
   { value: 'JAP', label: 'Japanese' },
   { value: 'CHN', label: 'Chinese' }
+];
+
+const calendarStyleOptions = [
+  { value: 'grid', label: 'Classic Grid' },
+  { value: 'list', label: 'Schedule List (Modern)' }
 ];
 
 const limitOptions = [
@@ -96,7 +103,7 @@ function App() {
   });
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
   const [lastPlayingVideo, setLastPlayingVideo] = useState<VideoItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings'>('home');
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage'>('general');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
@@ -266,6 +273,7 @@ function App() {
     saveSettings: true,
     storageMode: 'localstorage' as 'localstorage' | 'file',
     ratingThreshold: 3 as number,
+    calendarStyle: 'grid' as 'grid' | 'list',
     isOnboarded: false as boolean,
     subSettings: {
       fontSize: 'medium' as 'small' | 'medium' | 'large' | 'extra-large',
@@ -1138,6 +1146,14 @@ function App() {
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <span className="sidebar-menu-text">Calendar</span>
           </button>
+          <button 
+            className={`sidebar-menu-item ${activeTab === 'library' ? 'active' : ''}`}
+            onClick={() => setActiveTab('library')}
+            title="Library"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <span className="sidebar-menu-text">Library</span>
+          </button>
         </nav>
 
         <div className="sidebar-history-section">
@@ -1326,7 +1342,22 @@ function App() {
             )}
 
             {activeTab === 'calendar' && (
-              <CalendarView 
+              settings.calendarStyle === 'list' ? (
+                <div className="workspace-panel-wrapper">
+                  <div className="glass-panel workspace-panel" style={{ padding: '0', background: 'transparent', border: 'none' }}>
+                    <Calendar02 videos={videos} onPlayVideo={handlePlayVideo} />
+                  </div>
+                </div>
+              ) : (
+                <CalendarView 
+                  videos={videos} 
+                  onPlayVideo={handlePlayVideo} 
+                />
+              )
+            )}
+
+            {activeTab === 'library' && (
+              <LibraryView 
                 videos={videos} 
                 onPlayVideo={handlePlayVideo} 
               />
@@ -1388,6 +1419,14 @@ function App() {
                                   value={settings.defaultSub} 
                                   onChange={(val) => handleDefaultLangChange('defaultSub', val)}
                                   options={subOptions}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Calendar View Style</span>
+                                <CustomSelect 
+                                  value={settings.calendarStyle} 
+                                  onChange={(val) => handleDefaultLangChange('calendarStyle', val)}
+                                  options={calendarStyleOptions}
                                 />
                               </div>
                             </div>
@@ -1826,6 +1865,13 @@ function App() {
         >
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 2px auto' }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span>Calendar</span>
+        </button>
+        <button 
+          className={`mobile-bottom-nav-item ${activeTab === 'library' ? 'active' : ''}`}
+          onClick={() => setActiveTab('library')}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 2px auto' }}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <span>Library</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'settings' ? 'active' : ''}`}

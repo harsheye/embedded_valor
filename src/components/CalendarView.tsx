@@ -173,31 +173,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ videos, onPlayVideo 
                     </span>
                     
                     {hasVideos && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden', flex: 1 }}>
-                        {cell.videosList.slice(0, 2).map((vid, vIdx) => (
-                          <div 
-                            key={vIdx} 
-                            style={{ 
-                              background: 'rgba(255,255,255,0.04)', 
-                              borderLeft: '2px solid #3b82f6', 
-                              padding: '2px 4px', 
-                              borderRadius: '3px', 
-                              fontSize: '0.62rem', 
-                              whiteSpace: 'nowrap', 
-                              overflow: 'hidden', 
-                              textOverflow: 'ellipsis',
-                              color: 'rgba(255,255,255,0.9)'
-                            }}
-                            title={vid.title}
-                          >
-                            {vid.title}
-                          </div>
-                        ))}
-                        {cell.videosList.length > 2 && (
-                          <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.4)', fontWeight: 500, alignSelf: 'flex-end', marginTop: 'auto' }}>
-                            +{cell.videosList.length - 2} more
-                          </span>
-                        )}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', width: '100%' }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 6px #3b82f6' }} />
                       </div>
                     )}
                   </div>

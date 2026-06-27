@@ -21,7 +21,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         children: child.props.children
       } as any);
     }
-    const variantClass = variant === "ghost" ? "btn-ghost" : "btn-primary";
+    const variantClass = variant === "ghost" ? "btn-ghost" : variant === "outline" ? "btn-outline" : "btn-primary";
     return (
       <button
         className={cn("btn", variantClass, className)}
