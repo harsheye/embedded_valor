@@ -164,6 +164,18 @@ const backendServer = http.createServer((req, res) => {
     return;
   }
 
+  // Browser remote logging API
+  if (pathname === '/api/log') {
+    getJsonBody(req).then(data => {
+      const type = data.type || 'INFO';
+      const msg = data.message || '';
+      console.log(`[Browser ${type}] ${msg}`);
+      res.statusCode = 200;
+      res.end(JSON.stringify({ success: true }));
+    });
+    return;
+  }
+
   // Settings API
   if (pathname === '/api/settings') {
     res.statusCode = 200;

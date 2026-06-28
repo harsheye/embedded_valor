@@ -19,6 +19,34 @@ import { parseHlsManifest } from './utils/hlsParser';
 
 export const BACKEND_ORIGIN = 'http://127.0.0.1:50001';
 
+const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
+
+const sendLogToServer = (type: string, args: any[]) => {
+  try {
+    const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    fetch(`${BACKEND_ORIGIN}/api/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, message })
+    }).catch(() => {});
+  } catch {}
+};
+
+console.log = (...args) => {
+  originalConsoleLog(...args);
+  sendLogToServer('INFO', args);
+};
+console.warn = (...args) => {
+  originalConsoleWarn(...args);
+  sendLogToServer('WARN', args);
+};
+console.error = (...args) => {
+  originalConsoleError(...args);
+  sendLogToServer('ERROR', args);
+};
+
 const audioOptions = [
   { value: 'Original', label: 'Original' },
   { value: 'ENG', label: 'English (Default)' },
