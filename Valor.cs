@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -40,11 +41,51 @@ namespace ValorTray
                 }
             }
 
+            string port = ServerPort;
+            try
+            {
+                string portFilePath = Path.Combine(appDir, ".valor_data", "active_port.txt");
+                if (File.Exists(portFilePath))
+                {
+                    string filePort = File.ReadAllText(portFilePath).Trim();
+                    if (!string.IsNullOrEmpty(filePort))
+                    {
+                        port = filePort;
+                    }
+                }
+            }
+            catch {}
+
             if (!createdNew)
             {
-                // Another instance is already running.
-                // Just open the browser with the file argument (if any) and exit.
-                OpenBrowser(fileArg, playWithVlc);
+                // Another tray instance is running. Try to reuse the running server.
+                if (SendPlayRequest(fileArg, port))
+                {
+                    return;
+                }
+                // Server is dead. Start a new server process and open browser, then exit.
+                StartServer(args);
+                string newPort = ServerPort;
+                string newPortPath = Path.Combine(appDir, ".valor_data", "active_port.txt");
+                try { if (File.Exists(newPortPath)) File.Delete(newPortPath); } catch {}
+                for (int i = 0; i < 50; i++)
+                {
+                    Thread.Sleep(100);
+                    try
+                    {
+                        if (File.Exists(newPortPath))
+                        {
+                            string p = File.ReadAllText(newPortPath).Trim();
+                            if (!string.IsNullOrEmpty(p))
+                            {
+                                newPort = p;
+                                break;
+                            }
+                        }
+                    }
+                    catch {}
+                }
+                OpenBrowser(fileArg, playWithVlc, newPort);
                 return;
             }
 
@@ -102,14 +143,56 @@ namespace ValorTray
             // Start Node server in the background
             StartServer(args);
 
-            // Give the background server a second to initialize and bind to the port
-            Thread.Sleep(1000);
+            // Poll active_port.txt for up to 5 seconds to wait for port binding
+            string freshPort = ServerPort;
+            string freshPortPath = Path.Combine(appDir, ".valor_data", "active_port.txt");
+            try { if (File.Exists(freshPortPath)) File.Delete(freshPortPath); } catch {}
+            for (int i = 0; i < 50; i++)
+            {
+                Thread.Sleep(100);
+                try
+                {
+                    if (File.Exists(freshPortPath))
+                    {
+                        string p = File.ReadAllText(freshPortPath).Trim();
+                        if (!string.IsNullOrEmpty(p))
+                        {
+                            freshPort = p;
+                            break;
+                        }
+                    }
+                }
+                catch {}
+            }
 
             // Open initial browser
-            OpenBrowser(fileArg, playWithVlc);
+            OpenBrowser(fileArg, playWithVlc, freshPort);
 
             // Run the message loop
             Application.Run();
+        }
+
+        private static bool SendPlayRequest(string file, string port)
+        {
+            try
+            {
+                string url = "http://127.0.0.1:" + port + "/api/play";
+                if (!string.IsNullOrEmpty(file))
+                {
+                    url += "?file=" + Uri.EscapeDataString(file);
+                }
+                var request = (HttpWebRequest)WebRequest.Create(url);
+                request.Method = "GET";
+                request.Timeout = 1500;
+                using (var response = (HttpWebResponse)request.GetResponse())
+                {
+                    return response.StatusCode == HttpStatusCode.OK;
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static void StartServer(string[] args)
@@ -141,7 +224,7 @@ namespace ValorTray
             }
         }
 
-        private static void OpenBrowser(string file, bool vlc)
+        private static void OpenBrowser(string file, bool vlc, string customPort = null)
         {
             if (vlc && !string.IsNullOrEmpty(file))
             {
@@ -159,20 +242,24 @@ namespace ValorTray
                 return;
             }
 
-            string port = ServerPort;
-            try
+            string port = customPort;
+            if (string.IsNullOrEmpty(port))
             {
-                string portFilePath = Path.Combine(appDir, ".valor_data", "active_port.txt");
-                if (File.Exists(portFilePath))
+                port = ServerPort;
+                try
                 {
-                    string filePort = File.ReadAllText(portFilePath).Trim();
-                    if (!string.IsNullOrEmpty(filePort))
+                    string portFilePath = Path.Combine(appDir, ".valor_data", "active_port.txt");
+                    if (File.Exists(portFilePath))
                     {
-                        port = filePort;
+                        string filePort = File.ReadAllText(portFilePath).Trim();
+                        if (!string.IsNullOrEmpty(filePort))
+                        {
+                            port = filePort;
+                        }
                     }
                 }
+                catch {}
             }
-            catch {}
 
             string url = "http://127.0.0.1:" + port;
             if (!string.IsNullOrEmpty(file))
