@@ -105,6 +105,7 @@ const MIME_TYPES = {
 
 let lastHeartbeat = Date.now();
 let hasReceivedFirstHeartbeat = false;
+let activeConnections = 0;
 
 const server = http.createServer((req, res) => {
   // CORS headers
@@ -180,6 +181,28 @@ const server = http.createServer((req, res) => {
       res.end('File not found');
       return;
     }
+
+    let connectionTracked = false;
+    const trackStart = () => {
+      if (!connectionTracked) {
+        activeConnections++;
+        connectionTracked = true;
+        console.log(`[Server] Active video stream connection started. Total active: ${activeConnections}`);
+      }
+    };
+    const trackEnd = () => {
+      if (connectionTracked) {
+        activeConnections = Math.max(0, activeConnections - 1);
+        connectionTracked = false;
+        console.log(`[Server] Active video stream connection ended. Total active: ${activeConnections}`);
+      }
+    };
+
+    req.on('close', trackEnd);
+    res.on('close', trackEnd);
+    res.on('finish', trackEnd);
+
+    trackStart();
 
     const stat = fs.statSync(videoPath);
     const fileSize = stat.size;
@@ -257,6 +280,9 @@ const server = http.createServer((req, res) => {
 // Auto-shutdown if no active tabs (5-minute grace period under all conditions)
 const startShutdownChecker = () => {
   setInterval(() => {
+    if (activeConnections > 0) {
+      lastHeartbeat = Date.now();
+    }
     const limit = 300000; // 5 minutes
     if (Date.now() - lastHeartbeat > limit) {
       console.log('[Server] No active tabs detected. Shutting down...');

@@ -178,6 +178,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const subAbortControllerRef = useRef<AbortController | null>(null);
   const currentAudioOptionIndexRef = useRef<number>(-1);
   const currentSubOptionIndexRef = useRef<number>(-1);
+  const lastHeartbeatTimeRef = useRef<number>(0);
   const audioDebounceTimeoutRef = useRef<any>(null);
   const subDebounceTimeoutRef = useRef<any>(null);
 
@@ -466,6 +467,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const tick = () => {
       if (videoRef.current && !videoRef.current.paused) {
         setCurrentTime(videoRef.current.currentTime);
+
+        // Heartbeat ping to prevent auto-shutdown when browser throttles background timers
+        const now = Date.now();
+        if (now - lastHeartbeatTimeRef.current > 4000) {
+          lastHeartbeatTimeRef.current = now;
+          fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+        }
         
         // Update buffered percentage
         const buffered = videoRef.current.buffered;
