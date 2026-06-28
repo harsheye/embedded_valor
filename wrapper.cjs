@@ -17,6 +17,8 @@ const args = process.argv.slice(isSea ? 1 : 2).filter(arg => {
 });
 
 const playWithVlc = args.includes('--vlc');
+const backendOnly = args.includes('--backend-only');
+const frontendOnly = args.includes('--frontend-only');
 const filePath = args.find(arg => arg !== '--vlc' && !arg.startsWith('--'));
 const resolvedFilePath = filePath ? path.resolve(filePath) : null;
 
@@ -362,7 +364,7 @@ const startShutdownChecker = () => {
     const limit = 60000; // 1 minute
     if (Date.now() - lastHeartbeat > limit) {
       console.log('[Server] No active tabs detected. Shutting down...');
-      serviceServer.close();
+      try { serviceServer.close(); } catch (e) {}
       backendServer.close(() => {
         process.exit(0);
       });
@@ -372,37 +374,48 @@ const startShutdownChecker = () => {
 };
 
 const attemptListen = () => {
-  serviceServer.listen({ port: PORT_SERVICE, host: '127.0.0.1' }, () => {
-    console.log(`[Server] Valor service server is running on http://127.0.0.1:${PORT_SERVICE}`);
-    
+  const startBackend = () => {
     backendServer.listen({ port: PORT_BACKEND, host: '127.0.0.1' }, () => {
       console.log(`[Server] Valor backend server is running on http://127.0.0.1:${PORT_BACKEND}`);
       
-      // Write active port to active_port.txt
-      try {
-        const activePortFile = path.join(dataDir, 'active_port.txt');
-        fs.writeFileSync(activePortFile, String(PORT_SERVICE));
-      } catch (e) {
-        console.error('[Server] Failed to write active_port.txt:', e);
-      }
+      if (!backendOnly) {
+        // Write active port to active_port.txt
+        try {
+          const activePortFile = path.join(dataDir, 'active_port.txt');
+          fs.writeFileSync(activePortFile, String(PORT_SERVICE));
+        } catch (e) {
+          console.error('[Server] Failed to write active_port.txt:', e);
+        }
 
-      const openUrl = resolvedFilePath 
-        ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(resolvedFilePath)}`
-        : `http://127.0.0.1:${PORT_SERVICE}/`;
+        const openUrl = resolvedFilePath 
+          ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(resolvedFilePath)}`
+          : `http://127.0.0.1:${PORT_SERVICE}/`;
+          
+        console.log(`[Server] Opening browser: ${openUrl}`);
         
-      console.log(`[Server] Opening browser: ${openUrl}`);
-      
-      if (process.platform === 'win32') {
-        spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
-      } else if (process.platform === 'darwin') {
-        spawn('open', [openUrl], { detached: true }).unref();
-      } else {
-        spawn('xdg-open', [openUrl], { detached: true }).unref();
+        if (process.platform === 'win32') {
+          spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
+        } else if (process.platform === 'darwin') {
+          spawn('open', [openUrl], { detached: true }).unref();
+        } else {
+          spawn('xdg-open', [openUrl], { detached: true }).unref();
+        }
       }
 
       startShutdownChecker();
     });
-  });
+  };
+
+  if (!backendOnly) {
+    serviceServer.listen({ port: PORT_SERVICE, host: '127.0.0.1' }, () => {
+      console.log(`[Server] Valor service server is running on http://127.0.0.1:${PORT_SERVICE}`);
+      if (!frontendOnly) {
+        startBackend();
+      }
+    });
+  } else if (!frontendOnly) {
+    startBackend();
+  }
 };
 
 serviceServer.on('error', (err) => {

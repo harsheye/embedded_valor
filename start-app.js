@@ -17,6 +17,8 @@ const args = process.argv.slice(1).filter(arg => {
 });
 
 const playWithVlc = args.includes('--vlc');
+const backendOnly = args.includes('--backend-only');
+const frontendOnly = args.includes('--frontend-only');
 const filePath = args.find(arg => arg !== '--vlc' && !arg.startsWith('--'));
 const resolvedFilePath = filePath ? path.resolve(filePath) : null;
 
@@ -301,54 +303,60 @@ async function start() {
   let success = false;
   let viteServer;
   
-  try {
-    viteServer = await createViteServer({
-      server: {
-        port: PORT_SERVICE,
-        host: '127.0.0.1',
-        open: false,
-        headers: {
-          'Cross-Origin-Opener-Policy': 'same-origin',
-          'Cross-Origin-Embedder-Policy': 'require-corp',
-          'Cross-Origin-Resource-Policy': 'cross-origin',
-        }
-      },
-    });
-    await viteServer.listen();
-    success = true;
-    console.log(`[Server] Valor service server (Vite dev) is running on http://127.0.0.1:${PORT_SERVICE}`);
-  } catch (err) {
-    console.error(`[Server] Failed to bind service server to port ${PORT_SERVICE}:`, err);
-    process.exit(1);
+  if (!backendOnly) {
+    try {
+      viteServer = await createViteServer({
+        server: {
+          port: PORT_SERVICE,
+          host: '127.0.0.1',
+          open: false,
+          headers: {
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+            'Cross-Origin-Resource-Policy': 'cross-origin',
+          }
+        },
+      });
+      await viteServer.listen();
+      success = true;
+      console.log(`[Server] Valor service server (Vite dev) is running on http://127.0.0.1:${PORT_SERVICE}`);
+    } catch (err) {
+      console.error(`[Server] Failed to bind service server to port ${PORT_SERVICE}:`, err);
+      process.exit(1);
+    }
   }
 
-  backendServer.listen({ port: PORT_BACKEND, host: '127.0.0.1' }, () => {
-    console.log(`[Server] Valor backend server (Dev mode) is running on http://127.0.0.1:${PORT_BACKEND}`);
-    
-    // Write active port to active_port.txt
-    try {
-      const activePortFile = path.join(dataDir, 'active_port.txt');
-      fs.writeFileSync(activePortFile, String(PORT_SERVICE));
-    } catch (e) {
-      console.error('[Server] Failed to write active_port.txt:', e);
-    }
-
-    const openUrl = resolvedFilePath 
-      ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(resolvedFilePath)}`
-      : `http://127.0.0.1:${PORT_SERVICE}/`;
+  if (!frontendOnly) {
+    backendServer.listen({ port: PORT_BACKEND, host: '127.0.0.1' }, () => {
+      console.log(`[Server] Valor backend server (Dev mode) is running on http://127.0.0.1:${PORT_BACKEND}`);
       
-    console.log(`[Server] Opening browser: ${openUrl}`);
-    
-    if (process.platform === 'win32') {
-      spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
-    } else if (process.platform === 'darwin') {
-      spawn('open', [openUrl], { detached: true }).unref();
-    } else {
-      spawn('xdg-open', [openUrl], { detached: true }).unref();
-    }
+      if (!backendOnly) {
+        // Write active port to active_port.txt
+        try {
+          const activePortFile = path.join(dataDir, 'active_port.txt');
+          fs.writeFileSync(activePortFile, String(PORT_SERVICE));
+        } catch (e) {
+          console.error('[Server] Failed to write active_port.txt:', e);
+        }
 
-    startShutdownChecker(viteServer);
-  });
+        const openUrl = resolvedFilePath 
+          ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(resolvedFilePath)}`
+          : `http://127.0.0.1:${PORT_SERVICE}/`;
+          
+        console.log(`[Server] Opening browser: ${openUrl}`);
+        
+        if (process.platform === 'win32') {
+          spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
+        } else if (process.platform === 'darwin') {
+          spawn('open', [openUrl], { detached: true }).unref();
+        } else {
+          spawn('xdg-open', [openUrl], { detached: true }).unref();
+        }
+      }
+
+      startShutdownChecker(viteServer);
+    });
+  }
 }
 
 start().catch((err) => {
