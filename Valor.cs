@@ -10,7 +10,6 @@ namespace ValorTray
     static class Program
     {
         private static NotifyIcon trayIcon;
-        private static ContextMenu trayMenu;
         private static Process serverProcess;
         private static string appDir;
         private static Mutex mutex;
@@ -53,11 +52,28 @@ namespace ValorTray
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            // Initialize Tray Menu
-            trayMenu = new ContextMenu();
-            trayMenu.MenuItems.Add("Open Valor", OnOpen);
-            trayMenu.MenuItems.Add("-");
-            trayMenu.MenuItems.Add("Exit", OnExit);
+            // Initialize Tray Menu with modern dark theme and rounded corners
+            ContextMenuStrip contextMenu = new ContextMenuStrip();
+            contextMenu.BackColor = Color.FromArgb(15, 15, 15);
+            contextMenu.ForeColor = Color.White;
+            contextMenu.ShowImageMargin = false;
+            contextMenu.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+            contextMenu.Renderer = new DarkRenderer();
+
+            var openItem = new ToolStripMenuItem("Open Valor", null, OnOpen);
+            openItem.ForeColor = Color.White;
+            
+            var logsItem = new ToolStripMenuItem("View Logs", null, OnViewLogs);
+            logsItem.ForeColor = Color.White;
+
+            var exitItem = new ToolStripMenuItem("Exit", null, OnExit);
+            exitItem.ForeColor = Color.White;
+
+            contextMenu.Items.Add(openItem);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add(logsItem);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add(exitItem);
 
             // Load Tray Icon
             Icon appIcon = SystemIcons.Application;
@@ -79,7 +95,7 @@ namespace ValorTray
             trayIcon = new NotifyIcon();
             trayIcon.Text = "Valor Video Player";
             trayIcon.Icon = appIcon;
-            trayIcon.ContextMenu = trayMenu;
+            trayIcon.ContextMenuStrip = contextMenu;
             trayIcon.Visible = true;
             trayIcon.DoubleClick += OnOpen;
 
@@ -143,10 +159,25 @@ namespace ValorTray
                 return;
             }
 
-            string url = "http://localhost:" + ServerPort;
+            string port = ServerPort;
+            try
+            {
+                string portFilePath = Path.Combine(appDir, ".valor_data", "active_port.txt");
+                if (File.Exists(portFilePath))
+                {
+                    string filePort = File.ReadAllText(portFilePath).Trim();
+                    if (!string.IsNullOrEmpty(filePort))
+                    {
+                        port = filePort;
+                    }
+                }
+            }
+            catch {}
+
+            string url = "http://127.0.0.1:" + port;
             if (!string.IsNullOrEmpty(file))
             {
-                url += "?file=" + Uri.EscapeDataString(file);
+                url += "/?file=" + Uri.EscapeDataString(file);
             }
 
             try
@@ -200,6 +231,71 @@ namespace ValorTray
                 mutex.ReleaseMutex();
             }
             Application.Exit();
+        }
+
+        private static void OnViewLogs(object sender, EventArgs e)
+        {
+            string logPath = Path.Combine(appDir, ".valor_data", "app.log");
+            if (File.Exists(logPath))
+            {
+                try
+                {
+                    Process.Start("notepad.exe", logPath);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Failed to open log file: " + ex.Message, "Valor Logs", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            else
+            {
+                MessageBox.Show("No log file found yet. Start playing media to generate logs.", "Valor Logs", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private class DarkRenderer : ToolStripProfessionalRenderer
+        {
+            public DarkRenderer() : base(new DarkColorTable()) { }
+            
+            protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+            {
+                if (e.Item.Selected)
+                {
+                    // Hover color: Netflix red
+                    using (var brush = new SolidBrush(Color.FromArgb(229, 9, 20)))
+                    {
+                        e.Graphics.FillRectangle(brush, e.Item.ContentRectangle);
+                    }
+                }
+                else
+                {
+                    using (var brush = new SolidBrush(Color.FromArgb(15, 15, 15)))
+                    {
+                        e.Graphics.FillRectangle(brush, e.Item.ContentRectangle);
+                    }
+                }
+            }
+
+            protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+            {
+                using (var pen = new Pen(Color.FromArgb(44, 44, 44), 1))
+                {
+                    e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+                }
+            }
+        }
+
+        private class DarkColorTable : ProfessionalColorTable
+        {
+            public override Color ToolStripDropDownBackground { get { return Color.FromArgb(15, 15, 15); } }
+            public override Color ImageMarginGradientBegin { get { return Color.FromArgb(15, 15, 15); } }
+            public override Color ImageMarginGradientMiddle { get { return Color.FromArgb(15, 15, 15); } }
+            public override Color ImageMarginGradientEnd { get { return Color.FromArgb(15, 15, 15); } }
+            public override Color MenuBorder { get { return Color.FromArgb(44, 44, 44); } }
+            public override Color MenuItemSelected { get { return Color.FromArgb(229, 9, 20); } }
+            public override Color MenuItemBorder { get { return Color.FromArgb(229, 9, 20); } }
+            public override Color SeparatorDark { get { return Color.FromArgb(33, 33, 33); } }
+            public override Color SeparatorLight { get { return Color.FromArgb(15, 15, 15); } }
         }
     }
 }

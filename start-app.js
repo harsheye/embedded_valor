@@ -42,6 +42,30 @@ if (playWithVlc && resolvedFilePath) {
 }
 
 async function start() {
+  const dataDir = path.join(process.cwd(), '.valor_data');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
+  // Setup logging redirection to app.log
+  const logFilePath = path.join(dataDir, 'app.log');
+  const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+
+  const originalLog = console.log;
+  const originalError = console.error;
+
+  console.log = (...args) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    logStream.write(`[${new Date().toISOString()}] [INFO] ${msg}\n`);
+    originalLog(...args);
+  };
+
+  console.error = (...args) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    logStream.write(`[${new Date().toISOString()}] [ERROR] ${msg}\n`);
+    originalError(...args);
+  };
+
   let port = 5888;
   const portArgIdx = process.argv.indexOf('--port');
   if (portArgIdx !== -1 && process.argv[portArgIdx + 1]) {
@@ -77,6 +101,10 @@ async function start() {
     process.exit(1);
   }
 
+  // Write active port to active_port.txt
+  const activePortFile = path.join(dataDir, 'active_port.txt');
+  fs.writeFileSync(activePortFile, String(port));
+
   const getJsonBody = (req) => new Promise((resolve) => {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -85,11 +113,6 @@ async function start() {
       catch { resolve({}); }
     });
   });
-
-  const dataDir = path.join(process.cwd(), '.valor_data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
 
   // Settings API
   server.middlewares.use('/api/settings', async (req, res, next) => {
