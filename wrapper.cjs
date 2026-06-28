@@ -254,10 +254,10 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// Auto-shutdown if no active tabs
+// Auto-shutdown if no active tabs (5-minute grace period under all conditions)
 const startShutdownChecker = () => {
   setInterval(() => {
-    const limit = hasReceivedFirstHeartbeat ? 15000 : 300000;
+    const limit = 300000; // 5 minutes
     if (Date.now() - lastHeartbeat > limit) {
       console.log('[Server] No active tabs detected. Shutting down...');
       server.close(() => {
