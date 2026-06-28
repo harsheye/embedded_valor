@@ -1637,6 +1637,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         }
 
+        // Fallback: If no audio track is selected, but the first audio stream is not browser-native (e.g. ac3, eac3, dts, truehd), we must select and transcode it!
+        if (!selectedAudioTrack && audioStreams.length > 0) {
+          const firstAudio = audioStreams[0];
+          const isNative = /aac|mp3|mpeg|opus|flac|vorbis/i.test(firstAudio.codec);
+          if (!isNative) {
+            logger.player(`Primary audio track has non-native codec (${firstAudio.codec}). Auto-selecting it for transcoding.`);
+            handleSelectEmbeddedAudio(firstAudio.index, firstAudio.codec, firstAudio.language);
+          }
+        }
+
         // Auto-select subtitle stream
         if (targetSub !== 'Off' && !selectedSubTrack) {
           const stream = subtitleStreams.find(s => (
