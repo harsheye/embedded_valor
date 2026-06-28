@@ -56,12 +56,12 @@ export interface ProbeResult {
 const COPY_CODEC_RE = /aac|mp3|mpeg|opus|flac|vorbis/i;
 
 function getOutputFormat(codec: string): { ext: string; mimeType: string } {
-  if (/aac/i.test(codec))    return { ext: "m4a",  mimeType: "audio/mp4" };
+  if (/aac/i.test(codec))    return { ext: "aac",  mimeType: "audio/aac" };
   if (/mp3|mpeg/i.test(codec)) return { ext: "mp3",  mimeType: "audio/mpeg" };
   if (/opus|vorbis/i.test(codec)) return { ext: "ogg", mimeType: "audio/ogg" };
   if (/flac/i.test(codec))   return { ext: "flac", mimeType: "audio/flac" };
-  // Transcode targets — always transcode to AAC (M4A) for 3x faster encoding
-  return { ext: "m4a", mimeType: "audio/mp4" };
+  // Transcode targets — always transcode to raw AAC (ADTS) to play immediately
+  return { ext: "aac", mimeType: "audio/aac" };
 }
 
 function isCopyCodec(codec: string): boolean {
