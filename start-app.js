@@ -1,4 +1,5 @@
-import { createServer } from 'vite';
+import { createServer as createViteServer } from 'vite';
+import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -41,93 +42,111 @@ if (playWithVlc && resolvedFilePath) {
   process.exit(0);
 }
 
-async function start() {
-  const dataDir = path.join(process.cwd(), '.valor_data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+const execDir = path.dirname(process.execPath);
+let appDir = import.meta.dirname || __dirname;
+if (!fs.existsSync(path.join(appDir, 'dist')) && fs.existsSync(path.join(execDir, 'dist'))) {
+  appDir = execDir;
+}
+const dataDir = path.join(appDir, '.valor_data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
 
-  // Setup logging redirection to app.log
-  const logFilePath = path.join(dataDir, 'app.log');
-  const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+// Setup logging redirection to app.log
+const logFilePath = path.join(dataDir, 'app.log');
+const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
 
-  const originalLog = console.log;
-  const originalError = console.error;
+const originalLog = console.log;
+const originalError = console.error;
 
-  console.log = (...args) => {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-    logStream.write(`[${new Date().toISOString()}] [INFO] ${msg}\n`);
-    originalLog(...args);
-  };
+console.log = (...args) => {
+  const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  logStream.write(`[${new Date().toISOString()}] [INFO] ${msg}\n`);
+  originalLog(...args);
+};
 
-  console.error = (...args) => {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-    logStream.write(`[${new Date().toISOString()}] [ERROR] ${msg}\n`);
-    originalError(...args);
-  };
+console.error = (...args) => {
+  const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  logStream.write(`[${new Date().toISOString()}] [ERROR] ${msg}\n`);
+  originalError(...args);
+};
 
-  let port = 5888;
-  const portArgIdx = process.argv.indexOf('--port');
-  if (portArgIdx !== -1 && process.argv[portArgIdx + 1]) {
-    port = parseInt(process.argv[portArgIdx + 1], 10);
-  }
+const PORT_SERVICE = 50000;
+const PORT_BACKEND = 50001;
 
-  let server;
-  let success = false;
-  
-  while (!success && port < 6000) {
-    try {
-      server = await createServer({
-        server: {
-          port: port,
-          host: '127.0.0.1',
-          open: false,
-        },
-      });
-      await server.listen();
-      success = true;
-    } catch (err) {
-      if (err.code === 'EACCES' || err.code === 'EADDRINUSE') {
-        console.log(`[Server] Port ${port} is unavailable (${err.code}). Trying next port...`);
-        port++;
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  if (!success) {
-    console.error('[Server] Could not find any available port to bind.');
-    process.exit(1);
-  }
-
-  // Write active port to active_port.txt
-  const activePortFile = path.join(dataDir, 'active_port.txt');
-  fs.writeFileSync(activePortFile, String(port));
-
-  const getJsonBody = (req) => new Promise((resolve) => {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try { resolve(JSON.parse(body)); }
-      catch { resolve({}); }
-    });
+const getJsonBody = (req) => new Promise((resolve) => {
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    try { resolve(JSON.parse(body)); }
+    catch { resolve({}); }
   });
+});
+
+let lastHeartbeat = Date.now();
+let hasReceivedFirstHeartbeat = false;
+let activeConnections = 0;
+
+// 1. Backend API Server (Port 50001)
+const backendServer = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  const parsedUrl = new URL(req.url, `http://localhost:${PORT_BACKEND}`);
+  const pathname = parsedUrl.pathname;
+
+  // Heartbeat check
+  if (pathname === '/api/heartbeat') {
+    lastHeartbeat = Date.now();
+    hasReceivedFirstHeartbeat = true;
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  // Play command forward receiver
+  if (pathname === '/api/play') {
+    const file = parsedUrl.searchParams.get('file');
+    const openUrl = file 
+      ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(file)}`
+      : `http://127.0.0.1:${PORT_SERVICE}/`;
+      
+    console.log(`[Server] Received external play command. Opening browser: ${openUrl}`);
+    if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
+    } else if (process.platform === 'darwin') {
+      spawn('open', [openUrl], { detached: true }).unref();
+    } else {
+      spawn('xdg-open', [openUrl], { detached: true }).unref();
+    }
+    
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
 
   // Settings API
-  server.middlewares.use('/api/settings', async (req, res, next) => {
-    const url = new URL(req.url, 'http://localhost');
-    if (url.pathname !== '/' && url.pathname !== '') {
-      return next();
-    }
+  if (pathname === '/api/settings') {
+    res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
     const settingsFile = path.join(dataDir, 'settings.json');
     if (req.method === 'POST') {
-      const data = await getJsonBody(req);
-      fs.writeFileSync(settingsFile, JSON.stringify(data, null, 2));
-      res.end(JSON.stringify({ success: true }));
+      getJsonBody(req).then(data => {
+        fs.writeFileSync(settingsFile, JSON.stringify(data, null, 2));
+        res.end(JSON.stringify({ success: true }));
+      });
     } else {
       if (fs.existsSync(settingsFile)) {
         res.end(fs.readFileSync(settingsFile));
@@ -135,22 +154,19 @@ async function start() {
         res.end(JSON.stringify({}));
       }
     }
-  });
+    return;
+  }
 
   // History API
-  server.middlewares.use('/api/history', async (req, res, next) => {
-    const url = new URL(req.url, 'http://localhost');
-    if (url.pathname !== '/' && url.pathname !== '') {
-      return next();
-    }
+  if (pathname === '/api/history') {
+    res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
     const historyFile = path.join(dataDir, 'history.json');
     if (req.method === 'POST') {
-      const data = await getJsonBody(req);
-      fs.writeFileSync(historyFile, JSON.stringify(data, null, 2));
-      res.end(JSON.stringify({ success: true }));
+      getJsonBody(req).then(data => {
+        fs.writeFileSync(historyFile, JSON.stringify(data, null, 2));
+        res.end(JSON.stringify({ success: true }));
+      });
     } else {
       if (fs.existsSync(historyFile)) {
         res.end(fs.readFileSync(historyFile));
@@ -158,25 +174,52 @@ async function start() {
         res.end(JSON.stringify([]));
       }
     }
-  });
+    return;
+  }
 
-  // Local file streaming middleware
-  server.middlewares.use('/local-video-stream', (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    const videoPath = url.searchParams.get('path');
+  // Video streaming endpoint with range request support
+  if (pathname === '/local-video-stream') {
+    const videoPath = parsedUrl.searchParams.get('path');
     if (!videoPath || !fs.existsSync(videoPath)) {
       res.statusCode = 404;
       res.end('File not found');
       return;
     }
 
+    let connectionTracked = false;
+    const trackStart = () => {
+      if (!connectionTracked) {
+        activeConnections++;
+        connectionTracked = true;
+        console.log(`[Server] Active video stream connection started. Total active: ${activeConnections}`);
+      }
+    };
+    const trackEnd = () => {
+      if (connectionTracked) {
+        activeConnections = Math.max(0, activeConnections - 1);
+        connectionTracked = false;
+        console.log(`[Server] Active video stream connection ended. Total active: ${activeConnections}`);
+      }
+    };
+
+    req.on('close', trackEnd);
+    res.on('close', trackEnd);
+    res.on('finish', trackEnd);
+
+    trackStart();
+
     const stat = fs.statSync(videoPath);
     const fileSize = stat.size;
     const range = req.headers.range;
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', 'video/mp4');
+
+    if (req.method === 'HEAD') {
+      res.writeHead(200, { 'Content-Length': fileSize });
+      res.end();
+      return;
+    }
 
     if (range) {
       const parts = range.replace(/bytes=/, "").split("-");
@@ -193,72 +236,88 @@ async function start() {
       const head = {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Content-Length': chunksize,
-        'Content-Type': 'video/mp4',
       };
       res.writeHead(206, head);
       file.pipe(res);
     } else {
-      const head = {
-        'Content-Length': fileSize,
-        'Content-Type': 'video/mp4',
-      };
-      res.writeHead(200, head);
+      res.writeHead(200, { 'Content-Length': fileSize });
       const file = fs.createReadStream(videoPath);
       file.on('error', (err) => {
         console.error('[Server Stream Error]', err.message);
       });
-      res.on('error', (err) => {
-        console.error('[Server Response Error]', err.message);
-      });
       file.pipe(res);
     }
-  });
+    return;
+  }
 
-  console.log(`[Server] Valor dev server is running on http://127.0.0.1:${port}`);
+  res.statusCode = 404;
+  res.end('Not found');
+});
 
-  let activeConnections = 0;
-  let shutdownTimeout = null;
+// Auto-shutdown if no active tabs (1-minute grace period under all conditions)
+const startShutdownChecker = (viteServer) => {
+  setInterval(() => {
+    if (activeConnections > 0) {
+      lastHeartbeat = Date.now();
+    }
+    const limit = 60000; // 1 minute
+    if (Date.now() - lastHeartbeat > limit) {
+      console.log('[Server] No active tabs detected. Shutting down...');
+      viteServer.close();
+      backendServer.close(() => {
+        process.exit(0);
+      });
+      setTimeout(() => process.exit(0), 1000);
+    }
+  }, 2000);
+};
 
-  // Shutdown timer helper
-  const startShutdownTimer = (delay = 5000, reason = 'No active tabs') => {
-    if (shutdownTimeout) clearTimeout(shutdownTimeout);
-    shutdownTimeout = setTimeout(async () => {
-      console.log(`[Server] Shutting down server: ${reason}`);
-      try {
-        await server.close();
-      } catch (e) {
-        console.error('[Server] Error closing server:', e);
-      }
-      process.exit(0);
-    }, delay);
-  };
+async function start() {
+  let success = false;
+  let viteServer;
+  
+  try {
+    viteServer = await createViteServer({
+      server: {
+        port: PORT_SERVICE,
+        host: '127.0.0.1',
+        open: false,
+      },
+    });
+    await viteServer.listen();
+    success = true;
+    console.log(`[Server] Valor service server (Vite dev) is running on http://127.0.0.1:${PORT_SERVICE}`);
+  } catch (err) {
+    console.error(`[Server] Failed to bind service server to port ${PORT_SERVICE}:`, err);
+    process.exit(1);
+  }
 
-  // Start initial timer in case the browser doesn't open or connect at all
-  startShutdownTimer(300000, 'Initial startup timeout (no tab connected)');
-
-  // Track WebSocket connections from Vite clients
-  server.ws.on('connection', (socket) => {
-    activeConnections++;
-    console.log(`[Server] Browser tab connected. Active tabs: ${activeConnections}`);
+  backendServer.listen({ port: PORT_BACKEND, host: '127.0.0.1' }, () => {
+    console.log(`[Server] Valor backend server (Dev mode) is running on http://127.0.0.1:${PORT_BACKEND}`);
     
-    if (shutdownTimeout) {
-      clearTimeout(shutdownTimeout);
-      shutdownTimeout = null;
-      console.log('[Server] Shutdown cancelled: Tab re-connected.');
+    // Write active port to active_port.txt
+    try {
+      const activePortFile = path.join(dataDir, 'active_port.txt');
+      fs.writeFileSync(activePortFile, String(PORT_SERVICE));
+    } catch (e) {
+      console.error('[Server] Failed to write active_port.txt:', e);
     }
 
-    socket.on('close', () => {
-      activeConnections = Math.max(0, activeConnections - 1);
-      console.log(`[Server] Browser tab disconnected. Active tabs: ${activeConnections}`);
+    const openUrl = resolvedFilePath 
+      ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(resolvedFilePath)}`
+      : `http://127.0.0.1:${PORT_SERVICE}/`;
       
-      if (activeConnections === 0) {
-        startShutdownTimer(5000, 'All tabs closed');
-      }
-    });
+    console.log(`[Server] Opening browser: ${openUrl}`);
+    
+    if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
+    } else if (process.platform === 'darwin') {
+      spawn('open', [openUrl], { detached: true }).unref();
+    } else {
+      spawn('xdg-open', [openUrl], { detached: true }).unref();
+    }
 
-    socket.on('error', () => {
-      // Swallow error to prevent crashes; 'close' event will clean it up
-    });
+    startShutdownChecker(viteServer);
   });
 }
 
