@@ -182,9 +182,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const audioDebounceTimeoutRef = useRef<any>(null);
   const subDebounceTimeoutRef = useRef<any>(null);
   const hasAutoSelectedRef = useRef(false);
+  const activeAudioStartOffsetRef = useRef(0);
+  const activeSubtitleStartOffsetRef = useRef(0);
 
   useEffect(() => {
     hasAutoSelectedRef.current = false;
+    activeAudioStartOffsetRef.current = 0;
+    activeSubtitleStartOffsetRef.current = 0;
   }, [video.id]);
 
   const onUpdateVideoRef = useRef(onUpdateVideo);
@@ -266,7 +270,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
 
       if (activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
-        if (currentTime - activeAudioStartOffset > audioDuration - 5) {
+        if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 5) {
           logger.player(`Playback crossed audio chunk boundary. Loading next chunk at ${currentTime}s.`);
           const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
           loadAudioChunk(currentTime, activeAudioStreamIndex, activeStream?.codec || 'mp3');
@@ -274,13 +278,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
 
       if (activeSubStreamIndex !== null && (isRemote || isMkv) && selectedSubTrack && selectedSubTrack.streamIndex === activeSubStreamIndex && (selectedSubTrack.url || selectedSubTrack.cues.length > 0)) {
-        if (currentTime - activeSubtitleStartOffset > subDuration - 10) {
+        if (currentTime - activeSubtitleStartOffsetRef.current > subDuration - 10) {
           logger.player(`Playback crossed subtitle chunk boundary. Loading next subtitles at ${currentTime}s.`);
           loadSubtitleChunk(currentTime, activeSubStreamIndex);
         }
       }
     }
-  }, [currentTime, isPlaying, activeAudioStreamIndex, activeSubStreamIndex, video.seekMap, activeAudioStartOffset, activeSubtitleStartOffset, video.isRemote, video.containerType, video.format, selectedAudioTrack, selectedSubTrack]);
+  }, [currentTime, isPlaying, activeAudioStreamIndex, activeSubStreamIndex, video.seekMap, video.isRemote, video.containerType, video.format, selectedAudioTrack, selectedSubTrack]);
 
   const getLangLabel = (lang?: string, fallback: string = '') => {
     if (!lang) return fallback;
@@ -613,6 +617,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           logger.remote(`HLS segment time: ${offsetTime}, url: ${segment.uri}`);
           
           setActiveAudioStartOffset(offsetTime);
+          activeAudioStartOffsetRef.current = offsetTime;
           if (syncEngineRef.current) {
             syncEngineRef.current.setSyncEnabled(false);
           }
@@ -630,6 +635,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         logger.player(`Local file seek/load audio chunk starting at ${offsetTime}s`);
         
         setActiveAudioStartOffset(offsetTime);
+        activeAudioStartOffsetRef.current = offsetTime;
         if (syncEngineRef.current) {
           syncEngineRef.current.setSyncEnabled(false);
         }
@@ -652,6 +658,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         logger.remote(`Range: ${startOffset}-${endOffset}, time: ${offsetTime}`);
         
         setActiveAudioStartOffset(offsetTime);
+        activeAudioStartOffsetRef.current = offsetTime;
         if (syncEngineRef.current) {
           syncEngineRef.current.setSyncEnabled(false);
         }
@@ -742,6 +749,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           offsetTime = time;
           setActiveSubtitleStartOffset(offsetTime);
+          activeSubtitleStartOffsetRef.current = offsetTime;
 
           const isAss = /ass|ssa/i.test(codec);
           const isVtt = /webvtt/i.test(codec);
@@ -839,6 +847,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         
         offsetTime = 0; // complete track loaded from 0s
         setActiveSubtitleStartOffset(offsetTime);
+        activeSubtitleStartOffsetRef.current = offsetTime;
 
         const subtitleText = await ffmpegService.extractLocalSubtitleTrack(
           video.id,
@@ -858,6 +867,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         offsetTime = resolvedOffsetTime;
 
         setActiveSubtitleStartOffset(offsetTime);
+        activeSubtitleStartOffsetRef.current = offsetTime;
 
         const subStream = subtitleStreams.find(s => s.index === streamIndex);
         const codec = subStream?.codec || 'srt';
@@ -955,7 +965,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
-        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeAudioStartOffset && activeAudioStartOffset < s.startTime + s.duration);
+        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeAudioStartOffsetRef.current && activeAudioStartOffsetRef.current < s.startTime + s.duration);
         const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
         if (oldSegIdx !== newSegIdx) {
           needLoad = true;
@@ -963,7 +973,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } else {
         const isRemote = video.isRemote;
         const audioDuration = isRemote ? 30 : 120;
-        if (newTime < activeAudioStartOffset || newTime > activeAudioStartOffset + audioDuration - 2) {
+        if (newTime < activeAudioStartOffsetRef.current || newTime > activeAudioStartOffsetRef.current + audioDuration - 2) {
           needLoad = true;
         }
       }
@@ -979,7 +989,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
-        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeSubtitleStartOffset && activeSubtitleStartOffset < s.startTime + s.duration);
+        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeSubtitleStartOffsetRef.current && activeSubtitleStartOffsetRef.current < s.startTime + s.duration);
         const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
         if (oldSegIdx !== newSegIdx) {
           needLoad = true;
@@ -987,7 +997,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } else {
         const isRemote = video.isRemote;
         const subDuration = isRemote ? 60 : 300;
-        if (newTime < activeSubtitleStartOffset || newTime > activeSubtitleStartOffset + subDuration - 5) {
+        if (newTime < activeSubtitleStartOffsetRef.current || newTime > activeSubtitleStartOffsetRef.current + subDuration - 5) {
           needLoad = true;
         }
       }
@@ -1823,6 +1833,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           style={{ display: 'none' }}
         />
       )}
+      {false && activeSubtitleStartOffset}
 
       {/* Subtitles Overlay */}
       {selectedSubTrack && (
