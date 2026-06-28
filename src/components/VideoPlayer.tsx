@@ -181,6 +181,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const lastHeartbeatTimeRef = useRef<number>(0);
   const audioDebounceTimeoutRef = useRef<any>(null);
   const subDebounceTimeoutRef = useRef<any>(null);
+  const hasAutoSelectedRef = useRef(false);
+
+  useEffect(() => {
+    hasAutoSelectedRef.current = false;
+  }, [video.id]);
 
   useEffect(() => {
     if (video.isRemote) {
@@ -1616,7 +1621,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Auto-select preferred default audio/subtitle streams
   useEffect(() => {
-    if (streams.length > 0) {
+    if (streams.length > 0 && !hasAutoSelectedRef.current) {
+      hasAutoSelectedRef.current = true;
       try {
         const saved = localStorage.getItem('valor_settings');
         const settings = saved ? JSON.parse(saved) : { defaultAudio: 'ENG', defaultSub: 'ENG' };
