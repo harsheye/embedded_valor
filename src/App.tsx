@@ -17,6 +17,8 @@ import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './utils
 import { probeContainer, parseMp4, parseMkv } from './utils/containerParser';
 import { parseHlsManifest } from './utils/hlsParser';
 
+export const BACKEND_ORIGIN = 'http://127.0.0.1:50001';
+
 const audioOptions = [
   { value: 'Original', label: 'Original' },
   { value: 'ENG', label: 'English (Default)' },
@@ -112,7 +114,7 @@ function App() {
   // Heartbeat to keep the server alive while the app is active
   useEffect(() => {
     const ping = () => {
-      fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+      fetch(`${BACKEND_ORIGIN}/api/heartbeat`, { method: 'POST' }).catch(() => {});
     };
     ping();
     const interval = setInterval(ping, 2500);
@@ -123,7 +125,7 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const fileParam = params.get('file');
     if (fileParam) {
-      const localStreamUrl = `${window.location.origin}/local-video-stream?path=${encodeURIComponent(fileParam)}`;
+      const localStreamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(fileParam)}`;
       processRemoteUrl(localStreamUrl, true);
     }
   }, []);
@@ -133,7 +135,7 @@ function App() {
       let loadedSettings = defaultSettings;
       let settingsLoaded = false;
       try {
-        const res = await fetch('/api/settings');
+        const res = await fetch(`${BACKEND_ORIGIN}/api/settings`);
         const fileSettings = await res.json();
         if (fileSettings && Object.keys(fileSettings).length > 0) {
           loadedSettings = {
@@ -172,7 +174,7 @@ function App() {
 
       if (storageMode === 'file') {
         try {
-          const res = await fetch('/api/history');
+          const res = await fetch(`${BACKEND_ORIGIN}/api/history`);
           const fileHistory = await res.json();
           if (Array.isArray(fileHistory)) {
             loadedVideos = fileHistory.map((v: any) => ({
@@ -382,7 +384,7 @@ function App() {
   const saveSettingsToStorage = async (state: typeof defaultSettings) => {
     if (state.storageMode === 'file') {
       try {
-        await fetch('/api/settings', {
+        await fetch(`${BACKEND_ORIGIN}/api/settings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(state)
@@ -521,7 +523,7 @@ function App() {
         if (now - lastHistorySyncTimeRef.current > 10000) {
           lastHistorySyncTimeRef.current = now;
           if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-          fetch('/api/history', {
+          fetch(`${BACKEND_ORIGIN}/api/history`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(serialized)
@@ -530,7 +532,7 @@ function App() {
           if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
           historySyncTimeoutRef.current = setTimeout(() => {
             lastHistorySyncTimeRef.current = Date.now();
-            fetch('/api/history', {
+            fetch(`${BACKEND_ORIGIN}/api/history`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(serialized)
@@ -550,7 +552,7 @@ function App() {
             try {
               localStorage.setItem('valor_videos', JSON.stringify(currentList));
               if (settings.storageMode === 'file') {
-                fetch('/api/history', {
+                fetch(`${BACKEND_ORIGIN}/api/history`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(currentList)
@@ -827,7 +829,7 @@ function App() {
         setPlayingVideo(video);
       } else if (video.type === 'local') {
         if (video.localFilePath) {
-          const streamUrl = `${window.location.origin}/local-video-stream?path=${encodeURIComponent(video.localFilePath)}`;
+          const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(video.localFilePath)}`;
           const updated = {
             ...video,
             url: streamUrl

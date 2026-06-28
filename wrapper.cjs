@@ -75,7 +75,8 @@ console.error = (...args) => {
   originalError(...args);
 };
 
-let PORT = 5888;
+const PORT_SERVICE = 50000;
+const PORT_BACKEND = 50001;
 
 const getJsonBody = (req) => new Promise((resolve) => {
   let body = '';
@@ -100,14 +101,19 @@ const MIME_TYPES = {
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.wasm': 'application/wasm'
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.wasm': 'application/wasm',
+  '.vtt': 'text/vtt',
+  '.srt': 'text/plain'
 };
 
 let lastHeartbeat = Date.now();
 let hasReceivedFirstHeartbeat = false;
 let activeConnections = 0;
 
-const server = http.createServer((req, res) => {
+// 1. Backend API Server (Port 50001)
+const backendServer = http.createServer((req, res) => {
   // CORS and Security Headers for SharedArrayBuffer (ffmpeg.wasm support)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -123,10 +129,10 @@ const server = http.createServer((req, res) => {
   }
 
   // Parse URL
-  const parsedUrl = new URL(req.url, `http://localhost:${PORT}`);
+  const parsedUrl = new URL(req.url, `http://localhost:${PORT_BACKEND}`);
   const pathname = parsedUrl.pathname;
 
-  // 1. Heartbeat check
+  // Heartbeat check
   if (pathname === '/api/heartbeat') {
     lastHeartbeat = Date.now();
     hasReceivedFirstHeartbeat = true;
@@ -136,12 +142,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 1.5. Play command forward receiver
+  // Play command forward receiver
   if (pathname === '/api/play') {
     const file = parsedUrl.searchParams.get('file');
     const openUrl = file 
-      ? `http://127.0.0.1:${PORT}/?file=${encodeURIComponent(file)}`
-      : `http://127.0.0.1:${PORT}/`;
+      ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(file)}`
+      : `http://127.0.0.1:${PORT_SERVICE}/`;
       
     console.log(`[Server] Received external play command. Opening browser: ${openUrl}`);
     if (process.platform === 'win32') {
@@ -198,7 +204,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 2. Video streaming endpoint with range request support
+  // Video streaming endpoint with range request support
   if (pathname === '/local-video-stream') {
     const videoPath = parsedUrl.searchParams.get('path');
     if (!videoPath || !fs.existsSync(videoPath)) {
@@ -274,7 +280,28 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 3. Serve static web files
+  res.statusCode = 404;
+  res.end('Not found');
+});
+
+// 2. Service Static Server (Port 50000)
+const serviceServer = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  const parsedUrl = new URL(req.url, `http://localhost:${PORT_SERVICE}`);
+  let pathname = parsedUrl.pathname;
+
   let safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
   let filePath = path.join(distDir, safePath);
 
@@ -284,7 +311,6 @@ const server = http.createServer((req, res) => {
       filePath = path.join(filePath, 'index.html');
     }
   } catch (e) {
-    // If not found, default to index.html (supports SPA router)
     filePath = path.join(distDir, 'index.html');
   }
 
@@ -311,7 +337,8 @@ const startShutdownChecker = () => {
     const limit = 60000; // 1 minute
     if (Date.now() - lastHeartbeat > limit) {
       console.log('[Server] No active tabs detected. Shutting down...');
-      server.close(() => {
+      serviceServer.close();
+      backendServer.close(() => {
         process.exit(0);
       });
       setTimeout(() => process.exit(0), 1000);
@@ -319,52 +346,48 @@ const startShutdownChecker = () => {
   }, 2000);
 };
 
-// Start the server using the dynamic port finder
-let success = false;
-
 const attemptListen = () => {
-  if (success || PORT >= 6000) return;
-  server.listen({ port: PORT, host: '127.0.0.1' });
+  serviceServer.listen({ port: PORT_SERVICE, host: '127.0.0.1' }, () => {
+    console.log(`[Server] Valor service server is running on http://127.0.0.1:${PORT_SERVICE}`);
+    
+    backendServer.listen({ port: PORT_BACKEND, host: '127.0.0.1' }, () => {
+      console.log(`[Server] Valor backend server is running on http://127.0.0.1:${PORT_BACKEND}`);
+      
+      // Write active port to active_port.txt
+      try {
+        const activePortFile = path.join(dataDir, 'active_port.txt');
+        fs.writeFileSync(activePortFile, String(PORT_SERVICE));
+      } catch (e) {
+        console.error('[Server] Failed to write active_port.txt:', e);
+      }
+
+      const openUrl = resolvedFilePath 
+        ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(resolvedFilePath)}`
+        : `http://127.0.0.1:${PORT_SERVICE}/`;
+        
+      console.log(`[Server] Opening browser: ${openUrl}`);
+      
+      if (process.platform === 'win32') {
+        spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
+      } else if (process.platform === 'darwin') {
+        spawn('open', [openUrl], { detached: true }).unref();
+      } else {
+        spawn('xdg-open', [openUrl], { detached: true }).unref();
+      }
+
+      startShutdownChecker();
+    });
+  });
 };
 
-server.on('listening', () => {
-  success = true;
-  console.log(`[Server] Valor production server is running on http://127.0.0.1:${PORT}`);
-
-  // Write active port to active_port.txt
-  try {
-    const activePortFile = path.join(dataDir, 'active_port.txt');
-    fs.writeFileSync(activePortFile, String(PORT));
-  } catch (e) {
-    console.error('[Server] Failed to write active_port.txt:', e);
-  }
-
-  const openUrl = resolvedFilePath 
-    ? `http://127.0.0.1:${PORT}/?file=${encodeURIComponent(resolvedFilePath)}`
-    : `http://127.0.0.1:${PORT}/`;
-    
-  console.log(`[Server] Opening browser: ${openUrl}`);
-  
-  if (process.platform === 'win32') {
-    spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
-  } else if (process.platform === 'darwin') {
-    spawn('open', [openUrl], { detached: true }).unref();
-  } else {
-    spawn('xdg-open', [openUrl], { detached: true }).unref();
-  }
-
-  startShutdownChecker();
+serviceServer.on('error', (err) => {
+  console.error('[Server Fatal Service Error]', err);
+  process.exit(1);
 });
 
-server.on('error', (err) => {
-  if (!success && (err.code === 'EACCES' || err.code === 'EADDRINUSE')) {
-    console.log(`[Server] Port ${PORT} is unavailable (${err.code}). Trying next port...`);
-    PORT++;
-    attemptListen();
-  } else {
-    console.error('[Server Fatal Error]', err);
-    process.exit(1);
-  }
+backendServer.on('error', (err) => {
+  console.error('[Server Fatal Backend Error]', err);
+  process.exit(1);
 });
 
 // Startup check: reuse existing running server if present
@@ -375,11 +398,11 @@ if (fs.existsSync(activePortFile)) {
     const savedPort = parseInt(fs.readFileSync(activePortFile, 'utf8').trim(), 10);
     if (savedPort && !isNaN(savedPort)) {
       checkingExisting = true;
-      console.log(`[Server] Checking for running instance on port ${savedPort}...`);
+      console.log(`[Server] Checking for running backend instance on port ${PORT_BACKEND}...`);
       
       const options = {
         host: '127.0.0.1',
-        port: savedPort,
+        port: PORT_BACKEND,
         path: '/api/heartbeat',
         method: 'POST',
         timeout: 1000
@@ -387,14 +410,14 @@ if (fs.existsSync(activePortFile)) {
       
       const clientReq = http.request(options, (res) => {
         if (res.statusCode === 200) {
-          console.log(`[Server] Found running instance on port ${savedPort}. Forwarding play command...`);
+          console.log(`[Server] Found running instance on port ${PORT_BACKEND}. Forwarding play command...`);
           const playPath = resolvedFilePath 
             ? `/api/play?file=${encodeURIComponent(resolvedFilePath)}`
             : '/api/play';
             
           const playReq = http.request({
             host: '127.0.0.1',
-            port: savedPort,
+            port: PORT_BACKEND,
             path: playPath,
             method: 'GET',
             timeout: 1000

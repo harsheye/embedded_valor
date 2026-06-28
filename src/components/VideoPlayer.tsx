@@ -472,7 +472,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const now = Date.now();
         if (now - lastHeartbeatTimeRef.current > 4000) {
           lastHeartbeatTimeRef.current = now;
-          fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+          fetch('http://127.0.0.1:50001/api/heartbeat', { method: 'POST' }).catch(() => {});
         }
         
         // Update buffered percentage

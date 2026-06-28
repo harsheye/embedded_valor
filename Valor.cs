@@ -14,7 +14,7 @@ namespace ValorTray
         private static Process serverProcess;
         private static string appDir;
         private static Mutex mutex;
-        private static readonly string ServerPort = "5888";
+        private static readonly string ServerPort = "50000";
 
         [STAThread]
         static void Main(string[] args)
@@ -176,7 +176,7 @@ namespace ValorTray
         {
             try
             {
-                string url = "http://127.0.0.1:" + port + "/api/play";
+                string url = "http://127.0.0.1:50001/api/play";
                 if (!string.IsNullOrEmpty(file))
                 {
                     url += "?file=" + Uri.EscapeDataString(file);
