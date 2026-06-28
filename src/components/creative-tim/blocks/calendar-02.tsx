@@ -39,22 +39,45 @@ export default function Calendar02({ videos, onPlayVideo, isInstantlyPlayable }:
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Filter and group videos for the current month
-  const monthVideos = videos.filter(video => {
-    if (!(video as any).lastPlayedDate) return false;
-    const d = new Date((video as any).lastPlayedDate);
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
-
-  // Group by day of month
-  const groupedByDay: Record<number, VideoItem[]> = {};
-  monthVideos.forEach(video => {
-    const d = new Date((video as any).lastPlayedDate);
-    const day = d.getDate();
-    if (!groupedByDay[day]) {
-      groupedByDay[day] = [];
+  const parseDurationToSeconds = (duration: string | number | undefined): number => {
+    if (duration === undefined || duration === null) return 0;
+    if (typeof duration === 'number') return duration;
+    const clean = String(duration).trim();
+    if (!clean || clean.toLowerCase() === 'unknown') return 0;
+    if (!isNaN(Number(clean))) {
+      return Number(clean);
     }
-    groupedByDay[day].push(video);
+    const parts = clean.split(':').map(Number);
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 2) {
+      return parts[0] * 60 + parts[1];
+    }
+    if (parts.length === 3) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return 0;
+  };
+
+  // Group by day of month (supporting multiple played dates per video item)
+  const groupedByDay: Record<number, VideoItem[]> = {};
+
+  videos.forEach(video => {
+    const dates = video.playedDates && video.playedDates.length > 0 
+      ? video.playedDates 
+      : ((video as any).lastPlayedDate ? [(video as any).lastPlayedDate] : []);
+
+    dates.forEach(dateStr => {
+      const d = new Date(dateStr);
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        const day = d.getDate();
+        if (!groupedByDay[day]) {
+          groupedByDay[day] = [];
+        }
+        if (!groupedByDay[day].some(v => v.id === video.id)) {
+          groupedByDay[day].push(video);
+        }
+      }
+    });
   });
 
   // Sort days descending (latest first)
@@ -184,11 +207,16 @@ export default function Calendar02({ videos, onPlayVideo, isInstantlyPlayable }:
                     {/* Dynamic Event Video Cards */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       {groupedByDay[day].map((video, vIdx) => {
-                        const playTime = (video as any).lastPlayedDate ? new Date((video as any).lastPlayedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown';
+                        const matchingDateStr = (video.playedDates || []).find(dateStr => {
+                          const d = new Date(dateStr);
+                          return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+                        }) || (video as any).lastPlayedDate;
+
+                        const playTime = matchingDateStr ? new Date(matchingDateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown';
                         const rating = (video as any).rating || 0;
                         const watchedSeconds = (video as any).totalTimeWatched || 0;
-                        const durationSeconds = typeof video.duration === 'number' ? video.duration : parseFloat(video.duration || '0');
-                        const durationStr = typeof video.duration === 'number' ? formatTime(video.duration) : video.duration || 'Unknown';
+                        const durationSeconds = parseDurationToSeconds(video.duration);
+                        const durationStr = durationSeconds > 0 ? formatTime(durationSeconds) : 'Unknown';
                         const classification = classifyVideoTitle(video.title);
 
                         const progress = durationSeconds > 0 && video.currentTime

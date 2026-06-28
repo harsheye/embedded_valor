@@ -237,6 +237,66 @@ function App() {
     return false;
   };
 
+  const parseDurationToSeconds = (duration: string | number | undefined): number => {
+    if (duration === undefined || duration === null) return 0;
+    if (typeof duration === 'number') return duration;
+    const clean = String(duration).trim();
+    if (!clean || clean.toLowerCase() === 'unknown') return 0;
+    if (!isNaN(Number(clean))) {
+      return Number(clean);
+    }
+    const parts = clean.split(':').map(Number);
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 2) {
+      return parts[0] * 60 + parts[1];
+    }
+    if (parts.length === 3) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return 0;
+  };
+
+  const getVideoIdentity = (title: string): string => {
+    const info = classifyVideoTitle(title);
+    if (info.type === 'series' && info.season !== undefined && info.episode !== undefined) {
+      const cleanSeries = info.seriesTitle ? info.seriesTitle.toLowerCase().trim() : info.displayTitle.toLowerCase().trim();
+      return `series:${cleanSeries}:s${info.season.toString().padStart(2, '0')}e${info.episode.toString().padStart(2, '0')}`;
+    }
+    return `movie:${info.displayTitle.toLowerCase().trim()}`;
+  };
+
+  const mergeOrAddVideo = (prev: VideoItem[], newItem: VideoItem): VideoItem[] => {
+    const newIdentity = getVideoIdentity(newItem.title);
+    const existingIndex = prev.findIndex(v => getVideoIdentity(v.title) === newIdentity);
+    const nowIso = new Date().toISOString();
+
+    if (existingIndex !== -1) {
+      const existing = prev[existingIndex];
+      const merged: VideoItem = {
+        ...existing,
+        ...newItem,
+        id: existing.id,
+        currentTime: existing.currentTime || newItem.currentTime || 0,
+        lastPlayedDate: nowIso,
+        playedDates: Array.from(new Set([...(existing.playedDates || []), nowIso])),
+        rating: existing.rating || newItem.rating,
+        totalTimeWatched: existing.totalTimeWatched || newItem.totalTimeWatched || 0,
+        timeToFinish: existing.timeToFinish || newItem.timeToFinish
+      };
+      
+      const filtered = prev.filter((_, idx) => idx !== existingIndex);
+      return [merged, ...filtered];
+    } else {
+      const initItem = {
+        ...newItem,
+        lastPlayedDate: nowIso,
+        playedDates: [nowIso]
+      };
+      const filtered = prev.filter(v => v.url !== newItem.url);
+      return [initItem, ...filtered];
+    }
+  };
+
   // Selector Form states
   const [isDragActive, setIsDragActive] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
@@ -449,7 +509,8 @@ function App() {
         totalTimeWatched: (v as any).totalTimeWatched,
         rating: (v as any).rating,
         timeToFinish: (v as any).timeToFinish,
-        localFilePath: v.localFilePath
+        localFilePath: v.localFilePath,
+        playedDates: v.playedDates
       }));
 
       // Sync to backend file if storageMode is file
@@ -718,8 +779,9 @@ function App() {
     };
 
     setVideos(prev => {
-      const filtered = prev.filter(v => !matches.some(m => m.id === v.id));
-      return [newVideoItem, ...filtered];
+      const newIdentity = getVideoIdentity(newVideoItem.title);
+      const filtered = prev.filter(v => v.id !== targetId && getVideoIdentity(v.title) !== newIdentity && !matches.some(m => m.id === v.id));
+      return mergeOrAddVideo(filtered, newVideoItem);
     });
 
     setPlayingVideo(newVideoItem);
@@ -744,10 +806,7 @@ function App() {
 
     try {
       if (video.type === 'url') {
-        setVideos(prev => {
-          const filtered = prev.filter(v => v.id !== video.id);
-          return [video, ...filtered];
-        });
+        setVideos(prev => mergeOrAddVideo(prev, video));
         setPlayingVideo(video);
       } else if (video.type === 'local') {
         if (video.localFilePath) {
@@ -756,10 +815,7 @@ function App() {
             ...video,
             url: streamUrl
           };
-          setVideos(prev => {
-            const filtered = prev.filter(v => v.id !== video.id);
-            return [updated, ...filtered];
-          });
+          setVideos(prev => mergeOrAddVideo(prev, updated));
           setPlayingVideo(updated);
           isPickerOpenRef.current = false;
           return;
@@ -767,10 +823,7 @@ function App() {
 
         if (!video.file && video.url) {
           // Play directly from the local stream URL (open-with) without picker
-          setVideos(prev => {
-            const filtered = prev.filter(v => v.id !== video.id);
-            return [video, ...filtered];
-          });
+          setVideos(prev => mergeOrAddVideo(prev, video));
           setPlayingVideo(video);
           return;
         }
@@ -794,10 +847,7 @@ function App() {
               ...video,
               url: newBlobUrl
             };
-            setVideos(prev => {
-              const filtered = prev.filter(v => v.id !== video.id);
-              return [updatedVideo, ...filtered];
-            });
+            setVideos(prev => mergeOrAddVideo(prev, updatedVideo));
             setPlayingVideo(updatedVideo);
             return;
           }
@@ -940,10 +990,7 @@ function App() {
           probingError: 'The remote server blocks cross-origin byte access (CORS).',
           localFilePath: localPathVal
         };
-        setVideos(prev => {
-          const filtered = prev.filter(v => v.url !== url);
-          return [nativeItem, ...filtered];
-        });
+        setVideos(prev => mergeOrAddVideo(prev, nativeItem));
         setPlayingVideo(nativeItem);
         setIsProcessing(false);
         setProcessingStep('');
@@ -1045,10 +1092,7 @@ function App() {
         localFilePath: localPathVal
       };
 
-      setVideos(prev => {
-        const filtered = prev.filter(v => v.url !== url);
-        return [videoItem, ...filtered];
-      });
+      setVideos(prev => mergeOrAddVideo(prev, videoItem));
       setPlayingVideo(videoItem);
     } catch (err: any) {
       console.warn('Failed to process remote URL under Advanced Mode, falling back to Native Mode:', err);
@@ -1082,10 +1126,7 @@ function App() {
         probingError: probingError || undefined,
         lastPlayedDate: new Date().toISOString()
       };
-      setVideos(prev => {
-        const filtered = prev.filter(v => v.url !== url);
-        return [fallbackItem, ...filtered];
-      });
+      setVideos(prev => mergeOrAddVideo(prev, fallbackItem));
       setPlayingVideo(fallbackItem);
     } finally {
       setIsProcessing(false);
@@ -1285,7 +1326,7 @@ function App() {
                             {primaryContinue.duration && (
                               <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
                                 {(() => {
-                                  const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                                  const dur = parseDurationToSeconds(primaryContinue.duration);
                                   return dur > 0 ? `${Math.round(((primaryContinue.currentTime || 0) / dur) * 100)}% Watched` : '';
                                 })()}
                               </span>
@@ -1302,7 +1343,7 @@ function App() {
 
                           {/* Progress bar inside banner */}
                           {(() => {
-                            const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                            const dur = parseDurationToSeconds(primaryContinue.duration);
                             const progress = dur > 0 && primaryContinue.currentTime ? Math.round((primaryContinue.currentTime / dur) * 100) : 0;
                             return progress > 0 ? (
                               <div style={{ height: '4px', width: '100%', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', overflow: 'hidden', marginTop: '0.8rem' }}>
@@ -1352,7 +1393,7 @@ function App() {
                           </h4>
                           <div className="continue-watching-list" style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem', scrollbarWidth: 'thin' }}>
                             {otherContinueList.map((video) => {
-                              const durationSeconds = typeof video.duration === 'number' ? video.duration : parseFloat(video.duration || '0');
+                              const durationSeconds = parseDurationToSeconds(video.duration);
                               const progress = durationSeconds > 0 && video.currentTime
                                 ? Math.round((video.currentTime / durationSeconds) * 100)
                                 : 0;
@@ -1511,7 +1552,7 @@ function App() {
                             {primaryContinue.duration && (
                               <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
                                 {(() => {
-                                  const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                                  const dur = parseDurationToSeconds(primaryContinue.duration);
                                   return dur > 0 ? `${Math.round(((primaryContinue.currentTime || 0) / dur) * 100)}% Watched` : '';
                                 })()}
                               </span>
@@ -1528,7 +1569,7 @@ function App() {
 
                           {/* Progress bar inside banner */}
                           {(() => {
-                            const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                            const dur = parseDurationToSeconds(primaryContinue.duration);
                             const progress = dur > 0 && primaryContinue.currentTime ? Math.round((primaryContinue.currentTime / dur) * 100) : 0;
                             return progress > 0 ? (
                               <div style={{ height: '4px', width: '100%', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', overflow: 'hidden', marginTop: '0.8rem' }}>

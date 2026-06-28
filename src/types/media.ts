@@ -45,4 +45,8 @@ export interface VideoItem {
   playbackMode?: 'advanced' | 'native';
   lastPlayedDate?: string;
   localFilePath?: string;
+  playedDates?: string[];
+  rating?: number;
+  totalTimeWatched?: number;
+  timeToFinish?: number;
 }
