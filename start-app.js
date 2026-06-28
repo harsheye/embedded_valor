@@ -282,6 +282,11 @@ async function start() {
         port: PORT_SERVICE,
         host: '127.0.0.1',
         open: false,
+        headers: {
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+        }
       },
     });
     await viteServer.listen();
