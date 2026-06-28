@@ -107,6 +107,14 @@ function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage'>('general');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
+  const [systemTime, setSystemTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSystemTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
   
 
   // Heartbeat to keep the server alive while the app is active
@@ -1209,6 +1217,42 @@ function App() {
 
       {/* Main Content Area */}
       <div className="main-layout-wrapper">
+        {/* Top App Header with Clock */}
+        <header className="main-app-header" style={{
+          height: '60px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 2rem',
+          boxSizing: 'border-box',
+          background: 'rgba(0, 0, 0, 0.2)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 100
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Valor Player
+            </span>
+          </div>
+          
+          <div style={{ 
+            fontSize: '1rem', 
+            fontWeight: 700, 
+            color: '#fff', 
+            letterSpacing: '1px',
+            fontFamily: 'monospace',
+            background: 'rgba(255,255,255,0.04)',
+            padding: '4px 12px',
+            borderRadius: '6px',
+            border: '1px solid rgba(255,255,255,0.06)'
+          }}>
+            {systemTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </div>
+          
+          <div style={{ width: '80px' }} />
+        </header>
+
         {/* Main Content Pane */}
         <main className="main-content container animate-fade-in">
           <div className="workspace-container">
@@ -1217,56 +1261,141 @@ function App() {
                 {(() => {
                   const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
                   if (continueWatchingList.length === 0) return null;
-                  return (
-                    <div className="continue-watching-section animate-fade-in" style={{ marginBottom: '1.5rem' }}>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#fff', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        <span>Continue Watching</span>
-                      </h3>
-                      <div className="continue-watching-list" style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem', scrollbarWidth: 'thin' }}>
-                        {continueWatchingList.map((video) => {
-                          const durationSeconds = typeof video.duration === 'number' ? video.duration : parseFloat(video.duration || '0');
-                          const progress = durationSeconds > 0 && video.currentTime
-                            ? Math.round((video.currentTime / durationSeconds) * 100)
-                            : 0;
-                          const classification = classifyVideoTitle(video.title);
+                  const primaryContinue = continueWatchingList[0];
+                  const otherContinueList = continueWatchingList.slice(1);
 
-                          return (
-                            <div 
-                              key={video.id} 
-                              onClick={() => handlePlayVideo(video)}
-                              style={{
-                                flex: '0 0 240px',
-                                background: 'rgba(255,255,255,0.02)',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                borderRadius: '8px',
-                                padding: '0.85rem',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '0.5rem',
-                                transition: 'all 0.2s',
-                                position: 'relative'
-                              }}
-                              className="continue-card"
-                            >
-                              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={video.title}>
-                                {classification.displayTitle}
+                  return (
+                    <div className="continue-watching-section animate-fade-in" style={{ marginBottom: '1.5rem', width: '100%' }}>
+                      {/* Primary Red Banner (Full-Width, Clickable Container, Red Gradient, Big Resume Button) */}
+                      <div 
+                        onClick={() => handlePlayVideo(primaryContinue)}
+                        style={{ 
+                          width: '100%', 
+                          background: 'linear-gradient(135deg, #e50914 0%, #9b040c 100%)', 
+                          borderRadius: '12px', 
+                          padding: '1.5rem', 
+                          marginBottom: otherContinueList.length > 0 ? '1.25rem' : '0',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 8px 24px rgba(229, 9, 20, 0.25)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          transition: 'transform 0.2s, box-shadow 0.2s',
+                          boxSizing: 'border-box'
+                        }}
+                        className="premium-red-banner"
+                      >
+                        <div style={{ flex: 1, minWidth: '0', paddingRight: '1.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.4rem' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '1px', background: 'rgba(255,255,255,0.2)', color: '#fff', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                              Continue Watching
+                            </span>
+                            {primaryContinue.duration && (
+                              <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+                                {(() => {
+                                  const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                                  return dur > 0 ? `${Math.round(((primaryContinue.currentTime || 0) / dur) * 100)}% Watched` : '';
+                                })()}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {classifyVideoTitle(primaryContinue.title).displayTitle}
+                          </h3>
+                          
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                            Resume playback at <b>{formatTime(primaryContinue.currentTime || 0)}</b>
+                          </p>
+
+                          {/* Progress bar inside banner */}
+                          {(() => {
+                            const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                            const progress = dur > 0 && primaryContinue.currentTime ? Math.round((primaryContinue.currentTime / dur) * 100) : 0;
+                            return progress > 0 ? (
+                              <div style={{ height: '4px', width: '100%', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', overflow: 'hidden', marginTop: '0.8rem' }}>
+                                <div style={{ height: '100%', width: `${progress}%`, background: '#fff' }} />
                               </div>
-                              <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span>Resume at {formatTime(video.currentTime || 0)}</span>
-                                {progress > 0 && <span>{progress}%</span>}
-                              </div>
-                              
-                              {progress > 0 && (
-                                <div style={{ height: '4px', width: '100%', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', width: `${progress}%`, background: '#3b82f6' }} />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                            ) : null;
+                          })()}
+                        </div>
+                        
+                        <button 
+                          className="btn btn-primary" 
+                          style={{ 
+                            background: '#ffffff', 
+                            color: '#e50914', 
+                            border: 'none',
+                            padding: '0.65rem 1.5rem',
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                            cursor: 'pointer',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Play size={14} fill="#e50914" stroke="#e50914" />
+                          <span>Resume Playback</span>
+                        </button>
                       </div>
+
+                      {/* Secondary horizontal scrolling list for other in-progress items */}
+                      {otherContinueList.length > 0 && (
+                        <>
+                          <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Recently Played
+                          </h4>
+                          <div className="continue-watching-list" style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem', scrollbarWidth: 'thin' }}>
+                            {otherContinueList.map((video) => {
+                              const durationSeconds = typeof video.duration === 'number' ? video.duration : parseFloat(video.duration || '0');
+                              const progress = durationSeconds > 0 && video.currentTime
+                                ? Math.round((video.currentTime / durationSeconds) * 100)
+                                : 0;
+                              const classification = classifyVideoTitle(video.title);
+
+                              return (
+                                <div 
+                                  key={video.id} 
+                                  onClick={() => handlePlayVideo(video)}
+                                  style={{
+                                    flex: '0 0 240px',
+                                    background: 'rgba(255,255,255,0.02)',
+                                    border: '1px solid rgba(255,255,255,0.06)',
+                                    borderRadius: '8px',
+                                    padding: '0.85rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.5rem',
+                                    transition: 'all 0.2s',
+                                    position: 'relative'
+                                  }}
+                                  className="continue-card"
+                                >
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={video.title}>
+                                    {classification.displayTitle}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>Resume at {formatTime(video.currentTime || 0)}</span>
+                                    {progress > 0 && <span>{progress}%</span>}
+                                  </div>
+                                  
+                                  {progress > 0 && (
+                                    <div style={{ height: '4px', width: '100%', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${progress}%`, background: '#3b82f6' }} />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })()}
@@ -1344,9 +1473,93 @@ function App() {
             {activeTab === 'history' && (
               <div className="workspace-panel-wrapper">
                 <div className="glass-panel workspace-panel">
-                  <div className="panel-header border-b">
+                  <div className="panel-header border-b" style={{ marginBottom: '1.5rem' }}>
                     <h2>Playback History ({videos.length})</h2>
                   </div>
+
+                  {(() => {
+                    const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
+                    if (continueWatchingList.length === 0) return null;
+                    const primaryContinue = continueWatchingList[0];
+                    return (
+                      <div 
+                        onClick={() => handlePlayVideo(primaryContinue)}
+                        style={{ 
+                          width: '100%', 
+                          background: 'linear-gradient(135deg, #e50914 0%, #9b040c 100%)', 
+                          borderRadius: '12px', 
+                          padding: '1.5rem', 
+                          marginBottom: '1.5rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 8px 24px rgba(229, 9, 20, 0.25)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          transition: 'transform 0.2s, box-shadow 0.2s',
+                          boxSizing: 'border-box'
+                        }}
+                        className="premium-red-banner"
+                      >
+                        <div style={{ flex: 1, minWidth: '0', paddingRight: '1.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.4rem' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '1px', background: 'rgba(255,255,255,0.2)', color: '#fff', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                              Continue Watching
+                            </span>
+                            {primaryContinue.duration && (
+                              <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+                                {(() => {
+                                  const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                                  return dur > 0 ? `${Math.round(((primaryContinue.currentTime || 0) / dur) * 100)}% Watched` : '';
+                                })()}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {classifyVideoTitle(primaryContinue.title).displayTitle}
+                          </h3>
+                          
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                            Resume playback at <b>{formatTime(primaryContinue.currentTime || 0)}</b>
+                          </p>
+
+                          {/* Progress bar inside banner */}
+                          {(() => {
+                            const dur = typeof primaryContinue.duration === 'number' ? primaryContinue.duration : parseFloat(primaryContinue.duration || '0');
+                            const progress = dur > 0 && primaryContinue.currentTime ? Math.round((primaryContinue.currentTime / dur) * 100) : 0;
+                            return progress > 0 ? (
+                              <div style={{ height: '4px', width: '100%', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', overflow: 'hidden', marginTop: '0.8rem' }}>
+                                <div style={{ height: '100%', width: `${progress}%`, background: '#fff' }} />
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
+                        
+                        <button 
+                          className="btn btn-primary" 
+                          style={{ 
+                            background: '#ffffff', 
+                            color: '#e50914', 
+                            border: 'none',
+                            padding: '0.65rem 1.5rem',
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                            cursor: 'pointer',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Play size={14} fill="#e50914" stroke="#e50914" />
+                          <span>Resume Playback</span>
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {videos.length === 0 ? (
                     <div className="empty-catalog-box glass-panel">

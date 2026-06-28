@@ -100,6 +100,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState<string | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [systemTime, setSystemTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSystemTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Tracks Selection State
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<CustomAudioTrack | null>(null);
@@ -1825,8 +1833,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           {(!hideVideoName || video.isRemote) && (
             <div className="top-title-container">
               {!hideVideoName && video.playbackMode !== 'native' && (
-                <h2 className="top-title-clean">{video.title}</h2>
+                <h2 className="top-title-clean" style={{ marginBottom: '0.2rem' }}>{video.title}</h2>
               )}
+              <div style={{
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontFamily: 'monospace',
+                background: 'rgba(255, 255, 255, 0.08)',
+                padding: '2px 10px',
+                borderRadius: '4px',
+                border: '1px solid rgba(255,255,255,0.06)',
+                marginTop: '2px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>{systemTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
               {video.isRemote && (
                 <div className="playback-mode-badge-container">
                   {video.playbackMode === 'advanced' ? (
