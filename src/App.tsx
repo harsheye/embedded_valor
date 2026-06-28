@@ -107,14 +107,6 @@ function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage'>('general');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
-  const [systemTime, setSystemTime] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSystemTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
   
 
   // Heartbeat to keep the server alive while the app is active
@@ -1252,42 +1244,6 @@ function App() {
 
       {/* Main Content Area */}
       <div className="main-layout-wrapper">
-        {/* Top App Header with Clock */}
-        <header className="main-app-header" style={{
-          height: '60px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 2rem',
-          boxSizing: 'border-box',
-          background: 'rgba(0, 0, 0, 0.2)',
-          backdropFilter: 'blur(10px)',
-          zIndex: 100
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              Valor Player
-            </span>
-          </div>
-          
-          <div style={{ 
-            fontSize: '1rem', 
-            fontWeight: 700, 
-            color: '#fff', 
-            letterSpacing: '1px',
-            fontFamily: 'monospace',
-            background: 'rgba(255,255,255,0.04)',
-            padding: '4px 12px',
-            borderRadius: '6px',
-            border: '1px solid rgba(255,255,255,0.06)'
-          }}>
-            {systemTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </div>
-          
-          <div style={{ width: '80px' }} />
-        </header>
-
         {/* Main Content Pane */}
         <main className="main-content container animate-fade-in">
           <div className="workspace-container">
@@ -1933,7 +1889,7 @@ function App() {
                           
                            {/* Side-by-side Font Family and Font Size */}
                            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1.25rem', width: '100%', flexWrap: 'wrap' }}>
-                             <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                             <div style={{ width: '50%', minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                <span className="pref-label">Font Family</span>
                                <CustomSelect 
                                  value={settings.subSettings.fontFamily}

@@ -44,7 +44,7 @@ if (playWithVlc && resolvedFilePath) {
 }
 
 // HTTP Server configuration
-const PORT = 5174;
+const PORT = 5888;
 const execDir = path.dirname(process.execPath);
 
 const dataDir = path.join(process.cwd(), '.valor_data');

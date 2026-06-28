@@ -42,7 +42,7 @@ if (playWithVlc && resolvedFilePath) {
 }
 
 async function start() {
-  let port = 5174;
+  let port = 5888;
   const portArgIdx = process.argv.indexOf('--port');
   if (portArgIdx !== -1 && process.argv[portArgIdx + 1]) {
     port = parseInt(process.argv[portArgIdx + 1], 10);

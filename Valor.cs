@@ -14,7 +14,7 @@ namespace ValorTray
         private static Process serverProcess;
         private static string appDir;
         private static Mutex mutex;
-        private static readonly string ServerPort = "5174";
+        private static readonly string ServerPort = "5888";
 
         [STAThread]
         static void Main(string[] args)

@@ -1850,7 +1850,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 gap: '6px'
               }}>
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span>{systemTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                {(() => {
+                  const timeStr = systemTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const parts = timeStr.split(':');
+                  const hour = parts[0];
+                  const minuteAndSuffix = parts.slice(1).join(':');
+                  return (
+                    <span>
+                      <span style={{ color: '#e50914' }}>{hour}</span>
+                      <span style={{ color: '#ffffff' }}>:{minuteAndSuffix}</span>
+                    </span>
+                  );
+                })()}
               </div>
               {video.isRemote && (
                 <div className="playback-mode-badge-container">
