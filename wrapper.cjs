@@ -43,14 +43,33 @@ if (playWithVlc && resolvedFilePath) {
   process.exit(0);
 }
 
-// HTTP Server configuration
-const PORT = 5888;
 const execDir = path.dirname(process.execPath);
 
 const dataDir = path.join(process.cwd(), '.valor_data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
+
+// Setup logging redirection to app.log
+const logFilePath = path.join(dataDir, 'app.log');
+const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+
+const originalLog = console.log;
+const originalError = console.error;
+
+console.log = (...args) => {
+  const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  logStream.write(`[${new Date().toISOString()}] [INFO] ${msg}\n`);
+  originalLog(...args);
+};
+
+console.error = (...args) => {
+  const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  logStream.write(`[${new Date().toISOString()}] [ERROR] ${msg}\n`);
+  originalError(...args);
+};
+
+let PORT = 5888;
 
 const getJsonBody = (req) => new Promise((resolve) => {
   let body = '';
@@ -246,13 +265,29 @@ const startShutdownChecker = () => {
   }, 2000);
 };
 
-// Start the server
-server.listen(PORT, () => {
-  console.log(`[Server] Valor production server is running on http://localhost:${PORT}`);
-  
+// Start the server using the dynamic port finder
+let success = false;
+
+const attemptListen = () => {
+  if (success || PORT >= 6000) return;
+  server.listen({ port: PORT, host: '127.0.0.1' });
+};
+
+server.on('listening', () => {
+  success = true;
+  console.log(`[Server] Valor production server is running on http://127.0.0.1:${PORT}`);
+
+  // Write active port to active_port.txt
+  try {
+    const activePortFile = path.join(dataDir, 'active_port.txt');
+    fs.writeFileSync(activePortFile, String(PORT));
+  } catch (e) {
+    console.error('[Server] Failed to write active_port.txt:', e);
+  }
+
   const openUrl = resolvedFilePath 
-    ? `http://localhost:${PORT}?file=${encodeURIComponent(resolvedFilePath)}`
-    : `http://localhost:${PORT}`;
+    ? `http://127.0.0.1:${PORT}/?file=${encodeURIComponent(resolvedFilePath)}`
+    : `http://127.0.0.1:${PORT}/`;
     
   console.log(`[Server] Opening browser: ${openUrl}`);
   
@@ -266,3 +301,16 @@ server.listen(PORT, () => {
 
   startShutdownChecker();
 });
+
+server.on('error', (err) => {
+  if (!success && (err.code === 'EACCES' || err.code === 'EADDRINUSE')) {
+    console.log(`[Server] Port ${PORT} is unavailable (${err.code}). Trying next port...`);
+    PORT++;
+    attemptListen();
+  } else {
+    console.error('[Server Fatal Error]', err);
+    process.exit(1);
+  }
+});
+
+attemptListen();
