@@ -84,7 +84,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   });
 
-  const [, setVolumeToast] = useState<{ volume: number; visible: boolean; isMuted: boolean }>({ volume: 1, visible: false, isMuted: false });
+  const [volumeToast, setVolumeToast] = useState<{ volume: number; visible: boolean; isMuted: boolean }>({ volume: 1, visible: false, isMuted: false });
   const volumeToastTimeoutRef = useRef<any>(null);
 
   const triggerVolumeToast = (vol: number, muted: boolean) => {
@@ -438,12 +438,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       localStorage.removeItem('valor_volume');
     }
     if (videoRef.current) {
-      videoRef.current.volume = volume;
+      videoRef.current.volume = selectedAudioTrack ? 0 : volume;
     }
     if (audioRef.current) {
       audioRef.current.volume = volume;
     }
-  }, [volume, saveVolume]);
+  }, [volume, saveVolume, selectedAudioTrack]);
 
   useEffect(() => {
     if (saveVolume) {
@@ -452,12 +452,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       localStorage.removeItem('valor_muted');
     }
     if (videoRef.current) {
-      videoRef.current.muted = isMuted;
+      videoRef.current.muted = selectedAudioTrack ? true : isMuted;
     }
     if (audioRef.current) {
       audioRef.current.muted = isMuted;
     }
-  }, [isMuted, saveVolume]);
+  }, [isMuted, saveVolume, selectedAudioTrack]);
 
   // RequestAnimationFrame tick loop for micro-fine time updates (essential for subtitles)
   useEffect(() => {
@@ -1338,126 +1338,127 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     triggerSwitchToast(nextOpt.name);
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore key events if the user is typing in a text field
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
-        return;
-      }
+  const handleKeyDownRef = useRef<((e: KeyboardEvent) => void) | undefined>(undefined);
+  handleKeyDownRef.current = (e: KeyboardEvent) => {
+    // Ignore key events if the user is typing in a text field
+    if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+      return;
+    }
 
-      // Load keybind settings
-      const saved = localStorage.getItem('valor_settings');
-      const defaultKeybinds = {
-        playPause: ' ',
-        rewind: 'ArrowLeft',
-        forward: 'ArrowRight',
-        fullscreen: 'f',
-        exit: 'Escape',
-        nextSubtitle: 'b',
-        nextAudio: 'v',
-        lockControls: 'w'
-      };
-      const parsed = saved ? JSON.parse(saved) : {};
-      const keybinds = {
-        ...defaultKeybinds,
-        ...(parsed.keybinds || {})
-      };
-
-      const pressedKey = e.key.toLowerCase();
-      const lockControlsKey = (keybinds.lockControls || 'w').toLowerCase();
-      
-      if (pressedKey === lockControlsKey) {
-        e.preventDefault();
-        setIsLocked(prev => {
-          const next = !prev;
-          triggerSwitchToast(next ? `Controls Locked (${lockControlsKey.toUpperCase()})` : `Controls Unlocked (${lockControlsKey.toUpperCase()})`);
-          return next;
-        });
-        return;
-      }
-
-      if (isLocked) {
-        e.preventDefault();
-        return;
-      }
-      const playPauseKey = (keybinds.playPause || ' ').toLowerCase();
-      const rewindKey = (keybinds.rewind || 'arrowleft').toLowerCase();
-      const forwardKey = (keybinds.forward || 'arrowright').toLowerCase();
-      const fullscreenKey = (keybinds.fullscreen || 'f').toLowerCase();
-      const exitKey = (keybinds.exit || 'escape').toLowerCase();
-      const nextSubKey = (keybinds.nextSubtitle || 'b').toLowerCase();
-      const nextAudioKey = (keybinds.nextAudio || 'v').toLowerCase();
-
-
-
-      if (pressedKey === fullscreenKey) {
-        e.preventDefault();
-        if (containerRef.current) {
-          if (!document.fullscreenElement) {
-            containerRef.current.requestFullscreen().catch(console.error);
-          } else {
-            document.exitFullscreen().catch(console.error);
-          }
-        }
-      } else if (pressedKey === exitKey) {
-        e.preventDefault();
-        if (document.fullscreenElement) {
-          document.exitFullscreen()
-            .then(() => handleExit())
-            .catch(() => handleExit());
-        } else {
-          handleExit();
-        }
-      } else if (pressedKey === playPauseKey) {
-        e.preventDefault();
-        if (videoRef.current) {
-          if (videoRef.current.paused) {
-            videoRef.current.play().catch(console.error);
-            triggerHudFlash('play');
-          } else {
-            videoRef.current.pause();
-            triggerHudFlash('pause');
-          }
-        }
-      } else if (pressedKey === rewindKey) {
-        e.preventDefault();
-        if (videoRef.current) {
-          videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-          triggerHudFlash('rewind');
-        }
-      } else if (pressedKey === forwardKey) {
-        e.preventDefault();
-        if (videoRef.current) {
-          videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 10);
-          triggerHudFlash('forward');
-        }
-      } else if (pressedKey === nextSubKey) {
-        e.preventDefault();
-        cycleSubtitles();
-      } else if (pressedKey === nextAudioKey) {
-        e.preventDefault();
-        cycleAudio();
-      } else if (pressedKey === 'arrowup') {
-        e.preventDefault();
-        setIsMuted(false);
-        setVolume(prev => {
-          const nextVol = Math.min(1.0, prev + 0.05);
-          triggerVolumeToast(nextVol, false);
-          return nextVol;
-        });
-      } else if (pressedKey === 'arrowdown') {
-        e.preventDefault();
-        setIsMuted(false);
-        setVolume(prev => {
-          const nextVol = Math.max(0.0, prev - 0.05);
-          triggerVolumeToast(nextVol, false);
-          return nextVol;
-        });
-      }
+    // Load keybind settings
+    const saved = localStorage.getItem('valor_settings');
+    const defaultKeybinds = {
+      playPause: ' ',
+      rewind: 'ArrowLeft',
+      forward: 'ArrowRight',
+      fullscreen: 'f',
+      exit: 'Escape',
+      nextSubtitle: 'b',
+      nextAudio: 'v',
+      lockControls: 'w'
     };
+    const parsed = saved ? JSON.parse(saved) : {};
+    const keybinds = {
+      ...defaultKeybinds,
+      ...(parsed.keybinds || {})
+    };
+
+    const pressedKey = e.key.toLowerCase();
+    const lockControlsKey = (keybinds.lockControls || 'w').toLowerCase();
+    
+    if (pressedKey === lockControlsKey) {
+      e.preventDefault();
+      setIsLocked(prev => {
+        const next = !prev;
+        triggerSwitchToast(next ? `Controls Locked (${lockControlsKey.toUpperCase()})` : `Controls Unlocked (${lockControlsKey.toUpperCase()})`);
+        return next;
+      });
+      return;
+    }
+
+    if (isLocked) {
+      e.preventDefault();
+      return;
+    }
+    const playPauseKey = (keybinds.playPause || ' ').toLowerCase();
+    const rewindKey = (keybinds.rewind || 'arrowleft').toLowerCase();
+    const forwardKey = (keybinds.forward || 'arrowright').toLowerCase();
+    const fullscreenKey = (keybinds.fullscreen || 'f').toLowerCase();
+    const exitKey = (keybinds.exit || 'escape').toLowerCase();
+    const nextSubKey = (keybinds.nextSubtitle || 'b').toLowerCase();
+    const nextAudioKey = (keybinds.nextAudio || 'v').toLowerCase();
+
+    if (pressedKey === fullscreenKey) {
+      e.preventDefault();
+      if (containerRef.current) {
+        if (!document.fullscreenElement) {
+          containerRef.current.requestFullscreen().catch(console.error);
+        } else {
+          document.exitFullscreen().catch(console.error);
+        }
+      }
+    } else if (pressedKey === exitKey) {
+      e.preventDefault();
+      if (document.fullscreenElement) {
+        document.exitFullscreen()
+          .then(() => handleExit())
+          .catch(() => handleExit());
+      } else {
+        handleExit();
+      }
+    } else if (pressedKey === playPauseKey) {
+      e.preventDefault();
+      if (videoRef.current) {
+        if (videoRef.current.paused) {
+          videoRef.current.play().catch(console.error);
+          triggerHudFlash('play');
+        } else {
+          videoRef.current.pause();
+          triggerHudFlash('pause');
+        }
+      }
+    } else if (pressedKey === rewindKey) {
+      e.preventDefault();
+      if (videoRef.current) {
+        videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+        triggerHudFlash('rewind');
+      }
+    } else if (pressedKey === forwardKey) {
+      e.preventDefault();
+      if (videoRef.current) {
+        videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 10);
+        triggerHudFlash('forward');
+      }
+    } else if (pressedKey === nextSubKey) {
+      e.preventDefault();
+      cycleSubtitles();
+    } else if (pressedKey === nextAudioKey) {
+      e.preventDefault();
+      cycleAudio();
+    } else if (pressedKey === 'arrowup') {
+      e.preventDefault();
+      setIsMuted(false);
+      setVolume(prev => {
+        const nextVol = Math.min(1.0, prev + 0.05);
+        triggerVolumeToast(nextVol, false);
+        return nextVol;
+      });
+    } else if (pressedKey === 'arrowdown') {
+      e.preventDefault();
+      setIsMuted(false);
+      setVolume(prev => {
+        const nextVol = Math.max(0.0, prev - 0.05);
+        triggerVolumeToast(nextVol, false);
+        return nextVol;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => handleKeyDownRef.current?.(e);
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleExit, triggerHudFlash, subtitleStreams, subtitleTracks, audioStreams, audioTracks, selectedSubTrack, selectedAudioTrack, isMuted]);
+  }, []);
 
   // Reset seek state when video url changes
   useEffect(() => {
@@ -2206,7 +2207,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-
+      {/* Volume Toast Overlay */}
+      <div className={`volume-toast-overlay ${volumeToast.visible ? 'visible' : ''}`}>
+        <div className="volume-toast-content-vertical">
+          <div className="volume-toast-bar-vertical">
+            <div className="volume-toast-bar-fill-vertical" style={{ height: `${volumeToast.volume * 100}%` }}>
+              {volumeToast.volume > 0 && <div className="volume-toast-bar-cap-vertical" />}
+            </div>
+          </div>
+          <span className="volume-toast-text-vertical">
+            {volumeToast.isMuted ? 'MUTE' : Math.round(volumeToast.volume * 100)}
+          </span>
+        </div>
+      </div>
 
       {playbackError && (
         <div className="playback-error-overlay" onClick={(e) => e.stopPropagation()}>
@@ -3407,64 +3420,69 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             max-width: 70%;
           }
           .volume-toast-overlay {
-            bottom: 90px !important;
-            left: 20px !important;
+            top: 25px !important;
+            left: 25px !important;
+            bottom: auto !important;
           }
         }
 
-        /* Volume Toast HUD */
+        /* Volume Toast HUD (Vertical Metro Style) */
         .volume-toast-overlay {
           position: absolute;
-          bottom: 120px;
+          top: 40px;
           left: 40px;
           z-index: 600;
           opacity: 0;
-          transform: translateX(-20px);
-          transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
           pointer-events: none;
+          transition: opacity 0.2s ease, transform 0.2s ease;
+          transform: translateY(-10px);
         }
         .volume-toast-overlay.visible {
           opacity: 1;
-          transform: translateX(0);
+          transform: translateY(0);
         }
-        .volume-toast-content {
+        .volume-toast-content-vertical {
+          background: #141414;
+          width: 50px;
+          height: 180px;
+          border-radius: 2px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
           display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 10px;
-          background: rgba(18, 18, 18, 0.85);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(229, 9, 20, 0.3);
-          box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
-          padding: 0.6rem 1.2rem;
-          border-radius: 8px;
-          color: white;
+          justify-content: space-between;
+          padding: 18px 0 12px 0;
+          box-sizing: border-box;
         }
-        .volume-toast-icon {
-          font-size: 1.1rem;
-          display: flex;
-          align-items: center;
-        }
-        .volume-toast-bar-container {
-          width: 100px;
-          height: 6px;
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 3px;
-          overflow: hidden;
+        .volume-toast-bar-vertical {
+          width: 12px;
+          height: 120px;
+          background: rgba(255, 255, 255, 0.15);
           position: relative;
+          margin: 0 auto;
         }
-        .volume-toast-bar-fill {
-          height: 100%;
-          background: #e50914; /* Netflix Red */
-          box-shadow: 0 0 8px rgba(229, 9, 20, 0.8);
-          border-radius: 3px;
-          transition: width 0.1s ease;
+        .volume-toast-bar-fill-vertical {
+          width: 100%;
+          background: #0078d4; /* Metro Blue */
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          transition: height 0.1s ease;
         }
-        .volume-toast-text {
+        .volume-toast-bar-cap-vertical {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 6px;
+          background: #ffffff; /* White handle cap */
+        }
+        .volume-toast-text-vertical {
+          font-family: inherit;
           font-size: 0.85rem;
           font-weight: 700;
-          min-width: 38px;
-          text-align: right;
+          text-align: center;
           color: rgba(255, 255, 255, 0.95);
         }
         .control-btn-volume:hover {
