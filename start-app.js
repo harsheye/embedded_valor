@@ -19,6 +19,7 @@ const args = process.argv.slice(1).filter(arg => {
 const playWithVlc = args.includes('--vlc');
 const backendOnly = args.includes('--backend-only');
 const frontendOnly = args.includes('--frontend-only');
+const trayMode = args.includes('--tray');
 const filePath = args.find(arg => arg !== '--vlc' && !arg.startsWith('--'));
 const resolvedFilePath = filePath ? path.resolve(filePath) : null;
 
@@ -88,6 +89,7 @@ const getJsonBody = (req) => new Promise((resolve) => {
 let lastHeartbeat = Date.now();
 let hasReceivedFirstHeartbeat = false;
 let activeConnections = 0;
+let pendingPlayFile = null;
 
 // 1. Backend API Server (Port 50001)
 const backendServer = http.createServer((req, res) => {
@@ -113,29 +115,45 @@ const backendServer = http.createServer((req, res) => {
     hasReceivedFirstHeartbeat = true;
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ status: 'ok' }));
+    
+    const responseData = { status: 'ok' };
+    if (pendingPlayFile) {
+      responseData.playFile = pendingPlayFile;
+      pendingPlayFile = null;
+    }
+    
+    res.end(JSON.stringify(responseData));
     return;
   }
 
   // Play command forward receiver
   if (pathname === '/api/play') {
     const file = parsedUrl.searchParams.get('file');
-    const openUrl = file 
-      ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(file)}`
-      : `http://127.0.0.1:${PORT_SERVICE}/`;
-      
-    console.log(`[Server] Received external play command. Opening browser: ${openUrl}`);
-    if (process.platform === 'win32') {
-      spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
-    } else if (process.platform === 'darwin') {
-      spawn('open', [openUrl], { detached: true }).unref();
+    
+    // Check if there is an active tab (heartbeat received within last 6 seconds)
+    const hasActiveTab = hasReceivedFirstHeartbeat && (Date.now() - lastHeartbeat < 6000);
+    
+    if (hasActiveTab && file) {
+      console.log(`[Server] Active tab detected. Queueing file for playback: ${file}`);
+      pendingPlayFile = file;
     } else {
-      spawn('xdg-open', [openUrl], { detached: true }).unref();
+      const openUrl = file 
+        ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(file)}`
+        : `http://127.0.0.1:${PORT_SERVICE}/`;
+        
+      console.log(`[Server] No active tab. Opening browser: ${openUrl}`);
+      if (process.platform === 'win32') {
+        spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
+      } else if (process.platform === 'darwin') {
+        spawn('open', [openUrl], { detached: true }).unref();
+      } else {
+        spawn('xdg-open', [openUrl], { detached: true }).unref();
+      }
     }
     
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ success: true }));
+    res.end(JSON.stringify({ success: true, tabReused: hasActiveTab }));
     return;
   }
 
@@ -283,6 +301,10 @@ const backendServer = http.createServer((req, res) => {
 
 // Auto-shutdown if no active tabs (1-minute grace period under all conditions)
 const startShutdownChecker = (viteServer) => {
+  if (trayMode) {
+    console.log('[Server] Running in tray mode. Auto-shutdown checker disabled.');
+    return;
+  }
   setInterval(() => {
     if (activeConnections > 0) {
       lastHeartbeat = Date.now();

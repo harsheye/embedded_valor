@@ -26,14 +26,13 @@ namespace ValorTray
             mutex = new Mutex(true, "Global\\ValorPlayerMutex", out createdNew);
 
             string fileArg = "";
-            bool playWithVlc = false;
 
             // Parse arguments
             foreach (string arg in args)
             {
                 if (arg.Equals("--vlc", StringComparison.OrdinalIgnoreCase))
                 {
-                    playWithVlc = true;
+                    // Handled directly by start-app.exe
                 }
                 else if (!arg.StartsWith("-"))
                 {
@@ -63,29 +62,8 @@ namespace ValorTray
                 {
                     return;
                 }
-                // Server is dead. Start a new server process and open browser, then exit.
+                // Server is dead. Start a new server process and exit.
                 StartServer(args);
-                string newPort = ServerPort;
-                string newPortPath = Path.Combine(appDir, ".valor_data", "active_port.txt");
-                try { if (File.Exists(newPortPath)) File.Delete(newPortPath); } catch {}
-                for (int i = 0; i < 50; i++)
-                {
-                    Thread.Sleep(100);
-                    try
-                    {
-                        if (File.Exists(newPortPath))
-                        {
-                            string p = File.ReadAllText(newPortPath).Trim();
-                            if (!string.IsNullOrEmpty(p))
-                            {
-                                newPort = p;
-                                break;
-                            }
-                        }
-                    }
-                    catch {}
-                }
-                OpenBrowser(fileArg, playWithVlc, newPort);
                 return;
             }
 
@@ -143,30 +121,7 @@ namespace ValorTray
             // Start Node server in the background
             StartServer(args);
 
-            // Poll active_port.txt for up to 5 seconds to wait for port binding
-            string freshPort = ServerPort;
-            string freshPortPath = Path.Combine(appDir, ".valor_data", "active_port.txt");
-            try { if (File.Exists(freshPortPath)) File.Delete(freshPortPath); } catch {}
-            for (int i = 0; i < 50; i++)
-            {
-                Thread.Sleep(100);
-                try
-                {
-                    if (File.Exists(freshPortPath))
-                    {
-                        string p = File.ReadAllText(freshPortPath).Trim();
-                        if (!string.IsNullOrEmpty(p))
-                        {
-                            freshPort = p;
-                            break;
-                        }
-                    }
-                }
-                catch {}
-            }
-
-            // Open initial browser
-            OpenBrowser(fileArg, playWithVlc, freshPort);
+            // Browser launching on startup is handled by the server (start-app.exe) to prevent double tabs
 
             // Run the message loop
             Application.Run();
@@ -207,7 +162,15 @@ namespace ValorTray
 
             ProcessStartInfo startInfo = new ProcessStartInfo();
             startInfo.FileName = exePath;
-            startInfo.Arguments = string.Join(" ", args);
+            
+            // Append --tray argument
+            System.Collections.Generic.List<string> serverArgs = new System.Collections.Generic.List<string>(args);
+            if (!serverArgs.Contains("--tray"))
+            {
+                serverArgs.Add("--tray");
+            }
+            startInfo.Arguments = string.Join(" ", serverArgs.ToArray());
+
             startInfo.CreateNoWindow = true;
             startInfo.UseShellExecute = false;
             startInfo.WindowStyle = ProcessWindowStyle.Hidden;

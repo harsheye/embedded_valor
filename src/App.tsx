@@ -139,10 +139,24 @@ function App() {
   const [processingStep, setProcessingStep] = useState('');
   
 
-  // Heartbeat to keep the server alive while the app is active
+  // Heartbeat to keep the server alive while the app is active and receive commands
   useEffect(() => {
-    const ping = () => {
-      fetch(`${BACKEND_ORIGIN}/api/heartbeat`, { method: 'POST' }).catch(() => {});
+    const ping = async () => {
+      try {
+        const res = await fetch(`${BACKEND_ORIGIN}/api/heartbeat`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.playFile) {
+            const localStreamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(data.playFile)}`;
+            processRemoteUrl(localStreamUrl, true);
+            // Update URL query parameters without reloading the page
+            const newUrl = `${window.location.pathname}?file=${encodeURIComponent(data.playFile)}`;
+            window.history.replaceState({}, '', newUrl);
+          }
+        }
+      } catch (err) {
+        // ignore fetch/parse errors
+      }
     };
     ping();
     const interval = setInterval(ping, 2500);
