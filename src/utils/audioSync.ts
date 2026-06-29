@@ -155,17 +155,21 @@ export class AudioSyncEngine {
       }
       if (this.pendingPlay) {
         this.pendingPlay = false;
-        this.audio.play().catch((err) => {
-          if (err && err.name !== 'AbortError') {
-            console.error(err);
-          }
-        });
+        this.playAudio();
       }
     }
   };
 
   private syncAudioTime(targetTime: number) {
     if (!this.isSyncingEnabled) return;
+
+    // Guard: If the video is playing/positioned before the start of this audio chunk, pause and keep audio at 0
+    const vTime = this.video.currentTime;
+    if (vTime < this.audioStartOffset - 0.5) {
+      targetTime = 0;
+      this.audio.pause();
+    }
+
     if (this.audio.readyState >= 1) {
       this.pendingSeekTime = null;
       this.audio.currentTime = targetTime;
@@ -176,6 +180,11 @@ export class AudioSyncEngine {
 
   private playAudio() {
     if (!this.isSyncingEnabled) return;
+    // Guard: If the video is playing/positioned before the start of this audio chunk, keep audio paused
+    if (this.video.currentTime < this.audioStartOffset - 0.5) {
+      this.audio.pause();
+      return;
+    }
     if (this.isSeeking || this.video.seeking) return; // Don't play if seeking
     if (this.audio.readyState >= 1) {
       this.pendingPlay = false;
@@ -193,6 +202,19 @@ export class AudioSyncEngine {
   private startSyncLoop() {
     this.stopSyncLoop();
     this.intervalId = setInterval(() => {
+      const vTime = this.video.currentTime;
+
+      // Guard: If the video is playing/positioned before the start of this audio chunk, pause audio and return
+      if (vTime < this.audioStartOffset - 0.5) {
+        if (!this.audio.paused) {
+          this.audio.pause();
+        }
+        if (this.audio.currentTime !== 0) {
+          this.audio.currentTime = 0;
+        }
+        return;
+      }
+
       if (
         this.isSeeking || 
         !this.isSyncingEnabled || 
@@ -205,7 +227,6 @@ export class AudioSyncEngine {
         return;
       }
 
-      const vTime = this.video.currentTime;
       const aTime = this.audio.currentTime;
       const drift = vTime - (aTime + this.audioStartOffset);
       const absDrift = Math.abs(drift);
