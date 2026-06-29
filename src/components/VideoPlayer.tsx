@@ -570,12 +570,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       localStorage.removeItem('valor_muted');
     }
     if (videoRef.current) {
-      videoRef.current.muted = (selectedAudioTrack && selectedAudioTrack.url) ? true : isMuted;
+      videoRef.current.muted = (selectedAudioTrack || activeAudioStreamIndex !== null) ? true : isMuted;
     }
     if (audioRef.current) {
       audioRef.current.muted = isMuted;
     }
-  }, [isMuted, saveVolume, selectedAudioTrack]);
+  }, [isMuted, saveVolume, selectedAudioTrack, activeAudioStreamIndex]);
 
   // RequestAnimationFrame tick loop for micro-fine time updates (essential for subtitles)
   useEffect(() => {
@@ -1985,13 +1985,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       />
 
       {/* Hidden Secondary Audio Tag for sync tracks */}
-      {selectedAudioTrack && (
-        <audio 
-          ref={audioRef} 
-          src={selectedAudioTrack.url}
-          style={{ display: 'none' }}
-        />
-      )}
+      <audio 
+        ref={audioRef} 
+        src={selectedAudioTrack?.url || ''}
+        style={{ display: 'none' }}
+      />
       {false && activeSubtitleStartOffset}
 
       {/* Subtitles Overlay */}
