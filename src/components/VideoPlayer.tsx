@@ -3281,10 +3281,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         .drawer-content {
           flex: 1;
           overflow-y: auto;
-          padding: 1rem;
+          padding: 1.5rem 1rem;
           display: flex;
           flex-direction: column;
-          gap: 1.5rem;
+          justify-content: center;
+          min-height: 0;
         }
         .drawer-section {
           display: flex;

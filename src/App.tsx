@@ -2645,14 +2645,9 @@ function App() {
         /* Main Scrollable Content Area */
         .main-content {
           flex: 1;
-          padding-top: 1.5rem;
-          padding-bottom: 2rem;
+          padding-top: 2rem;
+          padding-bottom: 3rem;
           box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          min-height: 0;
         }
 
         /* Continue Watching Banner Card */
@@ -2713,7 +2708,6 @@ function App() {
         }
         .workspace-panel-wrapper {
           width: 100%;
-          margin: auto 0;
         }
         .workspace-panel {
           padding: clamp(1.25rem, 4vw, 2.5rem);
@@ -2722,8 +2716,8 @@ function App() {
           width: 100%;
         }
         .workspace-panel.settings-panel {
-          height: 80vh;
-          max-height: 80vh;
+          height: calc(100vh - 120px);
+          max-height: calc(100vh - 120px);
           display: flex;
           flex-direction: column;
           overflow: hidden;
