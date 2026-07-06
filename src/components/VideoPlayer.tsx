@@ -140,7 +140,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const [hoveredSetting, setHoveredSetting] = useState<string | null>(null);
 
-  const [playerSettings, setPlayerSettings] = useState({
+  interface PlayerSettings {
+    hideUIOverlays: boolean | 'enable' | 'hide' | 'disable';
+    hideVideoName: boolean | 'enable' | 'hide' | 'disable';
+    showPlayButton: boolean | 'enable' | 'hide' | 'disable';
+    showTimeDisplay: boolean | 'enable' | 'hide' | 'disable';
+    showPlayBar: boolean | 'enable' | 'hide' | 'disable';
+    showVolumeControl: boolean | 'enable' | 'hide' | 'disable';
+    showFullscreen: boolean | 'enable' | 'hide' | 'disable';
+    allowUiSkipping: boolean;
+    blockSeekingCompletely: boolean;
+    autoSkipIntroOutro: boolean;
+    lockModeActive: boolean;
+    disableAnimations: boolean;
+    pauseOnFocusChange: boolean;
+  }
+
+  const [playerSettings, setPlayerSettings] = useState<PlayerSettings>({
     hideUIOverlays: !!propHideUIOverlays,
     hideVideoName: !!propHideVideoName,
     showPlayButton: propShowPlayButton !== false,
@@ -157,24 +173,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   });
 
   useEffect(() => {
-    setPlayerSettings({
-      hideUIOverlays: !!propHideUIOverlays,
-      hideVideoName: !!propHideVideoName,
-      showPlayButton: propShowPlayButton !== false,
-      showTimeDisplay: propShowTimeDisplay !== false,
-      showPlayBar: propShowPlayBar !== false,
-      showVolumeControl: propShowVolumeControl !== false,
-      showFullscreen: propShowFullscreen !== false,
+    // If settings already exist in state, don't overwrite with raw boolean props
+    setPlayerSettings(prev => ({
+      hideUIOverlays: prev.hideUIOverlays !== undefined ? prev.hideUIOverlays : !!propHideUIOverlays,
+      hideVideoName: prev.hideVideoName !== undefined ? prev.hideVideoName : !!propHideVideoName,
+      showPlayButton: prev.showPlayButton !== undefined ? prev.showPlayButton : (propShowPlayButton !== false),
+      showTimeDisplay: prev.showTimeDisplay !== undefined ? prev.showTimeDisplay : (propShowTimeDisplay !== false),
+      showPlayBar: prev.showPlayBar !== undefined ? prev.showPlayBar : (propShowPlayBar !== false),
+      showVolumeControl: prev.showVolumeControl !== undefined ? prev.showVolumeControl : (propShowVolumeControl !== false),
+      showFullscreen: prev.showFullscreen !== undefined ? prev.showFullscreen : (propShowFullscreen !== false),
       allowUiSkipping: allowUiSkipping !== false,
       blockSeekingCompletely: !!blockSeekingCompletely,
       autoSkipIntroOutro: autoSkipIntroOutro !== false,
       lockModeActive: !!propLockModeActive,
       disableAnimations: !!disableAnimations,
       pauseOnFocusChange: !!pauseOnFocusChange
-    });
+    }));
   }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen, allowUiSkipping, blockSeekingCompletely, autoSkipIntroOutro, propLockModeActive, disableAnimations, pauseOnFocusChange]);
 
-  const updatePlayerSetting = (key: keyof typeof playerSettings, value: boolean) => {
+  const updatePlayerSetting = (key: keyof typeof playerSettings, value: any) => {
     setPlayerSettings(prev => {
       const next = { ...prev, [key]: value };
       
@@ -196,14 +213,129 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     autoSkipIntroOutro: playerSettings.autoSkipIntroOutro
   };
 
-  // Shadow props with reactive state values for settings
-  const hideUIOverlays = playerSettings.hideUIOverlays;
-  const hideVideoName = playerSettings.hideVideoName;
-  const showPlayButton = playerSettings.showPlayButton;
-  const showTimeDisplay = playerSettings.showTimeDisplay;
-  const showPlayBar = playerSettings.showPlayBar;
-  const showVolumeControl = playerSettings.showVolumeControl;
-  const showFullscreen = playerSettings.showFullscreen;
+  // Helper to determine mode (enable, hide, disable)
+  const getSettingMode = (value: any): 'enable' | 'hide' | 'disable' => {
+    if (value === 'disable') return 'disable';
+    if (value === false || value === 'hide') return 'hide';
+    if (value === true || value === 'enable') return 'enable';
+    return 'enable';
+  };
+
+  const showUIOverlaysMode = getSettingMode(playerSettings.hideUIOverlays === true ? 'hide' : playerSettings.hideUIOverlays);
+  const showVideoNameMode = getSettingMode(playerSettings.hideVideoName === true ? 'hide' : playerSettings.hideVideoName);
+  const showPlayButtonMode = getSettingMode(playerSettings.showPlayButton);
+  const showTimeDisplayMode = getSettingMode(playerSettings.showTimeDisplay);
+  const showPlayBarMode = getSettingMode(playerSettings.showPlayBar);
+  const showVolumeControlMode = getSettingMode(playerSettings.showVolumeControl);
+  const showFullscreenMode = getSettingMode(playerSettings.showFullscreen);
+
+  // Shadow props with reactive state values for settings (booleans for rendering)
+  const hideUIOverlays = showUIOverlaysMode !== 'enable' && hoveredSetting !== 'hideUIOverlays';
+  const hideVideoName = showVideoNameMode !== 'enable' && hoveredSetting !== 'hideVideoName';
+  const showPlayButton = showPlayButtonMode === 'enable' || hoveredSetting === 'showPlayButton';
+  const showTimeDisplay = showTimeDisplayMode === 'enable' || hoveredSetting === 'showTimeDisplay';
+  const showPlayBar = showPlayBarMode === 'enable' || hoveredSetting === 'showPlayBar';
+  const showVolumeControl = showVolumeControlMode === 'enable' || hoveredSetting === 'showVolumeControl';
+  const showFullscreen = showFullscreenMode === 'enable' || hoveredSetting === 'showFullscreen';
+
+  const getHighlightClass = (key: string): string => {
+    if (hoveredSetting !== key) return '';
+
+    // Check if the setting is a 3-mode setting
+    if (
+      key === 'showUIOverlays' ||
+      key === 'showVideoName' ||
+      key === 'showPlayButton' ||
+      key === 'showTimeDisplay' ||
+      key === 'showPlayBar' ||
+      key === 'showVolumeControl' ||
+      key === 'showFullscreen'
+    ) {
+      let stateVal = (playerSettings as any)[key];
+      // Normalize stateVal for negative keys:
+      if (key === 'showUIOverlays') {
+        stateVal = playerSettings.hideUIOverlays === true ? 'hide' : (playerSettings.hideUIOverlays === 'disable' ? 'disable' : 'enable');
+      } else if (key === 'showVideoName') {
+        stateVal = playerSettings.hideVideoName === true ? 'hide' : (playerSettings.hideVideoName === 'disable' ? 'disable' : 'enable');
+      }
+      
+      const mode = getSettingMode(stateVal);
+      if (mode === 'hide') return 'highlight-active-orange';
+      if (mode === 'disable') return 'highlight-active-red';
+      return 'highlight-active-blue';
+    }
+
+    // Standard boolean toggles:
+    if (key === 'blockSeekingCompletely' || key === 'disableAnimations' || key === 'pauseOnFocusChange') {
+      const val = (playerSettings as any)[key];
+      return val ? 'highlight-active-red' : 'highlight-active-blue';
+    }
+
+    // Positive options
+    if (key === 'allowUiSkipping' || key === 'autoSkipIntroOutro' || key === 'lockModeActive') {
+      const val = (playerSettings as any)[key];
+      return val ? 'highlight-active-blue' : 'highlight-active-red';
+    }
+
+    return 'highlight-active-blue';
+  };
+
+  const cycleSetting = (key: keyof typeof playerSettings) => {
+    setPlayerSettings(prev => {
+      const val = prev[key];
+      let nextVal: any;
+      if (key === 'hideUIOverlays' || key === 'hideVideoName') {
+        // Negative key names:
+        // false ('enable') -> true ('hide') -> 'disable' -> false ('enable')
+        if (val === false || val === 'enable') {
+          nextVal = true; // hide
+        } else if (val === true || val === 'hide') {
+          nextVal = 'disable';
+        } else {
+          nextVal = false; // enable
+        }
+      } else {
+        // Positive key names:
+        // true ('enable') -> false ('hide') -> 'disable' -> true ('enable')
+        if (val === true || val === 'enable') {
+          nextVal = false; // hide
+        } else if (val === false || val === 'hide') {
+          nextVal = 'disable';
+        } else {
+          nextVal = true; // enable
+        }
+      }
+      const next = { ...prev, [key]: nextVal };
+      if (onUpdateSettings) {
+        onUpdateSettings(next);
+      }
+      return next;
+    });
+  };
+
+  const getToggleBtnClass = (key: keyof typeof playerSettings): string => {
+    const val = playerSettings[key];
+    if (key === 'hideUIOverlays' || key === 'hideVideoName') {
+      if (val === false || val === 'enable') return 'settings-icon-toggle active-blue';
+      if (val === true || val === 'hide') return 'settings-icon-toggle active-orange';
+      return 'settings-icon-toggle active-red';
+    } else {
+      if (val === true || val === 'enable') return 'settings-icon-toggle active-blue';
+      if (val === false || val === 'hide') return 'settings-icon-toggle active-orange';
+      return 'settings-icon-toggle active-red';
+    }
+  };
+
+  const getSettingLabelSuffix = (key: keyof typeof playerSettings): string => {
+    const val = playerSettings[key];
+    let mode: string;
+    if (key === 'hideUIOverlays' || key === 'hideVideoName') {
+      mode = (val === false || val === 'enable') ? 'Enable' : (val === true || val === 'hide') ? 'Hide' : 'Disable';
+    } else {
+      mode = (val === true || val === 'enable') ? 'Enable' : (val === false || val === 'hide') ? 'Hide' : 'Disable';
+    }
+    return ` (Current: ${mode})`;
+  };
 
   // Series Bookmarks Preset Syncing
   useEffect(() => {
@@ -1820,6 +1952,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (pressedKey === fullscreenKey) {
       e.preventDefault();
+      if (showFullscreenMode === 'disable') {
+        triggerSwitchToast('Fullscreen hotkey is disabled');
+        return;
+      }
       if (containerRef.current) {
         if (!document.fullscreenElement) {
           containerRef.current.requestFullscreen().catch(console.error);
@@ -1838,6 +1974,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     } else if (pressedKey === playPauseKey) {
       e.preventDefault();
+      if (showPlayButtonMode === 'disable') {
+        triggerSwitchToast('Playback hotkeys are disabled');
+        return;
+      }
       if (videoRef.current) {
         if (videoRef.current.paused) {
           videoRef.current.play().catch(console.error);
@@ -1849,6 +1989,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     } else if (pressedKey === rewindKey) {
       e.preventDefault();
+      if (showPlayBarMode === 'disable') {
+        triggerSwitchToast('Seeking hotkeys are disabled');
+        return;
+      }
       if (uiConfig.blockSeekingCompletely) {
         triggerSwitchToast('Seeking is blocked');
         return;
@@ -1859,6 +2003,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     } else if (pressedKey === forwardKey) {
       e.preventDefault();
+      if (showPlayBarMode === 'disable') {
+        triggerSwitchToast('Seeking hotkeys are disabled');
+        return;
+      }
       if (uiConfig.blockSeekingCompletely) {
         triggerSwitchToast('Seeking is blocked');
         return;
@@ -1875,6 +2023,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       cycleAudio();
     } else if (pressedKey === toggleMuteKey) {
       e.preventDefault();
+      if (showVolumeControlMode === 'disable') {
+        triggerSwitchToast('Volume hotkeys are disabled');
+        return;
+      }
       setIsMuted(prev => {
         const nextMuted = !prev;
         triggerVolumeToast(volume, nextMuted);
@@ -1900,6 +2052,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     } else if (pressedKey === 'arrowup') {
       e.preventDefault();
+      if (showVolumeControlMode === 'disable') {
+        triggerSwitchToast('Volume hotkeys are disabled');
+        return;
+      }
       setIsMuted(false);
       setVolume(prev => {
         const nextVol = Math.min(1.0, prev + 0.05);
@@ -1908,6 +2064,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       });
     } else if (pressedKey === 'arrowdown') {
       e.preventDefault();
+      if (showVolumeControlMode === 'disable') {
+        triggerSwitchToast('Volume hotkeys are disabled');
+        return;
+      }
       setIsMuted(false);
       setVolume(prev => {
         const nextVol = Math.max(0.0, prev - 0.05);
@@ -2396,10 +2556,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Top Header Overlay */}
-      {!hideUIOverlays && (
+      {(!hideUIOverlays || hoveredSetting === 'showUIOverlays') && (
         <div 
-          className={`player-overlay top-overlay-clean ${controlsVisible ? 'visible' : 'hidden'} ${hoveredSetting === 'hideUIOverlays' ? 'highlight-active' : ''}`} 
+          className={`player-overlay top-overlay-clean ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showUIOverlays')}`} 
           onClick={(e) => e.stopPropagation()}
+          style={{
+            opacity: showUIOverlaysMode === 'enable' ? 1 : 0.5,
+            pointerEvents: showUIOverlaysMode === 'enable' ? 'auto' : 'none'
+          }}
         >
           {/* Chromecast trigger (acting as native browser cast prompt) */}
           <button className="cast-btn" onClick={handleCast} title="Chromecast">
@@ -2407,10 +2571,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </button>
           
           {/* Centered video title & Playback mode badge */}
-          {(!hideVideoName || video.isRemote) && (
-            <div className={`top-title-container ${hoveredSetting === 'hideVideoName' ? 'highlight-active' : ''}`}>
-              {!hideVideoName && video.playbackMode !== 'native' && (
-                <h2 className="top-title-clean" style={{ marginBottom: '0.2rem' }}>{video.title}</h2>
+          {(!hideVideoName || video.isRemote || hoveredSetting === 'showVideoName') && (
+            <div className={`top-title-container ${getHighlightClass('showVideoName')}`}>
+              {(showVideoNameMode === 'enable' || hoveredSetting === 'showVideoName') && video.playbackMode !== 'native' && (
+                <h2 
+                  className="top-title-clean" 
+                  style={{ 
+                    marginBottom: '0.2rem',
+                    opacity: showVideoNameMode === 'enable' ? 1 : 0.5
+                  }}
+                >
+                  {video.title}
+                </h2>
               )}
               <div style={{
                 fontSize: '0.78rem',
@@ -2464,16 +2636,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Center Screen HUD Controls */}
-      {!hideUIOverlays && showPlayButton && (
+      {!hideUIOverlays && (showPlayButton || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') && (
         <div 
-          className={`center-controls-hud ${controlsVisible ? 'visible' : 'hidden'} ${hoveredSetting === 'showPlayButton' ? 'highlight-active' : ''}`} 
+          className={`center-controls-hud ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showPlayButton')}`} 
           onClick={(e) => {
             e.stopPropagation();
-            togglePlay();
+            if (showPlayButtonMode === 'enable') togglePlay();
+          }}
+          style={{
+            opacity: showPlayButtonMode === 'enable' ? 1 : 0.5,
+            pointerEvents: showPlayButtonMode === 'enable' ? 'auto' : 'none'
           }}
         >
-          {uiConfig.allowUiSkipping && (
-            <button className={`hud-btn-clean ${hoveredSetting === 'allowUiSkipping' ? 'highlight-active' : ''}`} onClick={(e) => { e.stopPropagation(); if (uiConfig.blockSeekingCompletely) return; handleRewind(); }} title="Rewind 10s">
+          {(uiConfig.allowUiSkipping || hoveredSetting === 'allowUiSkipping') && (
+            <button 
+              className={`hud-btn-clean ${getHighlightClass('allowUiSkipping')}`} 
+              onClick={(e) => { e.stopPropagation(); if (uiConfig.blockSeekingCompletely) return; handleRewind(); }} 
+              title="Rewind 10s"
+              style={{
+                opacity: uiConfig.allowUiSkipping ? 1 : 0.5,
+                pointerEvents: uiConfig.allowUiSkipping ? 'auto' : 'none'
+              }}
+            >
               <div className="seek-hud-container">
                 <RotateCcw size={64} strokeWidth={1.2} />
                 <span className="seek-hud-text">10</span>
@@ -2481,12 +2665,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </button>
           )}
           
-          <button className="hud-btn-clean play-pause-hud-clean" onClick={(e) => { e.stopPropagation(); togglePlay(); }} title={isPlaying ? "Pause" : "Play"}>
+          <button 
+            className={`hud-btn-clean play-pause-hud-clean ${getHighlightClass('showPlayButton')}`} 
+            onClick={(e) => { e.stopPropagation(); togglePlay(); }} 
+            title={isPlaying ? "Pause" : "Play"}
+            style={{
+              opacity: showPlayButtonMode === 'enable' ? 1 : 0.5,
+              pointerEvents: showPlayButtonMode === 'enable' ? 'auto' : 'none'
+            }}
+          >
             {isPlaying ? <Pause size={72} strokeWidth={1.2} /> : <Play size={72} strokeWidth={1.2} style={{ marginLeft: '6px' }} />}
           </button>
           
-          {uiConfig.allowUiSkipping && (
-            <button className={`hud-btn-clean ${hoveredSetting === 'allowUiSkipping' ? 'highlight-active' : ''}`} onClick={(e) => { e.stopPropagation(); if (uiConfig.blockSeekingCompletely) return; handleForward(); }} title="Forward 10s">
+          {(uiConfig.allowUiSkipping || hoveredSetting === 'allowUiSkipping') && (
+            <button 
+              className={`hud-btn-clean ${getHighlightClass('allowUiSkipping')}`} 
+              onClick={(e) => { e.stopPropagation(); if (uiConfig.blockSeekingCompletely) return; handleForward(); }} 
+              title="Forward 10s"
+              style={{
+                opacity: uiConfig.allowUiSkipping ? 1 : 0.5,
+                pointerEvents: uiConfig.allowUiSkipping ? 'auto' : 'none'
+              }}
+            >
               <div className="seek-hud-container">
                 <RotateCw size={64} strokeWidth={1.2} />
                 <span className="seek-hud-text">10</span>
@@ -2534,17 +2734,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Bottom Controls Overlay */}
-      {!hideUIOverlays && (showPlayBar || showTimeDisplay || showVolumeControl || showFullscreen || video.isRemote) && (
+      {((!hideUIOverlays && (showPlayBar || showTimeDisplay || showVolumeControl || showFullscreen || video.isRemote)) ||
+        (hoveredSetting === 'showUIOverlays' || hoveredSetting === 'showPlayBar' || hoveredSetting === 'showTimeDisplay' || hoveredSetting === 'showVolumeControl' || hoveredSetting === 'showFullscreen')) && (
         <div 
-          className={`player-overlay bottom-overlay ${controlsVisible ? 'visible' : 'hidden'}`} 
+          className={`player-overlay bottom-overlay ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showUIOverlays')}`} 
           onClick={(e) => e.stopPropagation()}
+          style={{
+            opacity: showUIOverlaysMode === 'enable' ? 1 : 0.5,
+            pointerEvents: showUIOverlaysMode === 'enable' ? 'auto' : 'none'
+          }}
         >
           
           {/* Seekbar timeline row */}
-          {(showPlayBar || showTimeDisplay) && (
+          {(showPlayBar || showTimeDisplay || hoveredSetting === 'showPlayBar' || hoveredSetting === 'showTimeDisplay') && (
             <div className="seekbar-row">
-              {showPlayBar && (
-                <div className={`scrub-container-premium ${uiConfig.blockSeekingCompletely ? 'seeking-blocked' : ''} ${hoveredSetting === 'showPlayBar' || hoveredSetting === 'blockSeekingCompletely' ? 'highlight-active' : ''}`}>
+              {(showPlayBar || hoveredSetting === 'showPlayBar') && (
+                <div 
+                  className={`scrub-container-premium ${uiConfig.blockSeekingCompletely ? 'seeking-blocked' : ''} ${getHighlightClass('showPlayBar') || getHighlightClass('blockSeekingCompletely')}`}
+                  style={{
+                    opacity: showPlayBarMode === 'enable' ? 1 : 0.5,
+                    pointerEvents: showPlayBarMode === 'enable' ? 'auto' : 'none'
+                  }}
+                >
                   <div className="scrub-track-bg"></div>
                   <div className="scrub-track-buffered" style={{ width: `${bufferedPercent}%` }}></div>
                   <div className="scrub-track-progress" style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}></div>
@@ -2613,8 +2824,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   />
                 </div>
               )}
-              {showTimeDisplay && (
-                <div className={`time-display-clean ${hoveredSetting === 'showTimeDisplay' ? 'highlight-active' : ''}`}>
+              {(showTimeDisplay || hoveredSetting === 'showTimeDisplay') && (
+                <div 
+                  className={`time-display-clean ${getHighlightClass('showTimeDisplay')}`}
+                  style={{
+                    opacity: showTimeDisplayMode === 'enable' ? 1 : 0.5
+                  }}
+                >
                   {formatTime(duration - currentTime)}
                 </div>
               )}
@@ -2622,14 +2838,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           )}
 
           {/* Bottom controls bar: PiP on left, Audio & Subtitles in center, Fullscreen on right */}
-          {!hideUIOverlays && (
-            <div className={`bottom-controls-bar ${hoveredSetting === 'hideUIOverlays' ? 'highlight-active' : ''}`}>
+          {(!hideUIOverlays || hoveredSetting === 'showUIOverlays' || hoveredSetting === 'showVolumeControl' || hoveredSetting === 'showFullscreen') && (
+            <div className={`bottom-controls-bar ${getHighlightClass('showUIOverlays')}`}>
               <div className="bottom-controls-left-spacer">
                 <button className="control-btn-pip" onClick={togglePiP} title="Picture in Picture">
                   <MonitorPlay size={22} />
                 </button>
-                {showVolumeControl && (
-                  <div className={`volume-control-group-premium ${hoveredSetting === 'showVolumeControl' ? 'highlight-active' : ''}`}>
+                {(showVolumeControl || hoveredSetting === 'showVolumeControl') && (
+                  <div 
+                    className={`volume-control-group-premium ${getHighlightClass('showVolumeControl')}`}
+                    style={{
+                      opacity: showVolumeControlMode === 'enable' ? 1 : 0.5,
+                      pointerEvents: showVolumeControlMode === 'enable' ? 'auto' : 'none'
+                    }}
+                  >
                     <button 
                       className="control-btn-volume" 
                       onClick={() => {
@@ -2804,8 +3026,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
 
               <div className="bottom-controls-right-group">
-                {showFullscreen && (
-                  <button className={`control-btn-fullscreen ${hoveredSetting === 'showFullscreen' ? 'highlight-active' : ''}`} onClick={toggleFullscreen} title="Fullscreen">
+                {(showFullscreen || hoveredSetting === 'showFullscreen') && (
+                  <button 
+                    className={`control-btn-fullscreen ${getHighlightClass('showFullscreen')}`} 
+                    onClick={toggleFullscreen} 
+                    title="Fullscreen"
+                    style={{
+                      opacity: showFullscreenMode === 'enable' ? 1 : 0.5,
+                      pointerEvents: showFullscreenMode === 'enable' ? 'auto' : 'none'
+                    }}
+                  >
                     {isFullscreen ? <Minimize size={22} /> : <Maximize size={22} />}
                   </button>
                 )}
@@ -2826,9 +3056,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.65)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
+            background: 'none',
+            backdropFilter: 'none',
+            WebkitBackdropFilter: 'none',
             zIndex: 150,
             display: 'flex',
             alignItems: 'center',
@@ -2874,77 +3104,77 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             >
               {/* Disable All Overlays */}
               <button
-                onClick={() => updatePlayerSetting('hideUIOverlays', !hideUIOverlays)}
-                onMouseEnter={() => setHoveredSetting('hideUIOverlays')}
+                onClick={() => cycleSetting('hideUIOverlays')}
+                onMouseEnter={() => setHoveredSetting('showUIOverlays')}
                 onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable All Overlays (Keyboard Only Mode)"
-                className={`settings-icon-toggle ${hideUIOverlays ? 'active' : ''}`}
+                title={"Disable All Overlays (Keyboard Only Mode)" + getSettingLabelSuffix('hideUIOverlays')}
+                className={getToggleBtnClass('hideUIOverlays')}
               >
                 <Layers size={22} />
               </button>
 
               {/* Disable Video Name Display */}
               <button
-                onClick={() => updatePlayerSetting('hideVideoName', !hideVideoName)}
-                onMouseEnter={() => setHoveredSetting('hideVideoName')}
+                onClick={() => cycleSetting('hideVideoName')}
+                onMouseEnter={() => setHoveredSetting('showVideoName')}
                 onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Video Name Display"
-                className={`settings-icon-toggle ${hideVideoName ? 'active' : ''}`}
+                title={"Disable Video Name Display" + getSettingLabelSuffix('hideVideoName')}
+                className={getToggleBtnClass('hideVideoName')}
               >
                 <Type size={22} />
               </button>
 
               {/* Disable Play Button Overlay */}
               <button
-                onClick={() => updatePlayerSetting('showPlayButton', !showPlayButton)}
+                onClick={() => cycleSetting('showPlayButton')}
                 onMouseEnter={() => setHoveredSetting('showPlayButton')}
                 onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Play Button Overlay"
-                className={`settings-icon-toggle ${!showPlayButton ? 'active' : ''}`}
+                title={"Disable Play Button Overlay" + getSettingLabelSuffix('showPlayButton')}
+                className={getToggleBtnClass('showPlayButton')}
               >
                 <Play size={22} />
               </button>
 
               {/* Disable Time Display */}
               <button
-                onClick={() => updatePlayerSetting('showTimeDisplay', !showTimeDisplay)}
+                onClick={() => cycleSetting('showTimeDisplay')}
                 onMouseEnter={() => setHoveredSetting('showTimeDisplay')}
                 onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Time Display"
-                className={`settings-icon-toggle ${!showTimeDisplay ? 'active' : ''}`}
+                title={"Disable Time Display" + getSettingLabelSuffix('showTimeDisplay')}
+                className={getToggleBtnClass('showTimeDisplay')}
               >
                 <Clock size={22} />
               </button>
 
               {/* Disable Timeline Scrub Bar */}
               <button
-                onClick={() => updatePlayerSetting('showPlayBar', !showPlayBar)}
+                onClick={() => cycleSetting('showPlayBar')}
                 onMouseEnter={() => setHoveredSetting('showPlayBar')}
                 onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Timeline Scrub Bar"
-                className={`settings-icon-toggle ${!showPlayBar ? 'active' : ''}`}
+                title={"Disable Timeline Scrub Bar" + getSettingLabelSuffix('showPlayBar')}
+                className={getToggleBtnClass('showPlayBar')}
               >
                 <Sliders size={22} />
               </button>
 
               {/* Disable Volume Control */}
               <button
-                onClick={() => updatePlayerSetting('showVolumeControl', !showVolumeControl)}
+                onClick={() => cycleSetting('showVolumeControl')}
                 onMouseEnter={() => setHoveredSetting('showVolumeControl')}
                 onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Volume Control"
-                className={`settings-icon-toggle ${!showVolumeControl ? 'active' : ''}`}
+                title={"Disable Volume Control" + getSettingLabelSuffix('showVolumeControl')}
+                className={getToggleBtnClass('showVolumeControl')}
               >
                 <Volume2 size={22} />
               </button>
 
               {/* Disable Fullscreen Toggle Button */}
               <button
-                onClick={() => updatePlayerSetting('showFullscreen', !showFullscreen)}
+                onClick={() => cycleSetting('showFullscreen')}
                 onMouseEnter={() => setHoveredSetting('showFullscreen')}
                 onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Fullscreen Toggle Button"
-                className={`settings-icon-toggle ${!showFullscreen ? 'active' : ''}`}
+                title={"Disable Fullscreen Toggle Button" + getSettingLabelSuffix('showFullscreen')}
+                className={getToggleBtnClass('showFullscreen')}
               >
                 <Maximize size={22} />
               </button>
@@ -2955,7 +3185,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onMouseEnter={() => setHoveredSetting('disableAnimations')}
                 onMouseLeave={() => setHoveredSetting(null)}
                 title="Disable Floating & Hover Animations"
-                className={`settings-icon-toggle ${playerSettings.disableAnimations ? 'active' : ''}`}
+                className={`settings-icon-toggle ${playerSettings.disableAnimations ? 'active-red' : ''}`}
               >
                 <Zap size={22} />
               </button>
@@ -2966,7 +3196,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onMouseEnter={() => setHoveredSetting('pauseOnFocusChange')}
                 onMouseLeave={() => setHoveredSetting(null)}
                 title="Disable Focus Loss Auto-Pause"
-                className={`settings-icon-toggle ${!playerSettings.pauseOnFocusChange ? 'active' : ''}`}
+                className={`settings-icon-toggle ${!playerSettings.pauseOnFocusChange ? 'active-red' : ''}`}
               >
                 <Coffee size={22} />
               </button>
@@ -2982,7 +3212,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onMouseLeave={() => setHoveredSetting(null)}
                 disabled={playerSettings.blockSeekingCompletely}
                 title={playerSettings.blockSeekingCompletely ? "Show Skip Buttons (Disabled - Seeking Blocked)" : "Show Skip Buttons in Player UI"}
-                className={`settings-icon-toggle ${playerSettings.allowUiSkipping ? 'active' : ''} ${playerSettings.blockSeekingCompletely ? 'disabled' : ''}`}
+                className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'disabled' : ''} ${playerSettings.allowUiSkipping ? 'active-blue' : 'active-red'}`}
               >
                 <SkipForward size={22} />
               </button>
@@ -2993,7 +3223,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onMouseEnter={() => setHoveredSetting('blockSeekingCompletely')}
                 onMouseLeave={() => setHoveredSetting(null)}
                 title="Block Seeking / Skipping Completely"
-                className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'active' : ''}`}
+                className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'active-red' : ''}`}
               >
                 <Ban size={22} />
               </button>
@@ -3004,7 +3234,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onMouseEnter={() => setHoveredSetting('autoSkipIntroOutro')}
                 onMouseLeave={() => setHoveredSetting(null)}
                 title="Auto-Skip Intros & Outros"
-                className={`settings-icon-toggle ${playerSettings.autoSkipIntroOutro ? 'active' : ''}`}
+                className={`settings-icon-toggle ${playerSettings.autoSkipIntroOutro ? 'active-blue' : ''}`}
               >
                 <FastForward size={22} />
               </button>
@@ -3015,7 +3245,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onMouseEnter={() => setHoveredSetting('lockModeActive')}
                 onMouseLeave={() => setHoveredSetting(null)}
                 title="Lock Mode Active (Lock Controls on Startup)"
-                className={`settings-icon-toggle ${playerSettings.lockModeActive ? 'active' : ''}`}
+                className={`settings-icon-toggle ${playerSettings.lockModeActive ? 'active-blue' : ''}`}
               >
                 <Lock size={22} />
               </button>
@@ -3328,12 +3558,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           opacity: 1;
           transform: translateX(-50%) translateY(0);
         }
-        .highlight-active {
+        .highlight-active-blue {
           outline: 3px solid #3b82f6 !important;
           outline-offset: 4px !important;
           border-radius: 6px !important;
           box-shadow: 0 0 20px rgba(59, 130, 246, 0.8) !important;
           background: rgba(59, 130, 246, 0.15) !important;
+          transition: all 0.2s ease !important;
+        }
+        .highlight-active-orange {
+          outline: 3px solid #f59e0b !important;
+          outline-offset: 4px !important;
+          border-radius: 6px !important;
+          box-shadow: 0 0 20px rgba(245, 158, 11, 0.8) !important;
+          background: rgba(245, 158, 11, 0.15) !important;
+          transition: all 0.2s ease !important;
+        }
+        .highlight-active-red {
+          outline: 3px solid #ef4444 !important;
+          outline-offset: 4px !important;
+          border-radius: 6px !important;
+          box-shadow: 0 0 20px rgba(239, 68, 68, 0.8) !important;
+          background: rgba(239, 68, 68, 0.15) !important;
           transition: all 0.2s ease !important;
         }
 
@@ -3358,15 +3604,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           border-color: rgba(255, 255, 255, 0.2);
           transform: translateY(-2px);
         }
-        .settings-icon-toggle.active {
+        .settings-icon-toggle.active, .settings-icon-toggle.active-blue {
           background: #3b82f6;
           border-color: #3b82f6;
           color: #ffffff;
           box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
         }
-        .settings-icon-toggle.active:hover {
+        .settings-icon-toggle.active:hover, .settings-icon-toggle.active-blue:hover {
           background: #2563eb;
           border-color: #2563eb;
+          transform: translateY(-2px);
+        }
+        .settings-icon-toggle.active-orange {
+          background: #f59e0b;
+          border-color: #f59e0b;
+          color: #ffffff;
+          box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+        }
+        .settings-icon-toggle.active-orange:hover {
+          background: #d97706;
+          border-color: #d97706;
+          transform: translateY(-2px);
+        }
+        .settings-icon-toggle.active-red {
+          background: #ef4444;
+          border-color: #ef4444;
+          color: #ffffff;
+          box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+        }
+        .settings-icon-toggle.active-red:hover {
+          background: #dc2626;
+          border-color: #dc2626;
           transform: translateY(-2px);
         }
         .settings-icon-toggle:disabled, .settings-icon-toggle.disabled {
