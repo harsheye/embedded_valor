@@ -35,6 +35,10 @@ interface VideoPlayerProps {
   historySaveInterval?: number;
   saveVolume?: boolean;
   ratingThreshold?: number;
+  onUpdateSettings?: (settings: Partial<any>) => void;
+  allowUiSkipping?: boolean;
+  blockSeekingCompletely?: boolean;
+  autoSkipIntroOutro?: boolean;
 }
 
 const OdometerDigit: React.FC<{ val: string }> = ({ val }) => {
@@ -91,25 +95,47 @@ const OdometerClock: React.FC<{ date: Date }> = ({ date }) => {
   );
 };
 
+const ToggleSwitch: React.FC<{
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}> = ({ checked, onChange, disabled }) => {
+  return (
+    <div 
+      className={`custom-toggle-switch ${checked ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onChange(!checked);
+      }}
+    >
+      <div className="custom-toggle-knob" />
+    </div>
+  );
+};
+
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video, 
   onBack, 
   onUpdateVideo, 
-  hideUIOverlays = false,
-  hideVideoName = false,
+  hideUIOverlays: propHideUIOverlays = false,
+  hideVideoName: propHideVideoName = false,
   toastDuration = 0.5,
   disableAnimations = false,
   pauseOnFocusChange = false,
-  showPlayButton = true,
-  showTimeDisplay = true,
-  showPlayBar = true,
-  showVolumeControl = true,
-  showFullscreen = true,
+  showPlayButton: propShowPlayButton = true,
+  showTimeDisplay: propShowTimeDisplay = true,
+  showPlayBar: propShowPlayBar = true,
+  showVolumeControl: propShowVolumeControl = true,
+  showFullscreen: propShowFullscreen = true,
   subSettings,
   onUpdateSubSettings,
   historySaveInterval = 5,
   saveVolume = true,
-  ratingThreshold = 3
+  ratingThreshold = 3,
+  onUpdateSettings,
+  allowUiSkipping = true,
+  blockSeekingCompletely = false,
+  autoSkipIntroOutro = true
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -126,51 +152,52 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isOutro, setIsOutro] = useState(false);
   const [skipEnabled, setSkipEnabled] = useState(false);
 
-  const [uiConfig, setUiConfig] = useState(() => {
-    const savedGlobal = localStorage.getItem('valor_settings');
-    if (savedGlobal) {
-      try {
-        const parsedGlobal = JSON.parse(savedGlobal);
-        if (parsedGlobal && parsedGlobal.allowUiSkipping !== undefined) {
-          return {
-            allowUiSkipping: parsedGlobal.allowUiSkipping,
-            blockSeekingCompletely: parsedGlobal.blockSeekingCompletely,
-            autoSkipIntroOutro: parsedGlobal.autoSkipIntroOutro
-          };
-        }
-      } catch {}
-    }
-    const saved = localStorage.getItem('valor_ui_customization');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {}
-    }
-    return {
-      allowUiSkipping: true,
-      blockSeekingCompletely: false,
-      autoSkipIntroOutro: true
-    };
+  const uiConfig = {
+    allowUiSkipping,
+    blockSeekingCompletely,
+    autoSkipIntroOutro
+  };
+
+  const [playerSettings, setPlayerSettings] = useState({
+    hideUIOverlays: !!propHideUIOverlays,
+    hideVideoName: !!propHideVideoName,
+    showPlayButton: propShowPlayButton !== false,
+    showTimeDisplay: propShowTimeDisplay !== false,
+    showPlayBar: propShowPlayBar !== false,
+    showVolumeControl: propShowVolumeControl !== false,
+    showFullscreen: propShowFullscreen !== false
   });
 
-  const updateUiConfig = (updates: Partial<typeof uiConfig>) => {
-    setUiConfig((prev: any) => {
-      const next = { ...prev, ...updates };
-      localStorage.setItem('valor_ui_customization', JSON.stringify(next));
-      
-      try {
-        const savedGlobal = localStorage.getItem('valor_settings');
-        const parsedGlobal = savedGlobal ? JSON.parse(savedGlobal) : {};
-        const updatedGlobal = {
-          ...parsedGlobal,
-          ...next
-        };
-        localStorage.setItem('valor_settings', JSON.stringify(updatedGlobal));
-      } catch {}
+  useEffect(() => {
+    setPlayerSettings({
+      hideUIOverlays: !!propHideUIOverlays,
+      hideVideoName: !!propHideVideoName,
+      showPlayButton: propShowPlayButton !== false,
+      showTimeDisplay: propShowTimeDisplay !== false,
+      showPlayBar: propShowPlayBar !== false,
+      showVolumeControl: propShowVolumeControl !== false,
+      showFullscreen: propShowFullscreen !== false
+    });
+  }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen]);
 
+  const updatePlayerSetting = (key: keyof typeof playerSettings, value: boolean) => {
+    setPlayerSettings(prev => {
+      const next = { ...prev, [key]: value };
+      if (onUpdateSettings) {
+        onUpdateSettings({ [key]: value });
+      }
       return next;
     });
   };
+
+  // Shadow props with reactive state values for settings
+  const hideUIOverlays = playerSettings.hideUIOverlays;
+  const hideVideoName = playerSettings.hideVideoName;
+  const showPlayButton = playerSettings.showPlayButton;
+  const showTimeDisplay = playerSettings.showTimeDisplay;
+  const showPlayBar = playerSettings.showPlayBar;
+  const showVolumeControl = playerSettings.showVolumeControl;
+  const showFullscreen = playerSettings.showFullscreen;
 
   // Series Bookmarks Preset Syncing
   useEffect(() => {
@@ -1770,9 +1797,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     if (isLocked) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
+      const isVolumeKey = pressedKey === 'arrowup' || pressedKey === 'arrowdown';
+      if (!isVolumeKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
     }
     const playPauseKey = (keybinds.playPause || ' ').toLowerCase();
     const rewindKey = (keybinds.rewind || 'arrowleft').toLowerCase();
@@ -2592,96 +2622,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button className="control-btn-pip" onClick={togglePiP} title="Picture in Picture">
                   <MonitorPlay size={22} />
                 </button>
-                <div 
-                  className="popover-wrapper"
-                  onMouseEnter={() => {
-                    if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
-                    setShowBookmarksPopover(true);
-                  }}
-                  onMouseLeave={() => {
-                    bookmarksTimeoutRef.current = setTimeout(() => {
-                      setShowBookmarksPopover(false);
-                    }, 150);
-                  }}
-                >
-                  <button 
-                    className="control-btn-bookmark-list" 
-                    onClick={() => setShowBookmarksPopover(prev => !prev)} 
-                    title="Bookmarks"
-                  >
-                    <Pencil size={20} />
-                  </button>
-
-                  {showBookmarksPopover && (
-                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in" style={{ bottom: '45px', left: '0', width: '280px', maxHeight: '350px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-                      <div className="popover-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Bookmarks ({bookmarks.length})</span>
-                        <button 
-                          className="drawer-add-btn"
-                          style={{ padding: '2px 8px', fontSize: '0.7rem' }}
-                          onClick={() => {
-                            if (videoRef.current) {
-                              setNewBookmarkTime(videoRef.current.currentTime);
-                              setNewBookmarkEndTime(videoRef.current.currentTime + 90);
-                              setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
-                              setIsIntro(false);
-                              setIsOutro(false);
-                              setSkipEnabled(false);
-                              setShowAddDialog(true);
-                              videoRef.current.pause();
-                              setShowBookmarksPopover(false);
-                            }
-                          }}
-                        >
-                          + Add
-                        </button>
-                      </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {bookmarks.length === 0 ? (
-                          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', fontStyle: 'italic', margin: 0 }}>No bookmarks added yet.</p>
-                        ) : (
-                          bookmarks.map((bm) => (
-                            <div className="drawer-bookmark-item" key={bm.id} style={{ padding: '6px 8px' }}>
-                              <div 
-                                className="bookmark-item-info"
-                                onClick={() => {
-                                  if (videoRef.current) {
-                                    videoRef.current.currentTime = bm.time;
-                                    setCurrentTime(bm.time);
-                                  }
-                                }}
-                              >
-                                <span className={`bookmark-item-badge ${bm.isIntro ? 'badge-intro' : bm.isOutro ? 'badge-outro' : ''}`} style={{ fontSize: '0.6rem' }}>
-                                  {bm.isIntro ? 'Intro' : bm.isOutro ? 'Outro' : 'Mark'}
-                                </span>
-                                <span className="bookmark-item-label" title={bm.label} style={{ fontSize: '0.8rem' }}>{bm.label}</span>
-                                <span className="bookmark-item-time" style={{ fontSize: '0.75rem' }}>{formatTime(bm.time)}</span>
-                              </div>
-                              <button 
-                                className="bookmark-delete-btn"
-                                onClick={() => handleDeleteBookmark(bm.id)}
-                                title="Delete Bookmark"
-                              >
-                                <Trash size={12} />
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
                 {showVolumeControl && (
                   <div className="volume-control-group-premium">
                     <button 
                       className="control-btn-volume" 
                       onClick={() => {
-                        setIsMuted(prev => {
-                          const nextMuted = !prev;
-                          triggerVolumeToast(volume, nextMuted);
-                          return nextMuted;
-                        });
+                        setIsMuted(prev => !prev);
                       }}
                       onWheel={(e) => {
                         e.preventDefault();
@@ -2689,7 +2635,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         setVolume(prev => {
                           const delta = e.deltaY < 0 ? 0.05 : -0.05;
                           const nextVol = Math.max(0.0, Math.min(1.0, prev + delta));
-                          triggerVolumeToast(nextVol, false);
                           return nextVol;
                         });
                       }}
@@ -2709,7 +2654,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           const nextVol = parseFloat(e.target.value);
                           setVolume(nextVol);
                           setIsMuted(nextVol === 0);
-                          triggerVolumeToast(nextVol, nextVol === 0);
                         }}
                         className="volume-slider-premium"
                         style={{
@@ -2770,6 +2714,87 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     />
                   )}
                 </div>
+
+                <div 
+                  className="popover-wrapper"
+                  onMouseEnter={() => {
+                    if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
+                    setShowBookmarksPopover(true);
+                  }}
+                  onMouseLeave={() => {
+                    bookmarksTimeoutRef.current = setTimeout(() => {
+                      setShowBookmarksPopover(false);
+                    }, 150);
+                  }}
+                >
+                  <button 
+                    className="control-btn-bookmark-list" 
+                    onClick={() => setShowBookmarksPopover(prev => !prev)} 
+                    title="Bookmarks"
+                  >
+                    <Pencil size={20} />
+                  </button>
+
+                  {showBookmarksPopover && (
+                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '280px', maxHeight: '350px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="popover-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Bookmarks ({bookmarks.length})</span>
+                        <button 
+                          className="drawer-add-btn"
+                          style={{ padding: '2px 8px', fontSize: '0.7rem' }}
+                          onClick={() => {
+                            if (videoRef.current) {
+                              setNewBookmarkTime(videoRef.current.currentTime);
+                              setNewBookmarkEndTime(videoRef.current.currentTime + 90);
+                              setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
+                              setIsIntro(false);
+                              setIsOutro(false);
+                              setSkipEnabled(false);
+                              setShowAddDialog(true);
+                              videoRef.current.pause();
+                              setShowBookmarksPopover(false);
+                            }
+                          }}
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {bookmarks.length === 0 ? (
+                          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', fontStyle: 'italic', margin: 0 }}>No bookmarks added yet.</p>
+                        ) : (
+                          bookmarks.map((bm) => (
+                            <div className="drawer-bookmark-item" key={bm.id} style={{ padding: '6px 8px' }}>
+                              <div 
+                                className="bookmark-item-info"
+                                onClick={() => {
+                                  if (videoRef.current) {
+                                    videoRef.current.currentTime = bm.time;
+                                    setCurrentTime(bm.time);
+                                  }
+                                }}
+                              >
+                                <span className={`bookmark-item-badge ${bm.isIntro ? 'badge-intro' : bm.isOutro ? 'badge-outro' : ''}`} style={{ fontSize: '0.6rem' }}>
+                                  {bm.isIntro ? 'Intro' : bm.isOutro ? 'Outro' : 'Mark'}
+                                </span>
+                                <span className="bookmark-item-label" title={bm.label} style={{ fontSize: '0.8rem' }}>{bm.label}</span>
+                                <span className="bookmark-item-time" style={{ fontSize: '0.75rem' }}>{formatTime(bm.time)}</span>
+                              </div>
+                              <button 
+                                className="bookmark-delete-btn"
+                                onClick={() => handleDeleteBookmark(bm.id)}
+                                title="Delete Bookmark"
+                              >
+                                <Trash size={12} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bottom-controls-right-group">
@@ -2795,46 +2820,61 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
           
           <div className="drawer-content">
-            <div className="drawer-section">
-              <h4>General Controls</h4>
-              <div className="drawer-option">
-                <label className="drawer-checkbox-label" style={{ opacity: uiConfig.blockSeekingCompletely ? 0.5 : 1, cursor: uiConfig.blockSeekingCompletely ? 'not-allowed' : 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={uiConfig.allowUiSkipping}
-                    disabled={uiConfig.blockSeekingCompletely}
-                    onChange={(e) => updateUiConfig({ allowUiSkipping: e.target.checked })}
-                  />
-                  <span>Show Skip Buttons in UI</span>
-                </label>
-              </div>
-              
-              <div className="drawer-option">
-                <label className="drawer-checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={uiConfig.blockSeekingCompletely}
-                    onChange={(e) => {
-                      const block = e.target.checked;
-                      updateUiConfig({ 
-                        blockSeekingCompletely: block,
-                        allowUiSkipping: block ? false : uiConfig.allowUiSkipping
-                      });
-                    }}
-                  />
-                  <span style={{ color: '#ff4444' }}>Block Seeking Completely</span>
-                </label>
+            <div className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable All Overlays (Keyboard Only Mode)</span>
+                <ToggleSwitch 
+                  checked={hideUIOverlays}
+                  onChange={(val) => updatePlayerSetting('hideUIOverlays', val)}
+                />
               </div>
 
-              <div className="drawer-option">
-                <label className="drawer-checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={uiConfig.autoSkipIntroOutro}
-                    onChange={(e) => updateUiConfig({ autoSkipIntroOutro: e.target.checked })}
-                  />
-                  <span>Auto-Skip Intros & Outros</span>
-                </label>
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Video Name Display</span>
+                <ToggleSwitch 
+                  checked={hideVideoName}
+                  onChange={(val) => updatePlayerSetting('hideVideoName', val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Play Button Overlay</span>
+                <ToggleSwitch 
+                  checked={!showPlayButton}
+                  onChange={(val) => updatePlayerSetting('showPlayButton', !val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Time Display</span>
+                <ToggleSwitch 
+                  checked={!showTimeDisplay}
+                  onChange={(val) => updatePlayerSetting('showTimeDisplay', !val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Timeline Scrub Bar</span>
+                <ToggleSwitch 
+                  checked={!showPlayBar}
+                  onChange={(val) => updatePlayerSetting('showPlayBar', !val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Volume Control</span>
+                <ToggleSwitch 
+                  checked={!showVolumeControl}
+                  onChange={(val) => updatePlayerSetting('showVolumeControl', !val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Fullscreen Toggle Button</span>
+                <ToggleSwitch 
+                  checked={!showFullscreen}
+                  onChange={(val) => updatePlayerSetting('showFullscreen', !val)}
+                />
               </div>
             </div>
           </div>
@@ -3226,6 +3266,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           height: 16px;
           cursor: pointer;
           accent-color: #e50914;
+        }
+        .custom-toggle-switch {
+          position: relative;
+          width: 40px;
+          height: 22px;
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 11px;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          flex-shrink: 0;
+        }
+        .custom-toggle-switch.active {
+          background: #3b82f6;
+        }
+        .custom-toggle-switch.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .custom-toggle-knob {
+          position: absolute;
+          top: 2px;
+          left: 2px;
+          width: 18px;
+          height: 18px;
+          background: #ffffff;
+          border-radius: 50%;
+          transition: transform 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+        .custom-toggle-switch.active .custom-toggle-knob {
+          transform: translateX(18px);
         }
         .drawer-add-btn {
           background: #e50914;

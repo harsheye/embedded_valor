@@ -7,7 +7,12 @@
     "exit": "Escape",
     "nextSubtitle": "b",
     "nextAudio": "v",
-    "lockControls": "w"
+    "lockControls": "w",
+    "openSettings": "Delete",
+    "addBookmark": "t",
+    "toggleMute": "m",
+    "audioBoost": "n",
+    "frameStep": "e"
   },
   "defaultAudio": "ENG",
   "defaultSub": "ENG",
@@ -23,6 +28,9 @@
   "showPlayBar": true,
   "showVolumeControl": true,
   "showFullscreen": false,
+  "allowUiSkipping": false,
+  "blockSeekingCompletely": true,
+  "autoSkipIntroOutro": true,
   "saveHistory": true,
   "saveTrackPreferences": true,
   "saveVolume": true,

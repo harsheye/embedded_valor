@@ -1371,6 +1371,13 @@ function App() {
           setSettings(updated);
           saveSettingsToStorage(updated);
         }}
+        onUpdateSettings={(updatedSettings) => {
+          setSettings(prev => {
+            const updated = { ...prev, ...updatedSettings };
+            saveSettingsToStorage(updated);
+            return updated;
+          });
+        }}
       />
     );
   }
@@ -2348,12 +2355,6 @@ function App() {
             )}
           </div>
         </main>
-
-        <footer className="app-footer">
-          <div className="container footer-content">
-            <span>&copy; 2026 Valor. Direct local WebAssembly media processing.</span>
-          </div>
-        </footer>
       </div>
 
       {/* Mobile Bottom Navigation */}

@@ -60,34 +60,54 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
     <div className="workspace-panel-wrapper">
       <div className="glass-panel workspace-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '82vh', overflow: 'hidden' }}>
         
-        {/* Panel Header & Sub Navigation Tabs */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', flexWrap: 'wrap', gap: '8px' }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Media Library</h2>
-          
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button 
-              className={`settings-nav-btn ${activeSubTab === 'movies' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveSubTab('movies');
-                setSelectedSeries(null);
-              }}
-              style={{ padding: '0.4rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-            >
-              <Film size={14} />
-              <span>Movies ({movies.length})</span>
-            </button>
-            <button 
-              className={`settings-nav-btn ${activeSubTab === 'series' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveSubTab('series');
-                setSelectedSeries(null);
-              }}
-              style={{ padding: '0.4rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-            >
-              <Tv size={14} />
-              <span>Series ({Object.keys(groupedSeries).length})</span>
-            </button>
-          </div>
+        {/* Underline Tab Navigation */}
+        <div className="settings-tab-nav" style={{ display: 'flex', gap: '1.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+          <button 
+            onClick={() => {
+              setActiveSubTab('movies');
+              setSelectedSeries(null);
+            }}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              borderBottom: activeSubTab === 'movies' ? '2px solid #e50914' : '2px solid transparent', 
+              color: activeSubTab === 'movies' ? '#fff' : 'rgba(255,255,255,0.6)', 
+              padding: '0.5rem 0.25rem', 
+              fontSize: '0.95rem', 
+              fontWeight: 600, 
+              cursor: 'pointer', 
+              transition: 'all 0.2s', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px' 
+            }}
+          >
+            <Film size={16} />
+            <span>Movies ({movies.length})</span>
+          </button>
+          <button 
+            onClick={() => {
+              setActiveSubTab('series');
+              setSelectedSeries(null);
+            }}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              borderBottom: activeSubTab === 'series' ? '2px solid #e50914' : '2px solid transparent', 
+              color: activeSubTab === 'series' ? '#fff' : 'rgba(255,255,255,0.6)', 
+              padding: '0.5rem 0.25rem', 
+              fontSize: '0.95rem', 
+              fontWeight: 600, 
+              cursor: 'pointer', 
+              transition: 'all 0.2s', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px' 
+            }}
+          >
+            <Tv size={16} />
+            <span>Series ({Object.keys(groupedSeries).length})</span>
+          </button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin', paddingRight: '4px' }}>
@@ -181,46 +201,37 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
             ) : (
               <div style={{ display: 'flex', gap: '1.25rem', height: '100%' }}>
                 
-                {/* Series List Sidebar */}
-                <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: '0.5rem', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '1rem' }}>
+                {/* Series List Sidebar Tabs */}
+                <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: '6px', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '1rem', overflowY: 'auto' }}>
                   {Object.entries(groupedSeries).map(([sTitle, episodes]) => {
                     const isSelected = selectedSeries === sTitle;
-                    const ratedEpisodes = episodes.filter(e => (e.video as any).rating);
-                    const avgRating = ratedEpisodes.length > 0
-                      ? Math.round(ratedEpisodes.reduce((acc, curr) => acc + ((curr.video as any).rating || 0), 0) / ratedEpisodes.length)
-                      : 0;
-
                     return (
-                      <div 
+                      <button
                         key={sTitle}
                         onClick={() => setSelectedSeries(sTitle)}
                         style={{
-                          background: isSelected ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.02)',
-                          border: isSelected ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.06)',
-                          borderRadius: '8px',
-                          padding: '0.75rem 1rem',
+                          background: isSelected ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '8px 12px',
                           cursor: 'pointer',
                           display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.25rem',
-                          transition: 'all 0.2s'
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          textAlign: 'left',
+                          color: isSelected ? '#fff' : 'rgba(255,255,255,0.6)',
+                          fontSize: '0.88rem',
+                          fontWeight: isSelected ? 600 : 500,
+                          transition: 'all 0.15s ease'
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '130px' }} title={sTitle}>
-                            {sTitle}
-                          </span>
-                          <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '10px' }}>
-                            {episodes.length} ep
-                          </span>
-                        </div>
-                        {avgRating > 0 && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.7rem', color: '#f59e0b' }}>
-                            <Star size={9} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
-                            <span>{'★'.repeat(avgRating)}{'☆'.repeat(5 - avgRating)}</span>
-                          </div>
-                        )}
-                      </div>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
+                          {sTitle}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.4)', background: isSelected ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '10px' }}>
+                          {episodes.length}
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
