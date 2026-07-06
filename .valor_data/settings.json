@@ -21,7 +21,7 @@
   "hideUIOverlays": false,
   "hideVideoName": false,
   "toastDuration": 0.5,
-  "disableAnimations": false,
+  "disableAnimations": true,
   "pauseOnFocusChange": true,
   "showPlayButton": false,
   "showTimeDisplay": false,
