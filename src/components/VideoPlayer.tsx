@@ -214,24 +214,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   // Helper to determine mode (enable, hide, disable)
-  const getSettingMode = (value: any): 'enable' | 'hide' | 'disable' => {
+  const getSettingMode = (value: any, isNegativeKey: boolean): 'enable' | 'hide' | 'disable' => {
     if (value === 'disable') return 'disable';
-    if (value === false || value === 'hide') return 'hide';
-    if (value === true || value === 'enable') return 'enable';
-    return 'enable';
+    if (isNegativeKey) {
+      if (value === false || value === 'enable') return 'enable';
+      return 'hide'; // true or 'hide'
+    } else {
+      if (value === true || value === 'enable') return 'enable';
+      return 'hide'; // false or 'hide'
+    }
   };
 
-  const showUIOverlaysMode = getSettingMode(playerSettings.hideUIOverlays === true ? 'hide' : playerSettings.hideUIOverlays);
-  const showVideoNameMode = getSettingMode(playerSettings.hideVideoName === true ? 'hide' : playerSettings.hideVideoName);
-  const showPlayButtonMode = getSettingMode(playerSettings.showPlayButton);
-  const showTimeDisplayMode = getSettingMode(playerSettings.showTimeDisplay);
-  const showPlayBarMode = getSettingMode(playerSettings.showPlayBar);
-  const showVolumeControlMode = getSettingMode(playerSettings.showVolumeControl);
-  const showFullscreenMode = getSettingMode(playerSettings.showFullscreen);
+  const showUIOverlaysMode = getSettingMode(playerSettings.hideUIOverlays, true);
+  const showVideoNameMode = getSettingMode(playerSettings.hideVideoName, true);
+  const showPlayButtonMode = getSettingMode(playerSettings.showPlayButton, false);
+  const showTimeDisplayMode = getSettingMode(playerSettings.showTimeDisplay, false);
+  const showPlayBarMode = getSettingMode(playerSettings.showPlayBar, false);
+  const showVolumeControlMode = getSettingMode(playerSettings.showVolumeControl, false);
+  const showFullscreenMode = getSettingMode(playerSettings.showFullscreen, false);
 
   // Shadow props with reactive state values for settings (booleans for rendering)
-  const hideUIOverlays = showUIOverlaysMode !== 'enable' && hoveredSetting !== 'hideUIOverlays';
-  const hideVideoName = showVideoNameMode !== 'enable' && hoveredSetting !== 'hideVideoName';
+  const hideUIOverlays = showUIOverlaysMode !== 'enable' && hoveredSetting !== 'showUIOverlays';
+  const hideVideoName = showVideoNameMode !== 'enable' && hoveredSetting !== 'showVideoName';
   const showPlayButton = showPlayButtonMode === 'enable' || hoveredSetting === 'showPlayButton';
   const showTimeDisplay = showTimeDisplayMode === 'enable' || hoveredSetting === 'showTimeDisplay';
   const showPlayBar = showPlayBarMode === 'enable' || hoveredSetting === 'showPlayBar';
@@ -252,14 +256,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       key === 'showFullscreen'
     ) {
       let stateVal = (playerSettings as any)[key];
+      const isNegative = key === 'showUIOverlays' || key === 'showVideoName';
       // Normalize stateVal for negative keys:
+      let actualVal = stateVal;
       if (key === 'showUIOverlays') {
-        stateVal = playerSettings.hideUIOverlays === true ? 'hide' : (playerSettings.hideUIOverlays === 'disable' ? 'disable' : 'enable');
+        actualVal = playerSettings.hideUIOverlays;
       } else if (key === 'showVideoName') {
-        stateVal = playerSettings.hideVideoName === true ? 'hide' : (playerSettings.hideVideoName === 'disable' ? 'disable' : 'enable');
+        actualVal = playerSettings.hideVideoName;
       }
       
-      const mode = getSettingMode(stateVal);
+      const mode = getSettingMode(actualVal, isNegative);
       if (mode === 'hide') return 'highlight-active-orange';
       if (mode === 'disable') return 'highlight-active-red';
       return 'highlight-active-blue';
@@ -1904,6 +1910,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (pressedKey === openSettingsKey) {
       e.preventDefault();
+      if (isLocked) {
+        triggerSwitchToast("Controls are Locked");
+        return;
+      }
       setShowSettingsPanel(prev => !prev);
       return;
     }
