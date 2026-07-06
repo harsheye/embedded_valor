@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
-  Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash
+  Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash,
+  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -96,23 +97,6 @@ const OdometerClock: React.FC<{ date: Date }> = ({ date }) => {
   );
 };
 
-const ToggleSwitch: React.FC<{
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  disabled?: boolean;
-}> = ({ checked, onChange, disabled }) => {
-  return (
-    <div 
-      className={`custom-toggle-switch ${checked ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!disabled) onChange(!checked);
-      }}
-    >
-      <div className="custom-toggle-knob" />
-    </div>
-  );
-};
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video, 
@@ -2825,106 +2809,166 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Right Side UI Customization Drawer */}
+      {/* Centered UI Settings Modal */}
       {showSettingsPanel && (
-        <div className="right-settings-drawer animate-slide-in-right" onClick={(e) => e.stopPropagation()}>
-          <div className="drawer-header">
-            <h3>UI Settings</h3>
-            <button className="drawer-close-btn" onClick={() => setShowSettingsPanel(false)}>
-              <X size={20} />
-            </button>
-          </div>
-          
-          <div className="drawer-content">
-            <div className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable All Overlays (Keyboard Only Mode)</span>
-                <ToggleSwitch 
-                  checked={hideUIOverlays}
-                  onChange={(val) => updatePlayerSetting('hideUIOverlays', val)}
-                />
-              </div>
+        <div 
+          className="settings-modal-overlay animate-fade-in" 
+          onClick={() => setShowSettingsPanel(false)}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            zIndex: 150,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div 
+            className="settings-modal-card animate-scale-in" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'rgba(18, 18, 18, 0.95)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              width: '320px',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+              fontFamily: 'sans-serif'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#ffffff' }}>UI Settings</h3>
+              <button 
+                onClick={() => setShowSettingsPanel(false)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.6)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s ease' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+                onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div 
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: '1rem',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}
+            >
+              {/* Disable All Overlays */}
+              <button
+                onClick={() => updatePlayerSetting('hideUIOverlays', !hideUIOverlays)}
+                title="Disable All Overlays (Keyboard Only Mode)"
+                className={`settings-icon-toggle ${hideUIOverlays ? 'active' : ''}`}
+              >
+                <Layers size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Video Name Display</span>
-                <ToggleSwitch 
-                  checked={hideVideoName}
-                  onChange={(val) => updatePlayerSetting('hideVideoName', val)}
-                />
-              </div>
+              {/* Disable Video Name Display */}
+              <button
+                onClick={() => updatePlayerSetting('hideVideoName', !hideVideoName)}
+                title="Disable Video Name Display"
+                className={`settings-icon-toggle ${hideVideoName ? 'active' : ''}`}
+              >
+                <Type size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Play Button Overlay</span>
-                <ToggleSwitch 
-                  checked={!showPlayButton}
-                  onChange={(val) => updatePlayerSetting('showPlayButton', !val)}
-                />
-              </div>
+              {/* Disable Play Button Overlay */}
+              <button
+                onClick={() => updatePlayerSetting('showPlayButton', !showPlayButton)}
+                title="Disable Play Button Overlay"
+                className={`settings-icon-toggle ${!showPlayButton ? 'active' : ''}`}
+              >
+                <Play size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Time Display</span>
-                <ToggleSwitch 
-                  checked={!showTimeDisplay}
-                  onChange={(val) => updatePlayerSetting('showTimeDisplay', !val)}
-                />
-              </div>
+              {/* Disable Time Display */}
+              <button
+                onClick={() => updatePlayerSetting('showTimeDisplay', !showTimeDisplay)}
+                title="Disable Time Display"
+                className={`settings-icon-toggle ${!showTimeDisplay ? 'active' : ''}`}
+              >
+                <Clock size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Timeline Scrub Bar</span>
-                <ToggleSwitch 
-                  checked={!showPlayBar}
-                  onChange={(val) => updatePlayerSetting('showPlayBar', !val)}
-                />
-              </div>
+              {/* Disable Timeline Scrub Bar */}
+              <button
+                onClick={() => updatePlayerSetting('showPlayBar', !showPlayBar)}
+                title="Disable Timeline Scrub Bar"
+                className={`settings-icon-toggle ${!showPlayBar ? 'active' : ''}`}
+              >
+                <Sliders size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Volume Control</span>
-                <ToggleSwitch 
-                  checked={!showVolumeControl}
-                  onChange={(val) => updatePlayerSetting('showVolumeControl', !val)}
-                />
-              </div>
+              {/* Disable Volume Control */}
+              <button
+                onClick={() => updatePlayerSetting('showVolumeControl', !showVolumeControl)}
+                title="Disable Volume Control"
+                className={`settings-icon-toggle ${!showVolumeControl ? 'active' : ''}`}
+              >
+                <Volume2 size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Disable Fullscreen Toggle Button</span>
-                <ToggleSwitch 
-                  checked={!showFullscreen}
-                  onChange={(val) => updatePlayerSetting('showFullscreen', !val)}
-                />
-              </div>
+              {/* Disable Fullscreen Toggle Button */}
+              <button
+                onClick={() => updatePlayerSetting('showFullscreen', !showFullscreen)}
+                title="Disable Fullscreen Toggle Button"
+                className={`settings-icon-toggle ${!showFullscreen ? 'active' : ''}`}
+              >
+                <Maximize size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0', opacity: playerSettings.blockSeekingCompletely ? 0.5 : 1 }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Show Skip Buttons in Player UI</span>
-                <ToggleSwitch 
-                  checked={playerSettings.allowUiSkipping}
-                  disabled={playerSettings.blockSeekingCompletely}
-                  onChange={(val) => updatePlayerSetting('allowUiSkipping', val)}
-                />
-              </div>
+              {/* Show Skip Buttons in Player UI */}
+              <button
+                onClick={() => {
+                  if (!playerSettings.blockSeekingCompletely) {
+                    updatePlayerSetting('allowUiSkipping', !playerSettings.allowUiSkipping);
+                  }
+                }}
+                disabled={playerSettings.blockSeekingCompletely}
+                title={playerSettings.blockSeekingCompletely ? "Show Skip Buttons (Disabled - Seeking Blocked)" : "Show Skip Buttons in Player UI"}
+                className={`settings-icon-toggle ${playerSettings.allowUiSkipping ? 'active' : ''} ${playerSettings.blockSeekingCompletely ? 'disabled' : ''}`}
+              >
+                <SkipForward size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#ff4444', fontWeight: 500 }}>Block Seeking / Skipping Completely</span>
-                <ToggleSwitch 
-                  checked={playerSettings.blockSeekingCompletely}
-                  onChange={(val) => updatePlayerSetting('blockSeekingCompletely', val)}
-                />
-              </div>
+              {/* Block Seeking / Skipping Completely */}
+              <button
+                onClick={() => updatePlayerSetting('blockSeekingCompletely', !playerSettings.blockSeekingCompletely)}
+                title="Block Seeking / Skipping Completely"
+                className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'active' : ''}`}
+              >
+                <Ban size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Auto-Skip Intros & Outros</span>
-                <ToggleSwitch 
-                  checked={playerSettings.autoSkipIntroOutro}
-                  onChange={(val) => updatePlayerSetting('autoSkipIntroOutro', val)}
-                />
-              </div>
+              {/* Auto-Skip Intros & Outros */}
+              <button
+                onClick={() => updatePlayerSetting('autoSkipIntroOutro', !playerSettings.autoSkipIntroOutro)}
+                title="Auto-Skip Intros & Outros"
+                className={`settings-icon-toggle ${playerSettings.autoSkipIntroOutro ? 'active' : ''}`}
+              >
+                <FastForward size={22} />
+              </button>
 
-              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
-                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Lock Mode Active (Lock Controls on Startup)</span>
-                <ToggleSwitch 
-                  checked={playerSettings.lockModeActive}
-                  onChange={(val) => updatePlayerSetting('lockModeActive', val)}
-                />
-              </div>
+              {/* Lock Mode Active (Lock Controls on Startup) */}
+              <button
+                onClick={() => updatePlayerSetting('lockModeActive', !playerSettings.lockModeActive)}
+                title="Lock Mode Active (Lock Controls on Startup)"
+                className={`settings-icon-toggle ${playerSettings.lockModeActive ? 'active' : ''}`}
+              >
+                <Lock size={22} />
+              </button>
             </div>
           </div>
         </div>
@@ -3236,86 +3280,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
 
         /* Right settings drawer panel */
-        .right-settings-drawer {
-          position: absolute;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          width: 320px;
-          background: rgba(18, 18, 18, 0.96);
-          border-left: 1px solid rgba(255, 255, 255, 0.1);
-          z-index: 50;
+        .settings-icon-toggle {
+          width: 54px;
+          height: 54px;
           display: flex;
-          flex-direction: column;
-          backdrop-filter: blur(15px);
-          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
-          font-family: sans-serif;
-        }
-        .drawer-header {
-          display: flex;
-          justify-content: space-between;
           align-items: center;
-          padding: 1.25rem 1rem;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        .drawer-header h3 {
-          margin: 0;
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: #ffffff;
-        }
-        .drawer-close-btn {
-          background: none;
-          border: none;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
           color: rgba(255, 255, 255, 0.6);
+          border-radius: 12px;
           cursor: pointer;
-          padding: 4px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: color 0.15s ease;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          outline: none;
         }
-        .drawer-close-btn:hover {
+        .settings-icon-toggle:hover:not(:disabled):not(.disabled) {
+          background: rgba(255, 255, 255, 0.12);
           color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.2);
+          transform: translateY(-2px);
         }
-        .drawer-content {
-          flex: 1;
-          overflow-y: auto;
-          padding: 1.5rem 1rem;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          min-height: 0;
+        .settings-icon-toggle.active {
+          background: #3b82f6;
+          border-color: #3b82f6;
+          color: #ffffff;
+          box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
         }
-        .drawer-section {
-          display: flex;
-          flex-direction: column;
+        .settings-icon-toggle.active:hover {
+          background: #2563eb;
+          border-color: #2563eb;
+          transform: translateY(-2px);
         }
-        .drawer-section h4 {
-          margin: 0 0 0.75rem 0;
-          font-size: 0.85rem;
-          font-weight: 700;
-          color: rgba(255, 255, 255, 0.4);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .drawer-option {
-          margin-bottom: 0.75rem;
-        }
-        .drawer-checkbox-label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          cursor: pointer;
-          color: rgba(255, 255, 255, 0.85);
-          font-size: 0.9rem;
-          user-select: none;
-        }
-        .drawer-checkbox-label input {
-          width: 16px;
-          height: 16px;
-          cursor: pointer;
-          accent-color: #e50914;
+        .settings-icon-toggle:disabled, .settings-icon-toggle.disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
         }
         .custom-toggle-switch {
           position: relative;
