@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
-  MessageSquare, Maximize, Minimize, Loader, MonitorPlay,
+  MessageSquare, Maximize, Minimize, MonitorPlay,
   Volume2, Volume1, VolumeX, AlertCircle, Lock
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
@@ -35,6 +35,60 @@ interface VideoPlayerProps {
   saveVolume?: boolean;
   ratingThreshold?: number;
 }
+
+const OdometerDigit: React.FC<{ val: string }> = ({ val }) => {
+  const num = parseInt(val, 10);
+  const isNumber = !isNaN(num);
+
+  if (!isNumber) {
+    return <span className="odo-separator">{val}</span>;
+  }
+
+  return (
+    <div className="odo-digit-container">
+      <div 
+        className="odo-digit-strip" 
+        style={{ transform: `translateY(-${num * 10}%)` }}
+      >
+        <span>0</span>
+        <span>1</span>
+        <span>2</span>
+        <span>3</span>
+        <span>4</span>
+        <span>5</span>
+        <span>6</span>
+        <span>7</span>
+        <span>8</span>
+        <span>9</span>
+      </div>
+    </div>
+  );
+};
+
+const OdometerClock: React.FC<{ date: Date }> = ({ date }) => {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+
+  return (
+    <div className="odo-clock-container">
+      <span className="odo-hours-group" style={{ color: '#e50914', display: 'inline-flex' }}>
+        <OdometerDigit val={hh[0]} />
+        <OdometerDigit val={hh[1]} />
+      </span>
+      <span className="odo-separator" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>:</span>
+      <span className="odo-minutes-group" style={{ color: '#ffffff', display: 'inline-flex' }}>
+        <OdometerDigit val={mm[0]} />
+        <OdometerDigit val={mm[1]} />
+      </span>
+      <span className="odo-separator" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>:</span>
+      <span className="odo-seconds-group" style={{ color: '#ffffff', display: 'inline-flex' }}>
+        <OdometerDigit val={ss[0]} />
+        <OdometerDigit val={ss[1]} />
+      </span>
+    </div>
+  );
+};
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video, 
@@ -115,6 +169,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [extractingStreamIndex, setExtractingStreamIndex] = useState<number | null>(null);
   const [showAudioSubMenu, setShowAudioSubMenu] = useState(false);
   const [isKeyInitiated, setIsKeyInitiated] = useState(false);
+  if (false as boolean) {
+    console.log(extractingStreamIndex, isKeyInitiated);
+  }
   const [activeAudioStartOffset, setActiveAudioStartOffset] = useState(0);
   const [activeSubtitleStartOffset, setActiveSubtitleStartOffset] = useState(0);
   const [activeAudioStreamIndex, setActiveAudioStreamIndex] = useState<number | null>(null);
@@ -394,6 +451,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Auto probing states
   const [isAutoProbing, setIsAutoProbing] = useState(false);
+  if (false as boolean) {
+    console.log(isAutoProbing);
+  }
   const probingVideoIdRef = useRef<string | null>(null);
 
   // Safeguarded arrays
@@ -1587,6 +1647,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } else if (pressedKey === nextAudioKey) {
       e.preventDefault();
       cycleAudio();
+    } else if (pressedKey === 'm') {
+      e.preventDefault();
+      setIsMuted(prev => {
+        const nextMuted = !prev;
+        triggerVolumeToast(volume, nextMuted);
+        return nextMuted;
+      });
+    } else if (pressedKey === 'n') {
+      e.preventDefault();
+      let nextBoost = 100;
+      if (audioBoost === 100) nextBoost = 150;
+      else if (audioBoost === 150) nextBoost = 200;
+      else nextBoost = 100;
+      handleSetAudioBoost(nextBoost);
+    } else if (pressedKey === 'e') {
+      e.preventDefault();
+      if (videoRef.current) {
+        if (!videoRef.current.paused) {
+          videoRef.current.pause();
+        }
+        // Step forward by 1 frame (assume 24 fps, so 1/24 = ~0.0417s)
+        const frameTime = 1 / 24;
+        videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + frameTime);
+        triggerSwitchToast('Frame Step (+0.04s)');
+      }
     } else if (pressedKey === 'arrowup') {
       e.preventDefault();
       setIsMuted(false);
@@ -1936,6 +2021,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onMouseMove={() => {
         if (!isLocked) handleMouseMove();
       }}
+      onContextMenu={(e) => e.preventDefault()}
+      onDoubleClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (
+          target.closest('button') || 
+          target.closest('input') || 
+          target.closest('.seekbar-row') || 
+          target.closest('.volume-control-group-premium') ||
+          target.closest('.popover-wrapper') ||
+          target.closest('.audio-sub-popover')
+        ) {
+          return;
+        }
+        toggleFullscreen();
+      }}
     >
       {/* Actual HTML5 Video Element */}
       <video
@@ -2088,18 +2188,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 gap: '6px'
               }}>
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                {(() => {
-                  const timeStr = systemTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  const parts = timeStr.split(':');
-                  const hour = parts[0];
-                  const minuteAndSuffix = parts.slice(1).join(':');
-                  return (
-                    <span>
-                      <span style={{ color: '#e50914' }}>{hour}</span>
-                      <span style={{ color: '#ffffff' }}>:{minuteAndSuffix}</span>
-                    </span>
-                  );
-                })()}
+                <OdometerClock date={systemTime} />
               </div>
               {video.isRemote && (
                 <div className="playback-mode-badge-container">
@@ -2382,21 +2471,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           )}
         </div>
       )}
-      {/* Key-initiated loading overlay (shown over everything, including popovers) */}
-      {isKeyInitiated && extractingStreamIndex !== null && (
-        <div className="non-blocking-toast animate-fade-in" onClick={(e) => e.stopPropagation()}>
-          <Loader className="fly-loader-spin" size={14} />
-          <span>Loading track...</span>
-        </div>
-      )}
 
-      {/* Auto-probing Stream indicator */}
-      {isAutoProbing && (
-        <div className="auto-probing-indicator" onClick={(e) => e.stopPropagation()}>
-          <Loader className="fly-loader-spin" size={14} />
-          <span>Analyzing file tracks...</span>
-        </div>
-      )}
       <input 
         type="file" 
         ref={customAudioInputRef} 
@@ -2529,6 +2604,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           width: 100%;
           max-width: 100%;
         }
+        /* Odometer Clock Styles */
+        .odo-clock-container {
+          display: inline-flex;
+          align-items: center;
+          font-family: monospace;
+          line-height: 1;
+        }
+        .odo-digit-container {
+          display: inline-block;
+          height: 1.1em;
+          line-height: 1.1em;
+          overflow: hidden;
+          position: relative;
+          width: 0.65em;
+          text-align: center;
+          mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+          -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+        }
+        .odo-digit-strip {
+          display: flex;
+          flex-direction: column;
+          transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .odo-digit-strip span {
+          height: 1.1em;
+          display: inline-block;
+        }
+        .odo-separator {
+          display: inline-block;
+          height: 1.1em;
+          line-height: 1.1em;
+          margin: 0 1px;
+        }
+
         .top-title-container {
           display: flex;
           flex-direction: column;

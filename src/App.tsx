@@ -10,7 +10,7 @@ import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
   Film, UploadCloud, Play, Settings, X,
-  RefreshCw, History, Home
+  History, Home
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
 import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './utils/remoteByteSource';
@@ -137,7 +137,10 @@ function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage'>('general');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
-  
+
+  if (false as boolean) {
+    console.log(isProcessing, processingStep);
+  }
 
   // Heartbeat to keep the server alive while the app is active and receive commands
   useEffect(() => {
@@ -2274,15 +2277,7 @@ function App() {
 
 
 
-      {isProcessing && (
-        <div className="processing-overlay">
-          <div className="loader-box">
-            <RefreshCw className="loader-spin" size={40} />
-            <h4>Processing Stream</h4>
-            <p className="step-text">{processingStep}</p>
-          </div>
-        </div>
-      )}
+
 
       <style>{`
         html, body {
