@@ -17,6 +17,24 @@ import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './utils
 import { probeContainer, parseMp4, parseMkv } from './utils/containerParser';
 import { parseHlsManifest } from './utils/hlsParser';
 
+const ToggleSwitch: React.FC<{
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}> = ({ checked, onChange, disabled }) => {
+  return (
+    <div 
+      className={`custom-toggle-switch ${checked ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onChange(!checked);
+      }}
+    >
+      <div className="custom-toggle-knob" />
+    </div>
+  );
+};
+
 export const BACKEND_ORIGIN = 'http://127.0.0.1:50001';
 
 const originalConsoleLog = console.log;
@@ -388,6 +406,7 @@ function App() {
     allowUiSkipping: true,
     blockSeekingCompletely: false,
     autoSkipIntroOutro: true,
+    lockModeActive: false,
     saveHistory: true,
     saveTrackPreferences: true,
     saveVolume: true,
@@ -1360,6 +1379,10 @@ function App() {
         historySaveInterval={settings.historySaveInterval}
         saveVolume={settings.saveVolume}
         ratingThreshold={settings.ratingThreshold}
+        allowUiSkipping={settings.allowUiSkipping}
+        blockSeekingCompletely={settings.blockSeekingCompletely}
+        autoSkipIntroOutro={settings.autoSkipIntroOutro}
+        lockModeActive={settings.lockModeActive}
         onUpdateSubSettings={(newSubSettings) => {
           const updated = {
             ...settings,
@@ -1943,108 +1966,85 @@ function App() {
                               <p className="settings-section-desc">Toggle display components visible on the video screen.</p>
                               <div className="pref-row">
                                 <span className="pref-label">Disable All Overlays (Keyboard Only Mode)</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={settings.hideUIOverlays} 
-                                  onChange={(e) => handleDefaultLangChange('hideUIOverlays', e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('hideUIOverlays', checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Video Name Display</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={settings.hideVideoName} 
-                                  onChange={(e) => handleDefaultLangChange('hideVideoName', e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('hideVideoName', checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Play Button Overlay</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={!settings.showPlayButton} 
-                                  onChange={(e) => handleDefaultLangChange('showPlayButton', !e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('showPlayButton', !checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Time Display</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={!settings.showTimeDisplay} 
-                                  onChange={(e) => handleDefaultLangChange('showTimeDisplay', !e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('showTimeDisplay', !checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Timeline Scrub Bar</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={!settings.showPlayBar} 
-                                  onChange={(e) => handleDefaultLangChange('showPlayBar', !e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('showPlayBar', !checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Volume Control</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={!settings.showVolumeControl} 
-                                  onChange={(e) => handleDefaultLangChange('showVolumeControl', !e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('showVolumeControl', !checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Fullscreen Toggle Button</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={!settings.showFullscreen} 
-                                  onChange={(e) => handleDefaultLangChange('showFullscreen', !e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('showFullscreen', !checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Floating & Hover Animations</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={settings.disableAnimations} 
-                                  onChange={(e) => handleDefaultLangChange('disableAnimations', e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('disableAnimations', checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Disable Focus Loss Auto-Pause</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={!settings.pauseOnFocusChange} 
-                                  onChange={(e) => handleDefaultLangChange('pauseOnFocusChange', !e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('pauseOnFocusChange', !checked)}
                                 />
                               </div>
                               <div className="pref-row" style={{ opacity: settings.blockSeekingCompletely ? 0.5 : 1 }}>
                                 <span className="pref-label">Show Skip Buttons in Player UI</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={settings.allowUiSkipping}
                                   disabled={settings.blockSeekingCompletely}
-                                  onChange={(e) => handleDefaultLangChange('allowUiSkipping', e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('allowUiSkipping', checked)}
                                 />
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label" style={{ color: '#ff4444' }}>Block Seeking / Skipping Completely</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={settings.blockSeekingCompletely}
-                                  onChange={(e) => {
-                                    const block = e.target.checked;
+                                  onChange={(checked) => {
                                     setSettings((prev) => {
                                       const updated = {
                                         ...prev,
-                                        blockSeekingCompletely: block,
-                                        allowUiSkipping: block ? false : prev.allowUiSkipping
+                                        blockSeekingCompletely: checked,
+                                        allowUiSkipping: checked ? false : prev.allowUiSkipping
                                       };
                                       saveSettingsToStorage(updated);
                                       return updated;
@@ -2054,11 +2054,16 @@ function App() {
                               </div>
                               <div className="pref-row">
                                 <span className="pref-label">Auto-Skip Intros & Outros</span>
-                                <input 
-                                  type="checkbox" 
-                                  className="pref-checkbox"
+                                <ToggleSwitch 
                                   checked={settings.autoSkipIntroOutro}
-                                  onChange={(e) => handleDefaultLangChange('autoSkipIntroOutro', e.target.checked)}
+                                  onChange={(checked) => handleDefaultLangChange('autoSkipIntroOutro', checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Lock Mode Active (Lock Controls on Startup)</span>
+                                <ToggleSwitch 
+                                  checked={settings.lockModeActive}
+                                  onChange={(checked) => handleDefaultLangChange('lockModeActive', checked)}
                                 />
                               </div>
                             </div>
@@ -2302,41 +2307,33 @@ function App() {
                           
                           <div className="pref-row">
                             <span className="pref-label">Save Playback Position & History</span>
-                            <input 
-                              type="checkbox" 
-                              className="pref-checkbox"
+                            <ToggleSwitch 
                               checked={settings.saveHistory} 
-                              onChange={(e) => handleDefaultLangChange('saveHistory', e.target.checked)}
+                              onChange={(checked) => handleDefaultLangChange('saveHistory', checked)}
                             />
                           </div>
 
                           <div className="pref-row">
                             <span className="pref-label">Save Audio/Subtitle Track Preferences</span>
-                            <input 
-                              type="checkbox" 
-                              className="pref-checkbox"
+                            <ToggleSwitch 
                               checked={settings.saveTrackPreferences} 
-                              onChange={(e) => handleDefaultLangChange('saveTrackPreferences', e.target.checked)}
+                              onChange={(checked) => handleDefaultLangChange('saveTrackPreferences', checked)}
                             />
                           </div>
 
                           <div className="pref-row">
                             <span className="pref-label">Save Player Volume & Mute States</span>
-                            <input 
-                              type="checkbox" 
-                              className="pref-checkbox"
+                            <ToggleSwitch 
                               checked={settings.saveVolume} 
-                              onChange={(e) => handleDefaultLangChange('saveVolume', e.target.checked)}
+                              onChange={(checked) => handleDefaultLangChange('saveVolume', checked)}
                             />
                           </div>
 
                           <div className="pref-row">
                             <span className="pref-label">Save UI Customization Preferences</span>
-                            <input 
-                              type="checkbox" 
-                              className="pref-checkbox"
+                            <ToggleSwitch 
                               checked={settings.saveSettings} 
-                              onChange={(e) => handleDefaultLangChange('saveSettings', e.target.checked)}
+                              onChange={(checked) => handleDefaultLangChange('saveSettings', checked)}
                             />
                           </div>
                         </div>
@@ -2648,9 +2645,14 @@ function App() {
         /* Main Scrollable Content Area */
         .main-content {
           flex: 1;
-          padding-top: 2rem;
-          padding-bottom: 3rem;
+          padding-top: 1.5rem;
+          padding-bottom: 2rem;
           box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          min-height: 0;
         }
 
         /* Continue Watching Banner Card */
@@ -2711,6 +2713,7 @@ function App() {
         }
         .workspace-panel-wrapper {
           width: 100%;
+          margin: auto 0;
         }
         .workspace-panel {
           padding: clamp(1.25rem, 4vw, 2.5rem);
@@ -2719,7 +2722,8 @@ function App() {
           width: 100%;
         }
         .workspace-panel.settings-panel {
-          max-height: 82vh;
+          height: 80vh;
+          max-height: 80vh;
           display: flex;
           flex-direction: column;
           overflow: hidden;
@@ -2741,31 +2745,60 @@ function App() {
         }
         .settings-tab-nav {
           display: flex;
-          gap: 0.5rem;
+          gap: 1.5rem;
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          padding-bottom: 0.75rem;
+          padding-bottom: 0.5rem;
           margin-bottom: 1.5rem;
         }
         .settings-nav-btn {
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 6px;
+          background: none;
+          border: none;
+          border-bottom: 2px solid transparent;
           color: rgba(255, 255, 255, 0.6);
-          padding: 0.5rem 1.25rem;
-          font-size: 0.88rem;
+          padding: 0.5rem 0.25rem;
+          font-size: 0.95rem;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.2s ease;
         }
         .settings-nav-btn:hover {
-          background: rgba(255, 255, 255, 0.08);
           color: #ffffff;
         }
         .settings-nav-btn.active {
-          background: #3b82f6;
-          border-color: #3b82f6;
+          border-bottom: 2px solid #e50914;
           color: #ffffff;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+          box-shadow: none;
+        }
+        .custom-toggle-switch {
+          position: relative;
+          width: 40px;
+          height: 22px;
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 11px;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          flex-shrink: 0;
+        }
+        .custom-toggle-switch.active {
+          background: #3b82f6;
+        }
+        .custom-toggle-switch.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .custom-toggle-knob {
+          position: absolute;
+          top: 2px;
+          left: 2px;
+          width: 18px;
+          height: 18px;
+          background: #ffffff;
+          border-radius: 50%;
+          transition: transform 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+        .custom-toggle-switch.active .custom-toggle-knob {
+          transform: translateX(18px);
         }
 
         /* Onboarding styles */

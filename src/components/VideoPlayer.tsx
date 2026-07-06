@@ -39,6 +39,7 @@ interface VideoPlayerProps {
   allowUiSkipping?: boolean;
   blockSeekingCompletely?: boolean;
   autoSkipIntroOutro?: boolean;
+  lockModeActive?: boolean;
 }
 
 const OdometerDigit: React.FC<{ val: string }> = ({ val }) => {
@@ -135,7 +136,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onUpdateSettings,
   allowUiSkipping = true,
   blockSeekingCompletely = false,
-  autoSkipIntroOutro = true
+  autoSkipIntroOutro = true,
+  lockModeActive: propLockModeActive = false
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -152,12 +154,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isOutro, setIsOutro] = useState(false);
   const [skipEnabled, setSkipEnabled] = useState(false);
 
-  const uiConfig = {
-    allowUiSkipping,
-    blockSeekingCompletely,
-    autoSkipIntroOutro
-  };
-
   const [playerSettings, setPlayerSettings] = useState({
     hideUIOverlays: !!propHideUIOverlays,
     hideVideoName: !!propHideVideoName,
@@ -165,7 +161,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     showTimeDisplay: propShowTimeDisplay !== false,
     showPlayBar: propShowPlayBar !== false,
     showVolumeControl: propShowVolumeControl !== false,
-    showFullscreen: propShowFullscreen !== false
+    showFullscreen: propShowFullscreen !== false,
+    allowUiSkipping: allowUiSkipping !== false,
+    blockSeekingCompletely: !!blockSeekingCompletely,
+    autoSkipIntroOutro: autoSkipIntroOutro !== false,
+    lockModeActive: !!propLockModeActive
   });
 
   useEffect(() => {
@@ -176,18 +176,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       showTimeDisplay: propShowTimeDisplay !== false,
       showPlayBar: propShowPlayBar !== false,
       showVolumeControl: propShowVolumeControl !== false,
-      showFullscreen: propShowFullscreen !== false
+      showFullscreen: propShowFullscreen !== false,
+      allowUiSkipping: allowUiSkipping !== false,
+      blockSeekingCompletely: !!blockSeekingCompletely,
+      autoSkipIntroOutro: autoSkipIntroOutro !== false,
+      lockModeActive: !!propLockModeActive
     });
-  }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen]);
+  }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen, allowUiSkipping, blockSeekingCompletely, autoSkipIntroOutro, propLockModeActive]);
 
   const updatePlayerSetting = (key: keyof typeof playerSettings, value: boolean) => {
     setPlayerSettings(prev => {
       const next = { ...prev, [key]: value };
+      
+      // If we blocked seeking completely, disable skip buttons too
+      if (key === 'blockSeekingCompletely' && value) {
+        next.allowUiSkipping = false;
+      }
+      
       if (onUpdateSettings) {
-        onUpdateSettings({ [key]: value });
+        onUpdateSettings(next);
       }
       return next;
     });
+  };
+
+  const uiConfig = {
+    allowUiSkipping: playerSettings.allowUiSkipping,
+    blockSeekingCompletely: playerSettings.blockSeekingCompletely,
+    autoSkipIntroOutro: playerSettings.autoSkipIntroOutro
   };
 
   // Shadow props with reactive state values for settings
@@ -326,7 +342,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 1500);
   };
   const [showControls, setShowControls] = useState(true);
-  const [isLocked, setIsLocked] = useState(false);
+  const [isLocked, setIsLocked] = useState(propLockModeActive);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hoverTime, setHoverTime] = useState<string | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
@@ -2874,6 +2890,39 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <ToggleSwitch 
                   checked={!showFullscreen}
                   onChange={(val) => updatePlayerSetting('showFullscreen', !val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0', opacity: playerSettings.blockSeekingCompletely ? 0.5 : 1 }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Show Skip Buttons in Player UI</span>
+                <ToggleSwitch 
+                  checked={playerSettings.allowUiSkipping}
+                  disabled={playerSettings.blockSeekingCompletely}
+                  onChange={(val) => updatePlayerSetting('allowUiSkipping', val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#ff4444', fontWeight: 500 }}>Block Seeking / Skipping Completely</span>
+                <ToggleSwitch 
+                  checked={playerSettings.blockSeekingCompletely}
+                  onChange={(val) => updatePlayerSetting('blockSeekingCompletely', val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Auto-Skip Intros & Outros</span>
+                <ToggleSwitch 
+                  checked={playerSettings.autoSkipIntroOutro}
+                  onChange={(val) => updatePlayerSetting('autoSkipIntroOutro', val)}
+                />
+              </div>
+
+              <div className="drawer-option-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0' }}>
+                <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 500 }}>Lock Mode Active (Lock Controls on Startup)</span>
+                <ToggleSwitch 
+                  checked={playerSettings.lockModeActive}
+                  onChange={(val) => updatePlayerSetting('lockModeActive', val)}
                 />
               </div>
             </div>

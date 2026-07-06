@@ -306,6 +306,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
                                             <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
                                               Length: {durationStr}
                                             </span>
+                                            {epItem.video.lastPlayedDate && (
+                                              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
+                                                • Played: {new Date(epItem.video.lastPlayedDate).toLocaleDateString()}
+                                              </span>
+                                            )}
                                             {rating > 0 && (
                                               <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#f59e0b' }}>
                                                 <Star size={9} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
