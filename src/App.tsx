@@ -527,6 +527,35 @@ function App() {
     });
   };
 
+  // Global keybind for 'm' to play last played media when player is closed
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Avoid triggering when user is typing in inputs or textarea
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement).isContentEditable
+      ) {
+        return;
+      }
+
+      if ((e.key === 'm' || e.key === 'M') && !playingVideo) {
+        e.preventDefault();
+        // Find last played video in history
+        const lastPlayed = [...videos]
+          .filter(v => v.lastPlayedDate)
+          .sort((a, b) => new Date(b.lastPlayedDate!).getTime() - new Date(a.lastPlayedDate!).getTime())[0];
+
+        if (lastPlayed) {
+          handlePlayVideo(lastPlayed);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [playingVideo, videos]);
+
   useEffect(() => {
     if (playingVideo && settings.saveHistory) {
       localStorage.setItem('valor_last_playing_id', playingVideo.id);
@@ -2645,8 +2674,8 @@ function App() {
         /* Main Scrollable Content Area */
         .main-content {
           flex: 1;
-          padding-top: 2rem;
-          padding-bottom: 3rem;
+          padding-top: 1.5rem;
+          padding-bottom: 1.5rem;
           box-sizing: border-box;
         }
 
@@ -2716,8 +2745,8 @@ function App() {
           width: 100%;
         }
         .workspace-panel.settings-panel {
-          height: calc(100vh - 120px);
-          max-height: calc(100vh - 120px);
+          height: calc(100vh - 100px);
+          max-height: calc(100vh - 100px);
           display: flex;
           flex-direction: column;
           overflow: hidden;
