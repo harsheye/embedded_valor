@@ -3,7 +3,7 @@ import {
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
   Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash,
-  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft
+  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft, Eye
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -41,6 +41,8 @@ interface VideoPlayerProps {
   blockSeekingCompletely?: boolean;
   autoSkipIntroOutro?: boolean;
   lockModeActive?: boolean;
+  settingsOrder?: string[];
+  uiHideTimeout?: number;
 }
 
 const OdometerDigit: React.FC<{ val: string }> = ({ val }) => {
@@ -121,7 +123,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   allowUiSkipping = true,
   blockSeekingCompletely = false,
   autoSkipIntroOutro = true,
-  lockModeActive: propLockModeActive = false
+  lockModeActive: propLockModeActive = false,
+  settingsOrder,
+  uiHideTimeout = 1.5
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -137,6 +141,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isIntro, setIsIntro] = useState(false);
   const [isOutro, setIsOutro] = useState(false);
   const [skipEnabled, setSkipEnabled] = useState(false);
+  const [bookmarkType, setBookmarkType] = useState<'standard' | 'intro' | 'outro'>('standard');
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
 
   const [hoveredSetting, setHoveredSetting] = useState<string | null>(null);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
@@ -1005,13 +1011,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying && !showAudioSubMenu) {
+      if (isPlaying && !showAudioSubMenu && !showSettingsPanel && !showBookmarksPopover && !showAddDialog) {
         setShowControls(false);
       }
-    }, 3000);
+    }, uiHideTimeout * 1000);
   };
 
-  const handleMouseMove = () => {
+  const lastMousePosRef = useRef({ x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const { clientX, clientY } = e;
+    if (clientX === lastMousePosRef.current.x && clientY === lastMousePosRef.current.y) {
+      return;
+    }
+    lastMousePosRef.current = { x: clientX, y: clientY };
     resetControlsTimeout();
   };
 
@@ -1020,7 +1033,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
-  }, [isPlaying, showAudioSubMenu]);
+  }, [isPlaying, showAudioSubMenu, showSettingsPanel, showBookmarksPopover, showAddDialog]);
 
   const parseDurationToSeconds = (dur: any): number => {
     if (!dur) return 0;
@@ -1893,7 +1906,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       addBookmark: 't',
       toggleMute: 'm',
       audioBoost: 'n',
-      frameStep: 'e'
+      frameStep: 'e',
+      screenshot: 's'
     };
     const parsed = saved ? JSON.parse(saved) : {};
     const keybinds = {
@@ -1908,6 +1922,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const toggleMuteKey = (keybinds.toggleMute || 'm').toLowerCase();
     const audioBoostKey = (keybinds.audioBoost || 'n').toLowerCase();
     const frameStepKey = (keybinds.frameStep || 'e').toLowerCase();
+    const screenshotKey = (keybinds.screenshot || 's').toLowerCase();
 
     if (pressedKey === openSettingsKey) {
       e.preventDefault();
@@ -1927,6 +1942,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (pressedKey === addBookmarkKey) {
       e.preventDefault();
+      if (isLocked) {
+        triggerSwitchToast("Controls are Locked");
+        return;
+      }
       if (videoRef.current) {
         setNewBookmarkTime(videoRef.current.currentTime);
         setNewBookmarkEndTime(videoRef.current.currentTime + 90);
@@ -1934,8 +1953,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setIsIntro(false);
         setIsOutro(false);
         setSkipEnabled(false);
+        setBookmarkType('standard');
+        setTypeDropdownOpen(false);
         setShowAddDialog(true);
-        videoRef.current.pause();
       }
       return;
     }
@@ -1946,6 +1966,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setIsLocked(prev => {
         const next = !prev;
         triggerSwitchToast(next ? `Controls Locked (${lockControlsKey.toUpperCase()})` : `Controls Unlocked (${lockControlsKey.toUpperCase()})`);
+        if (next) {
+          setShowSettingsPanel(false);
+          setIsSettingsExpanded(false);
+          setShowBookmarksPopover(false);
+          setShowAudioSubMenu(false);
+          setShowAddDialog(false);
+        }
         return next;
       });
       return;
@@ -1953,9 +1980,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (isLocked) {
       const isVolumeKey = pressedKey === 'arrowup' || pressedKey === 'arrowdown';
-      if (!isVolumeKey) {
+      const isBoostKey = pressedKey === audioBoostKey;
+      const isScreenshotKey = pressedKey === screenshotKey;
+      if (!isVolumeKey && !isBoostKey && !isScreenshotKey) {
         e.preventDefault();
         e.stopPropagation();
+        triggerSwitchToast("Controls are Locked");
         return;
       }
     }
@@ -2066,6 +2096,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const frameTime = 1 / 24;
         videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + frameTime);
         triggerSwitchToast('Frame Step (+0.04s)');
+      }
+    } else if (pressedKey === screenshotKey) {
+      e.preventDefault();
+      if (videoRef.current) {
+        try {
+          const video = videoRef.current;
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || video.clientWidth;
+          canvas.height = video.videoHeight || video.clientHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            const videoTitle = video.title || 'video';
+            const sanitizedTitle = videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            link.download = `${sanitizedTitle}_screenshot_${Math.floor(video.currentTime)}s.png`;
+            link.href = dataUrl;
+            link.click();
+            triggerSwitchToast('Screenshot Saved!');
+          }
+        } catch (err) {
+          console.error('Failed to capture screenshot:', err);
+          triggerSwitchToast('Screenshot capture blocked by security policy');
+        }
       }
     } else if (pressedKey === 'arrowup') {
       e.preventDefault();
@@ -2413,6 +2468,199 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setHoverTime(null);
   };
 
+  const renderSettingsButton = (key: string) => {
+    switch (key) {
+      case 'hideUIOverlays':
+        return (
+          <button
+            key="hideUIOverlays"
+            onClick={() => cycleSetting('hideUIOverlays')}
+            onMouseEnter={() => setHoveredSetting('showUIOverlays')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title={"Disable All Overlays (Keyboard Only Mode)" + getSettingLabelSuffix('hideUIOverlays')}
+            className={getToggleBtnClass('hideUIOverlays')}
+          >
+            <Layers size={22} />
+          </button>
+        );
+      case 'hideVideoName':
+        return (
+          <button
+            key="hideVideoName"
+            onClick={() => cycleSetting('hideVideoName')}
+            onMouseEnter={() => setHoveredSetting('showVideoName')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title={"Disable Video Name Display" + getSettingLabelSuffix('hideVideoName')}
+            className={getToggleBtnClass('hideVideoName')}
+          >
+            <Type size={22} />
+          </button>
+        );
+      case 'showPlayButton':
+        return (
+          <button
+            key="showPlayButton"
+            onClick={() => cycleSetting('showPlayButton')}
+            onMouseEnter={() => setHoveredSetting('showPlayButton')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title={"Disable Play Button Overlay" + getSettingLabelSuffix('showPlayButton')}
+            className={getToggleBtnClass('showPlayButton')}
+          >
+            <Play size={22} />
+          </button>
+        );
+      case 'showTimeDisplay':
+        return (
+          <button
+            key="showTimeDisplay"
+            onClick={() => cycleSetting('showTimeDisplay')}
+            onMouseEnter={() => setHoveredSetting('showTimeDisplay')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title={"Disable Time Display" + getSettingLabelSuffix('showTimeDisplay')}
+            className={getToggleBtnClass('showTimeDisplay')}
+          >
+            <Clock size={22} />
+          </button>
+        );
+      case 'showPlayBar':
+        return (
+          <button
+            key="showPlayBar"
+            onClick={() => cycleSetting('showPlayBar')}
+            onMouseEnter={() => setHoveredSetting('showPlayBar')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title={"Disable Timeline Scrub Bar" + getSettingLabelSuffix('showPlayBar')}
+            className={getToggleBtnClass('showPlayBar')}
+          >
+            <Sliders size={22} />
+          </button>
+        );
+      case 'showVolumeControl':
+        return (
+          <button
+            key="showVolumeControl"
+            onClick={() => cycleSetting('showVolumeControl')}
+            onMouseEnter={() => setHoveredSetting('showVolumeControl')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title={"Disable Volume Control" + getSettingLabelSuffix('showVolumeControl')}
+            className={getToggleBtnClass('showVolumeControl')}
+          >
+            <Volume2 size={22} />
+          </button>
+        );
+      case 'showFullscreen':
+        return (
+          <button
+            key="showFullscreen"
+            onClick={() => cycleSetting('showFullscreen')}
+            onMouseEnter={() => setHoveredSetting('showFullscreen')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title={"Disable Fullscreen Toggle Button" + getSettingLabelSuffix('showFullscreen')}
+            className={getToggleBtnClass('showFullscreen')}
+          >
+            <Maximize size={22} />
+          </button>
+        );
+      case 'disableAnimations':
+        return (
+          <button
+            key="disableAnimations"
+            onClick={() => updatePlayerSetting('disableAnimations', !playerSettings.disableAnimations)}
+            onMouseEnter={() => setHoveredSetting('disableAnimations')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title="Disable Floating & Hover Animations"
+            className={`settings-icon-toggle ${playerSettings.disableAnimations ? 'active-red' : ''}`}
+          >
+            <Zap size={22} />
+          </button>
+        );
+      case 'pauseOnFocusChange':
+        return (
+          <button
+            key="pauseOnFocusChange"
+            onClick={() => updatePlayerSetting('pauseOnFocusChange', !playerSettings.pauseOnFocusChange)}
+            onMouseEnter={() => setHoveredSetting('pauseOnFocusChange')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title="Disable Focus Loss Auto-Pause"
+            className={`settings-icon-toggle ${!playerSettings.pauseOnFocusChange ? 'active-red' : ''}`}
+          >
+            <Coffee size={22} />
+          </button>
+        );
+      case 'allowUiSkipping':
+        return (
+          <button
+            key="allowUiSkipping"
+            onClick={() => {
+              if (!playerSettings.blockSeekingCompletely) {
+                updatePlayerSetting('allowUiSkipping', !playerSettings.allowUiSkipping);
+              }
+            }}
+            onMouseEnter={() => setHoveredSetting('allowUiSkipping')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            disabled={playerSettings.blockSeekingCompletely}
+            title={playerSettings.blockSeekingCompletely ? "Show Skip Buttons (Disabled - Seeking Blocked)" : "Show Skip Buttons in Player UI"}
+            className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'disabled' : ''} ${playerSettings.allowUiSkipping ? 'active-blue' : 'active-red'}`}
+          >
+            <SkipForward size={22} />
+          </button>
+        );
+      case 'blockSeekingCompletely':
+        return (
+          <button
+            key="blockSeekingCompletely"
+            onClick={() => updatePlayerSetting('blockSeekingCompletely', !playerSettings.blockSeekingCompletely)}
+            onMouseEnter={() => setHoveredSetting('blockSeekingCompletely')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title="Block Seeking / Skipping Completely"
+            className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'active-red' : ''}`}
+          >
+            <Ban size={22} />
+          </button>
+        );
+      case 'autoSkipIntroOutro':
+        return (
+          <button
+            key="autoSkipIntroOutro"
+            onClick={() => updatePlayerSetting('autoSkipIntroOutro', !playerSettings.autoSkipIntroOutro)}
+            onMouseEnter={() => setHoveredSetting('autoSkipIntroOutro')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title="Auto-Skip Intros & Outros"
+            className={`settings-icon-toggle ${playerSettings.autoSkipIntroOutro ? 'active-blue' : ''}`}
+          >
+            <FastForward size={22} />
+          </button>
+        );
+      case 'lockModeActive':
+        return (
+          <button
+            key="lockModeActive"
+            onClick={() => {
+              const nextVal = !playerSettings.lockModeActive;
+              updatePlayerSetting('lockModeActive', nextVal);
+              setIsLocked(nextVal);
+              if (nextVal) {
+                setShowSettingsPanel(false);
+                setIsSettingsExpanded(false);
+                setShowBookmarksPopover(false);
+                setShowAudioSubMenu(false);
+                setShowAddDialog(false);
+                triggerSwitchToast(`Controls Locked (${getLockShortcutKey().toUpperCase()})`);
+              }
+            }}
+            onMouseEnter={() => setHoveredSetting('lockModeActive')}
+            onMouseLeave={() => setHoveredSetting(null)}
+            title="Lock Mode Active (Lock Controls on Startup)"
+            className={`settings-icon-toggle ${playerSettings.lockModeActive ? 'active-blue' : ''}`}
+          >
+            <Lock size={22} />
+          </button>
+        );
+      default:
+        return null;
+    }
+  };
+
 
 
   const controlsVisible = showControls && !isLocked;
@@ -2421,8 +2669,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     <div 
       ref={containerRef} 
       className={`player-container ${controlsVisible && !hideUIOverlays ? 'show-cursor' : 'hide-cursor'} ${hideUIOverlays ? 'keyboard-only' : ''} ${disableAnimations ? 'no-animations' : ''} ${hoveredSetting === 'lockModeActive' || hoveredSetting === 'pauseOnFocusChange' || hoveredSetting === 'disableAnimations' ? 'highlight-active' : ''}`}
-      onMouseMove={() => {
-        if (!isLocked) handleMouseMove();
+      onMouseMove={(e) => {
+        if (!isLocked) handleMouseMove(e);
       }}
       onContextMenu={(e) => e.preventDefault()}
       onDoubleClick={(e) => {
@@ -2573,13 +2821,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Top Header Overlay */}
-      {(!hideUIOverlays || hoveredSetting === 'showUIOverlays') && (
+      {!isLocked && (!hideUIOverlays || hoveredSetting === 'showUIOverlays') && (
         <div 
           className={`player-overlay top-overlay-clean ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showUIOverlays')}`} 
           onClick={(e) => e.stopPropagation()}
           style={{
-            opacity: showUIOverlaysMode === 'enable' ? 1 : 0.5,
-            pointerEvents: showUIOverlaysMode === 'enable' ? 'auto' : 'none'
+            opacity: controlsVisible ? (showUIOverlaysMode === 'enable' ? 1 : 0.5) : 0,
+            pointerEvents: controlsVisible ? (showUIOverlaysMode === 'enable' ? 'auto' : 'none') : 'none'
           }}
         >
           {/* Chromecast trigger (acting as native browser cast prompt) */}
@@ -2656,7 +2904,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Center Screen HUD Controls */}
-      {!hideUIOverlays && (showPlayButton || uiConfig.allowUiSkipping || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') && (
+      {!isLocked && !hideUIOverlays && (showPlayButton || uiConfig.allowUiSkipping || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') && (
         <div 
           className={`center-controls-hud ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showPlayButton')}`} 
           onClick={(e) => {
@@ -2754,14 +3002,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Bottom Controls Overlay */}
-      {((!hideUIOverlays && (showPlayBar || showTimeDisplay || showVolumeControl || showFullscreen || video.isRemote)) ||
-        (hoveredSetting === 'showUIOverlays' || hoveredSetting === 'showPlayBar' || hoveredSetting === 'showTimeDisplay' || hoveredSetting === 'showVolumeControl' || hoveredSetting === 'showFullscreen')) && (
+      {!isLocked && (((!hideUIOverlays && (showPlayBar || showTimeDisplay || showVolumeControl || showFullscreen || video.isRemote)) ||
+        (hoveredSetting === 'showUIOverlays' || hoveredSetting === 'showPlayBar' || hoveredSetting === 'showTimeDisplay' || hoveredSetting === 'showVolumeControl' || hoveredSetting === 'showFullscreen'))) && (
         <div 
           className={`player-overlay bottom-overlay ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showUIOverlays')}`} 
           onClick={(e) => e.stopPropagation()}
           style={{
-            opacity: showUIOverlaysMode === 'enable' ? 1 : 0.5,
-            pointerEvents: showUIOverlaysMode === 'enable' ? 'auto' : 'none'
+            opacity: controlsVisible ? (showUIOverlaysMode === 'enable' ? 1 : 0.5) : 0,
+            pointerEvents: controlsVisible ? (showUIOverlaysMode === 'enable' ? 'auto' : 'none') : 'none'
           }}
         >
           
@@ -2863,13 +3111,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <div className="bottom-controls-left-spacer">
                 <button className="control-btn-pip" onClick={togglePiP} title="Picture in Picture">
                   <MonitorPlay size={22} />
-                </button>
-                {(showVolumeControl || hoveredSetting === 'showVolumeControl') && (
+                </button>                 {(showVolumeControl || hoveredSetting === 'showVolumeControl') && (
                   <div 
                     className={`volume-control-group-premium ${getHighlightClass('showVolumeControl')}`}
                     style={{
                       opacity: showVolumeControlMode === 'enable' ? 1 : 0.5,
                       pointerEvents: showVolumeControlMode === 'enable' ? 'auto' : 'none'
+                    }}
+                    onWheel={(e) => {
+                      e.preventDefault();
+                      setIsMuted(false);
+                      setVolume(prev => {
+                        const delta = -e.deltaY * 0.00025;
+                        const nextVol = Math.max(0.0, Math.min(1.0, prev + delta));
+                        return nextVol;
+                      });
                     }}
                   >
                     <button 
@@ -2877,26 +3133,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       onClick={() => {
                         setIsMuted(prev => !prev);
                       }}
-                      onWheel={(e) => {
-                        e.preventDefault();
-                        setIsMuted(false);
-                        setVolume(prev => {
-                          const delta = e.deltaY < 0 ? 0.05 : -0.05;
-                          const nextVol = Math.max(0.0, Math.min(1.0, prev + delta));
-                          return nextVol;
-                        });
-                      }}
                       title={isMuted ? "Unmute" : "Mute"}
-                      style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.2s, transform 0.2s' }}
                     >
-                      {isMuted || volume === 0 ? <VolumeX size={22} /> : volume < 0.5 ? <Volume1 size={22} /> : <Volume2 size={22} />}
+                      {isMuted || volume === 0 ? <VolumeX size={18} /> : volume < 0.5 ? <Volume1 size={18} /> : <Volume2 size={18} />}
                     </button>
                     <div className="volume-slider-container-premium">
                       <input 
                         type="range"
                         min={0}
                         max={1}
-                        step={0.05}
+                        step={0.01}
+                        onWheel={(e) => {
+                          // Prevent default range wheel scroll to let parent's high-res free wheel scroll control take over
+                          e.preventDefault();
+                        }}
                         value={isMuted ? 0 : volume}
                         onChange={(e) => {
                           const nextVol = parseFloat(e.target.value);
@@ -2905,10 +3155,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         }}
                         className="volume-slider-premium"
                         style={{
-                          background: `linear-gradient(to right, #e50914 0%, #e50914 ${(isMuted ? 0 : volume) * 100}%, rgba(255, 255, 255, 0.25) ${(isMuted ? 0 : volume) * 100}%, rgba(255, 255, 255, 0.25) 100%)`
+                          background: `linear-gradient(to right, #007aff 0%, #007aff ${(isMuted ? 0 : volume) * 100}%, rgba(255, 255, 255, 0.08) ${(isMuted ? 0 : volume) * 100}%, rgba(255, 255, 255, 0.08) 100%)`
                         }}
                       />
                     </div>
+                    <span className="volume-percent-text-premium">
+                      {Math.round((isMuted ? 0 : volume) * 100)}
+                    </span>
                   </div>
                 )}
               </div>
@@ -2965,6 +3218,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                 <div 
                   className="popover-wrapper"
+                  style={{ marginLeft: '50px' }}
                   onMouseEnter={() => {
                     if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
                     setShowBookmarksPopover(true);
@@ -2984,7 +3238,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </button>
 
                   {showBookmarksPopover && (
-                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in-pure" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '340px', maxHeight: '480px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                    <div className="audio-sub-popover audio-sub-popover-center bookmarks-popover-list animate-fade-in-pure" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '340px', height: '240px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
                       <div className="popover-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Bookmarks ({bookmarks.length})</span>
                         <button 
@@ -2998,8 +3252,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                               setIsIntro(false);
                               setIsOutro(false);
                               setSkipEnabled(false);
+                              setBookmarkType('standard');
+                              setTypeDropdownOpen(false);
                               setShowAddDialog(true);
-                              videoRef.current.pause();
                               setShowBookmarksPopover(false);
                             }
                           }}
@@ -3086,11 +3341,140 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            paddingRight: '2rem'
+            paddingRight: '0'
           }}
         >
           <div 
             className="settings-modal-card animate-slide-in-right" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'rgba(18, 18, 18, 0.96)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRight: 'none',
+              borderRadius: '16px 0 0 16px',
+              padding: '1.25rem 1rem',
+              width: isSettingsExpanded ? '280px' : '154px',
+              boxShadow: '-10px 0 30px rgba(0,0,0,0.6)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              fontFamily: 'sans-serif',
+              transition: 'width 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>UI Settings</h3>
+              <button 
+                onClick={() => {
+                  setShowSettingsPanel(false);
+                  setIsSettingsExpanded(false);
+                }}
+                style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.6)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s ease' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+                onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div 
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isSettingsExpanded ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)',
+                gap: '0.6rem',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}
+            >
+              {!isSettingsExpanded ? (
+                <>
+                  {(settingsOrder || [
+                    'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+                    'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+                  ]).slice(0, 5).map((key) => renderSettingsButton(key))}
+                  
+                  {/* 6th item is the uncollapse button */}
+                  <button
+                    onClick={() => setIsSettingsExpanded(true)}
+                    title="Show More Settings"
+                    className="settings-icon-toggle"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: 'rgba(255, 255, 255, 0.8)',
+                      borderRadius: '12px',
+                      padding: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s, border-color 0.2s',
+                      height: '54px',
+                      width: '54px'
+                    }}
+                  >
+                    <ChevronRight size={22} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  {(settingsOrder || [
+                    'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+                    'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+                  ]).map((key) => renderSettingsButton(key))}
+
+                  {/* Collapse button inside the 4x4 grid */}
+                  <button
+                    onClick={() => setIsSettingsExpanded(false)}
+                    title="Show Less Settings"
+                    className="settings-icon-toggle"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: 'rgba(255, 255, 255, 0.8)',
+                      borderRadius: '12px',
+                      padding: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s, border-color 0.2s',
+                      height: '54px',
+                      width: '54px'
+                    }}
+                  >
+                    <ChevronLeft size={22} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Bookmark Dialog Overlay */}
+      {showAddDialog && (
+        <div 
+          className="bookmark-dialog-overlay animate-overlay-fade-in" 
+          onClick={() => setShowAddDialog(false)}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'none',
+            backdropFilter: 'none',
+            WebkitBackdropFilter: 'none',
+            zIndex: 160,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            paddingRight: '2rem'
+          }}
+        >
+          <div 
+            className="bookmark-dialog-box animate-slide-in-right" 
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'rgba(18, 18, 18, 0.95)',
@@ -3106,12 +3490,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#ffffff' }}>UI Settings</h3>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#ffffff' }}>Add Bookmark</h3>
               <button 
-                onClick={() => {
-                  setShowSettingsPanel(false);
-                  setIsSettingsExpanded(false);
-                }}
+                onClick={() => setShowAddDialog(false)}
                 style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.6)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s ease' }}
                 onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
                 onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'}
@@ -3120,321 +3501,222 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </button>
             </div>
             
-            <div 
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: '0.75rem',
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-            >
-              {/* Disable All Overlays */}
-              <button
-                onClick={() => cycleSetting('hideUIOverlays')}
-                onMouseEnter={() => setHoveredSetting('showUIOverlays')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title={"Disable All Overlays (Keyboard Only Mode)" + getSettingLabelSuffix('hideUIOverlays')}
-                className={getToggleBtnClass('hideUIOverlays')}
-              >
-                <Layers size={22} />
-              </button>
-
-              {/* Disable Video Name Display */}
-              <button
-                onClick={() => cycleSetting('hideVideoName')}
-                onMouseEnter={() => setHoveredSetting('showVideoName')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title={"Disable Video Name Display" + getSettingLabelSuffix('hideVideoName')}
-                className={getToggleBtnClass('hideVideoName')}
-              >
-                <Type size={22} />
-              </button>
-
-              {/* Disable Play Button Overlay */}
-              <button
-                onClick={() => cycleSetting('showPlayButton')}
-                onMouseEnter={() => setHoveredSetting('showPlayButton')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title={"Disable Play Button Overlay" + getSettingLabelSuffix('showPlayButton')}
-                className={getToggleBtnClass('showPlayButton')}
-              >
-                <Play size={22} />
-              </button>
-
-              {/* Disable Time Display */}
-              <button
-                onClick={() => cycleSetting('showTimeDisplay')}
-                onMouseEnter={() => setHoveredSetting('showTimeDisplay')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title={"Disable Time Display" + getSettingLabelSuffix('showTimeDisplay')}
-                className={getToggleBtnClass('showTimeDisplay')}
-              >
-                <Clock size={22} />
-              </button>
-
-              {/* Disable Timeline Scrub Bar */}
-              <button
-                onClick={() => cycleSetting('showPlayBar')}
-                onMouseEnter={() => setHoveredSetting('showPlayBar')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title={"Disable Timeline Scrub Bar" + getSettingLabelSuffix('showPlayBar')}
-                className={getToggleBtnClass('showPlayBar')}
-              >
-                <Sliders size={22} />
-              </button>
-
-              {/* Disable Volume Control */}
-              <button
-                onClick={() => cycleSetting('showVolumeControl')}
-                onMouseEnter={() => setHoveredSetting('showVolumeControl')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title={"Disable Volume Control" + getSettingLabelSuffix('showVolumeControl')}
-                className={getToggleBtnClass('showVolumeControl')}
-              >
-                <Volume2 size={22} />
-              </button>
-
-              {!isSettingsExpanded ? (
-                /* Uncollapse button */
-                <button
-                  onClick={() => setIsSettingsExpanded(true)}
-                  title="Show More Settings"
-                  className="settings-icon-toggle"
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    borderRadius: '8px',
-                    padding: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s, border-color 0.2s',
-                    height: '100%'
-                  }}
-                >
-                  <ChevronRight size={22} />
-                </button>
-              ) : (
-                <>
-                  {/* Disable Fullscreen Toggle Button */}
-                  <button
-                    onClick={() => cycleSetting('showFullscreen')}
-                    onMouseEnter={() => setHoveredSetting('showFullscreen')}
-                    onMouseLeave={() => setHoveredSetting(null)}
-                    title={"Disable Fullscreen Toggle Button" + getSettingLabelSuffix('showFullscreen')}
-                    className={getToggleBtnClass('showFullscreen')}
-                  >
-                    <Maximize size={22} />
-                  </button>
-
-                  {/* Disable Floating & Hover Animations */}
-                  <button
-                    onClick={() => updatePlayerSetting('disableAnimations', !playerSettings.disableAnimations)}
-                    onMouseEnter={() => setHoveredSetting('disableAnimations')}
-                    onMouseLeave={() => setHoveredSetting(null)}
-                    title="Disable Floating & Hover Animations"
-                    className={`settings-icon-toggle ${playerSettings.disableAnimations ? 'active-red' : ''}`}
-                  >
-                    <Zap size={22} />
-                  </button>
-
-                  {/* Disable Focus Loss Auto-Pause */}
-                  <button
-                    onClick={() => updatePlayerSetting('pauseOnFocusChange', !playerSettings.pauseOnFocusChange)}
-                    onMouseEnter={() => setHoveredSetting('pauseOnFocusChange')}
-                    onMouseLeave={() => setHoveredSetting(null)}
-                    title="Disable Focus Loss Auto-Pause"
-                    className={`settings-icon-toggle ${!playerSettings.pauseOnFocusChange ? 'active-red' : ''}`}
-                  >
-                    <Coffee size={22} />
-                  </button>
-
-                  {/* Show Skip Buttons in Player UI */}
-                  <button
-                    onClick={() => {
-                      if (!playerSettings.blockSeekingCompletely) {
-                        updatePlayerSetting('allowUiSkipping', !playerSettings.allowUiSkipping);
-                      }
-                    }}
-                    onMouseEnter={() => setHoveredSetting('allowUiSkipping')}
-                    onMouseLeave={() => setHoveredSetting(null)}
-                    disabled={playerSettings.blockSeekingCompletely}
-                    title={playerSettings.blockSeekingCompletely ? "Show Skip Buttons (Disabled - Seeking Blocked)" : "Show Skip Buttons in Player UI"}
-                    className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'disabled' : ''} ${playerSettings.allowUiSkipping ? 'active-blue' : 'active-red'}`}
-                  >
-                    <SkipForward size={22} />
-                  </button>
-
-                  {/* Block Seeking / Skipping Completely */}
-                  <button
-                    onClick={() => updatePlayerSetting('blockSeekingCompletely', !playerSettings.blockSeekingCompletely)}
-                    onMouseEnter={() => setHoveredSetting('blockSeekingCompletely')}
-                    onMouseLeave={() => setHoveredSetting(null)}
-                    title="Block Seeking / Skipping Completely"
-                    className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'active-red' : ''}`}
-                  >
-                    <Ban size={22} />
-                  </button>
-
-                  {/* Auto-Skip Intros & Outros */}
-                  <button
-                    onClick={() => updatePlayerSetting('autoSkipIntroOutro', !playerSettings.autoSkipIntroOutro)}
-                    onMouseEnter={() => setHoveredSetting('autoSkipIntroOutro')}
-                    onMouseLeave={() => setHoveredSetting(null)}
-                    title="Auto-Skip Intros & Outros"
-                    className={`settings-icon-toggle ${playerSettings.autoSkipIntroOutro ? 'active-blue' : ''}`}
-                  >
-                    <FastForward size={22} />
-                  </button>
-
-                  {/* Lock Mode Active (Lock Controls on Startup) */}
-                  <button
-                    onClick={() => updatePlayerSetting('lockModeActive', !playerSettings.lockModeActive)}
-                    onMouseEnter={() => setHoveredSetting('lockModeActive')}
-                    onMouseLeave={() => setHoveredSetting(null)}
-                    title="Lock Mode Active (Lock Controls on Startup)"
-                    className={`settings-icon-toggle ${playerSettings.lockModeActive ? 'active-blue' : ''}`}
-                  >
-                    <Lock size={22} />
-                  </button>
-
-                  {/* Collapse button */}
-                  <button
-                    onClick={() => setIsSettingsExpanded(false)}
-                    title="Show Less Settings"
-                    className="settings-icon-toggle"
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      color: 'rgba(255, 255, 255, 0.8)',
-                      borderRadius: '8px',
-                      padding: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      transition: 'background 0.2s, border-color 0.2s',
-                      height: '100%'
-                    }}
-                  >
-                    <ChevronLeft size={22} />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Bookmark Dialog Overlay */}
-      {showAddDialog && (
-        <div className="bookmark-dialog-overlay" onClick={() => {
-          setShowAddDialog(false);
-          if (videoRef.current && isPlaying) {
-            videoRef.current.play().catch(console.error);
-          }
-        }}>
-          <div className="bookmark-dialog-box animate-scale-in" onClick={(e) => e.stopPropagation()}>
-            <h3>Add Bookmark</h3>
-            
             <div className="dialog-field">
-              <label>Label</label>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>Label</label>
               <input 
                 type="text" 
                 value={newBookmarkLabel} 
                 onChange={(e) => setNewBookmarkLabel(e.target.value)}
                 placeholder="e.g. Intro Start"
                 autoFocus
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  padding: '0.6rem 0.85rem',
+                  fontSize: '0.9rem',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  outline: 'none'
+                }}
               />
             </div>
+
+            {/* Custom Dropdown Selection for Bookmark Type */}
+            <div className="dialog-field" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', fontWeight: 600 }}>Type</label>
+              <div style={{ position: 'relative', width: '100%' }}>
+                <button
+                  onClick={() => setTypeDropdownOpen(prev => !prev)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    padding: '0.6rem 0.85rem',
+                    fontSize: '0.9rem',
+                    textAlign: 'left',
+                    width: '100%',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <span>
+                    {bookmarkType === 'standard' ? 'Standard Bookmark' :
+                     bookmarkType === 'intro' ? 'Intro Section' : 'Outro Section'}
+                  </span>
+                  <ChevronRight size={16} style={{ transform: typeDropdownOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                </button>
+                {typeDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '100%',
+                      left: 0,
+                      right: 0,
+                      marginBottom: '4px',
+                      background: 'rgba(25, 25, 25, 0.98)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '6px',
+                      zIndex: 200,
+                      boxShadow: '0 -10px 25px rgba(0,0,0,0.5)',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {[
+                      { value: 'standard', label: 'Standard Bookmark' },
+                      { value: 'intro', label: 'Intro Section' },
+                      { value: 'outro', label: 'Outro Section' }
+                    ].map((opt) => (
+                      <div
+                        key={opt.value}
+                        onClick={() => {
+                          setBookmarkType(opt.value as any);
+                          setTypeDropdownOpen(false);
+                          if (opt.value === 'intro') {
+                            setIsIntro(true);
+                            setIsOutro(false);
+                            setSkipEnabled(true);
+                            setNewBookmarkLabel('Intro');
+                          } else if (opt.value === 'outro') {
+                            setIsIntro(false);
+                            setIsOutro(true);
+                            setSkipEnabled(true);
+                            setNewBookmarkLabel('Outro');
+                          } else {
+                            setIsIntro(false);
+                            setIsOutro(false);
+                            setSkipEnabled(false);
+                            setNewBookmarkLabel(`Bookmark @ ${formatTime(newBookmarkTime)}`);
+                          }
+                        }}
+                        style={{
+                          padding: '0.6rem 0.85rem',
+                          fontSize: '0.85rem',
+                          color: bookmarkType === opt.value ? '#e50914' : 'rgba(255,255,255,0.85)',
+                          background: bookmarkType === opt.value ? 'rgba(255,255,255,0.04)' : 'transparent',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s, color 0.15s'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (bookmarkType !== opt.value) e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (bookmarkType !== opt.value) e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        {opt.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
             
-            <div className="dialog-field-row">
-              <div className="dialog-field">
-                <label>Start Time (s)</label>
+            <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+              <div className="dialog-field" style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
+                  Start Time ({formatTime(newBookmarkTime)})
+                </label>
                 <input 
                   type="number" 
                   step="0.1"
                   value={newBookmarkTime} 
                   onChange={(e) => setNewBookmarkTime(parseFloat(e.target.value) || 0)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    padding: '0.6rem 0.85rem',
+                    fontSize: '0.9rem',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    outline: 'none'
+                  }}
                 />
               </div>
               
-              {(isIntro || isOutro) && (
-                <div className="dialog-field">
-                  <label>End Time (s)</label>
+              {(bookmarkType === 'intro' || bookmarkType === 'outro' || isIntro || isOutro) && (
+                <div className="dialog-field" style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
+                    End Time ({formatTime(newBookmarkEndTime)})
+                  </label>
                   <input 
                     type="number" 
                     step="0.1"
                     value={newBookmarkEndTime} 
                     onChange={(e) => setNewBookmarkEndTime(parseFloat(e.target.value) || 0)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      padding: '0.6rem 0.85rem',
+                      fontSize: '0.9rem',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      outline: 'none'
+                    }}
                   />
                 </div>
               )}
             </div>
-            
-            <div className="dialog-checkboxes">
-              <label className="dialog-checkbox-label">
-                <input 
-                  type="checkbox"
-                  checked={isIntro}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setIsIntro(checked);
-                    if (checked) {
-                      setIsOutro(false);
-                      setSkipEnabled(true);
-                      setNewBookmarkLabel('Intro');
-                    }
-                  }}
-                />
-                <span>Mark as Intro</span>
-              </label>
 
-              <label className="dialog-checkbox-label">
+            {(bookmarkType === 'intro' || bookmarkType === 'outro' || isIntro || isOutro) && (
+              <div className="dialog-field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
                 <input 
                   type="checkbox"
-                  checked={isOutro}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setIsOutro(checked);
-                    if (checked) {
-                      setIsIntro(false);
-                      setSkipEnabled(true);
-                      setNewBookmarkLabel('Outro');
-                    }
-                  }}
-                />
-                <span>Mark as Outro</span>
-              </label>
-
-              <label className="dialog-checkbox-label">
-                <input 
-                  type="checkbox"
+                  id="enable-auto-skip-checkbox"
                   checked={skipEnabled}
                   onChange={(e) => setSkipEnabled(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
                 />
-                <span>Enable Auto-Skip</span>
-              </label>
-            </div>
+                <label htmlFor="enable-auto-skip-checkbox" style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer', userSelect: 'none' }}>
+                  Enable Auto-Skip
+                </label>
+              </div>
+            )}
             
-            <div className="dialog-actions">
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
               <button 
-                className="dialog-btn btn-secondary"
-                onClick={() => {
-                  setShowAddDialog(false);
-                  if (videoRef.current && isPlaying) {
-                    videoRef.current.play().catch(console.error);
-                  }
+                onClick={() => setShowAddDialog(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  padding: '0.6rem 1.2rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'background 0.2s'
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
               >
                 Cancel
               </button>
               <button 
-                className="dialog-btn btn-primary"
                 onClick={handleSaveBookmark}
+                style={{
+                  background: '#e50914',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  padding: '0.6rem 1.4rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(229,9,20,0.3)',
+                  transition: 'background 0.2s, transform 0.1s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f40b17'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#e50914'}
               >
                 Save
               </button>
@@ -3505,6 +3787,39 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Show UI Overlays Workaround Button */}
+      {hideUIOverlays && (
+        <button
+          onClick={() => {
+            updatePlayerSetting('hideUIOverlays', false);
+            triggerSwitchToast("Overlays Enabled");
+          }}
+          title="Show UI Overlays (Workaround)"
+          style={{
+            position: 'absolute',
+            bottom: '1.5rem',
+            right: '1.5rem',
+            zIndex: 140,
+            background: 'rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '50%',
+            width: '36px',
+            height: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            cursor: 'pointer',
+            opacity: 0.3,
+            transition: 'opacity 0.2s, background 0.2s, transform 0.1s'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(0,0,0,0.8)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; e.currentTarget.style.background = 'rgba(0,0,0,0.5)'; }}
+        >
+          <Eye size={18} />
+        </button>
+      )}
 
       {playbackError && (
         <div className="playback-error-overlay" onClick={(e) => e.stopPropagation()}>
@@ -5223,66 +5538,132 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         .control-btn-volume:hover {
           color: white !important;
-          transform: scale(1.18);
         }
 
         /* Horizontal Volume Slider on Hover */
+        /* Redesigned Premium Volume Pill-Container */
         .volume-control-group-premium {
           display: flex;
           align-items: center;
+          background: rgba(18, 18, 18, 0.95);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          padding: 2px;
+          height: 38px;
+          box-sizing: border-box;
+          gap: 0px;
           margin-left: 0.5rem;
+          transition: gap 0.25s cubic-bezier(0.16, 1, 0.3, 1), padding 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .volume-control-group-premium:hover {
+          gap: 12px;
+          padding-right: 12px;
+        }
+        .control-btn-volume {
+          width: 32px;
+          height: 32px;
+          background: transparent !important;
+          border: 1px solid transparent !important;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: background 0.25s ease, border-color 0.25s ease;
+          color: rgba(255, 255, 255, 0.8) !important;
+          outline: none;
+          padding: 0 !important;
+          flex-shrink: 0;
+        }
+        .volume-control-group-premium:hover .control-btn-volume {
+          background: rgba(255, 255, 255, 0.12) !important;
+          border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        }
+        .volume-control-group-premium:hover .control-btn-volume:hover {
+          background: rgba(255, 255, 255, 0.18) !important;
+          color: #ffffff !important;
+          border-color: rgba(255, 255, 255, 0.25) !important;
         }
         .volume-slider-container-premium {
           width: 0;
+          min-width: 0;
           overflow: hidden;
-          transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.25s ease;
+          opacity: 0;
           display: flex;
           align-items: center;
+          transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+          flex-shrink: 0;
         }
         .volume-control-group-premium:hover .volume-slider-container-premium {
-          width: 90px;
-          margin-left: 10px;
+          width: 130px;
+          opacity: 1;
         }
         .volume-slider-premium {
-          width: 90px;
-          height: 4px;
+          width: 130px;
+          height: 3px;
           -webkit-appearance: none;
-          background: rgba(255, 255, 255, 0.25);
+          background: rgba(255, 255, 255, 0.08);
           border-radius: 2px;
           outline: none;
           cursor: pointer;
           transition: background 0.15s;
+          flex-shrink: 0;
         }
         .volume-slider-premium::-webkit-slider-runnable-track {
-          height: 4px;
+          height: 3px;
         }
         .volume-slider-premium::-webkit-slider-thumb {
           -webkit-appearance: none;
           width: 12px;
           height: 12px;
           border-radius: 50%;
-          background: #ffffff;
-          margin-top: -4px; /* centers thumb */
+          background: #007aff;
+          margin-top: -4.5px; /* centers thumb on 3px track */
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
           transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s;
           border: none;
         }
         .volume-slider-premium:hover::-webkit-slider-thumb {
           transform: scale(1.2);
-          background-color: #ffffff;
+          background-color: #0084ff;
         }
         .volume-slider-premium::-moz-range-thumb {
           width: 12px;
           height: 12px;
           border: none;
           border-radius: 50%;
-          background: #ffffff;
+          background: #007aff;
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
           transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s;
         }
         .volume-slider-premium:hover::-moz-range-thumb {
           transform: scale(1.2);
-          background-color: #ffffff;
+          background-color: #0084ff;
+        }
+        .volume-percent-text-premium {
+          color: #ffffff;
+          font-size: 0.85rem;
+          font-weight: 500;
+          width: 0;
+          min-width: 0;
+          overflow: hidden;
+          opacity: 0;
+          text-align: right;
+          font-family: 'Outfit', sans-serif;
+          user-select: none;
+          transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+          flex-shrink: 0;
+        }
+        .volume-control-group-premium:hover .volume-percent-text-premium {
+          width: 24px;
+          opacity: 1;
+        }
+        .bookmarks-popover-list::-webkit-scrollbar {
+          display: none !important;
+        }
+        .bookmarks-popover-list {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
         }
 
         /* Disable animations overrides */

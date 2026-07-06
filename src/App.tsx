@@ -10,7 +10,8 @@ import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
   Film, UploadCloud, Play, Settings, X,
-  History, Home
+  History, Home, Layers, Type, Clock, Sliders, Volume2,
+  Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
 import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './utils/remoteByteSource';
@@ -108,6 +109,17 @@ const toastOptions = [
   { value: 3, label: '3.0 seconds' }
 ];
 
+const uiHideTimeoutOptions = [
+  { value: 0.5, label: '0.5 seconds' },
+  { value: 1, label: '1.0 second' },
+  { value: 1.5, label: '1.5 seconds (Default)' },
+  { value: 2, label: '2.0 seconds' },
+  { value: 2.5, label: '2.5 seconds' },
+  { value: 3, label: '3.0 seconds' },
+  { value: 4, label: '4.0 seconds' },
+  { value: 5, label: '5.0 seconds' }
+];
+
 const fontOptions = [
   { value: 'poppins', label: 'Poppins (Default)' },
   { value: 'montserrat', label: 'Montserrat' },
@@ -152,9 +164,76 @@ function App() {
   });
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings'>('home');
-  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay'>('general');
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [hoveredHotkey, setHoveredHotkey] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
+
+  const renderMockPreviewButton = (key: string) => {
+    const iconSize = 14;
+    const style = {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: '6px',
+      height: '28px',
+      fontSize: '0.75rem',
+      cursor: 'default'
+    };
+
+    const value = (settings as any)[key];
+    const isNegativeKey = key === 'hideUIOverlays' || key === 'hideVideoName';
+    
+    let mode = 'enable';
+    if (isNegativeKey) {
+      if (value === 'disable') mode = 'disable';
+      else if (value === true) mode = 'hide';
+      else mode = 'enable';
+    } else {
+      if (value === 'disable') mode = 'disable';
+      else if (value === false) mode = 'hide';
+      else mode = 'enable';
+    }
+
+    let bg = 'rgba(255,255,255,0.06)';
+    let border = '1px solid rgba(255,255,255,0.1)';
+    let color = 'rgba(255,255,255,0.8)';
+    
+    if (mode === 'enable') {
+      bg = 'rgba(0, 122, 255, 0.15)';
+      border = '1px solid rgba(0, 122, 255, 0.3)';
+      color = '#007aff';
+    } else if (mode === 'hide') {
+      bg = 'rgba(255, 159, 10, 0.15)';
+      border = '1px solid rgba(255, 159, 10, 0.3)';
+      color = '#ff9f0a';
+    } else if (mode === 'disable') {
+      bg = 'rgba(255, 69, 58, 0.15)';
+      border = '1px solid rgba(255, 69, 58, 0.3)';
+      color = '#ff453a';
+    }
+
+    const mergedStyle = { ...style, background: bg, border: border, color: color };
+
+    switch (key) {
+      case 'hideUIOverlays': return <div key={key} style={mergedStyle}><Layers size={iconSize} /></div>;
+      case 'hideVideoName': return <div key={key} style={mergedStyle}><Type size={iconSize} /></div>;
+      case 'showPlayButton': return <div key={key} style={mergedStyle}><Play size={iconSize} /></div>;
+      case 'showTimeDisplay': return <div key={key} style={mergedStyle}><Clock size={iconSize} /></div>;
+      case 'showPlayBar': return <div key={key} style={mergedStyle}><Sliders size={iconSize} /></div>;
+      case 'showVolumeControl': return <div key={key} style={mergedStyle}><Volume2 size={iconSize} /></div>;
+      case 'showFullscreen': return <div key={key} style={mergedStyle}><Maximize size={iconSize} /></div>;
+      case 'disableAnimations': return <div key={key} style={mergedStyle}><Zap size={iconSize} /></div>;
+      case 'pauseOnFocusChange': return <div key={key} style={mergedStyle}><Coffee size={iconSize} /></div>;
+      case 'allowUiSkipping': return <div key={key} style={mergedStyle}><SkipForward size={iconSize} /></div>;
+      case 'blockSeekingCompletely': return <div key={key} style={mergedStyle}><Ban size={iconSize} /></div>;
+      case 'autoSkipIntroOutro': return <div key={key} style={mergedStyle}><FastForward size={iconSize} /></div>;
+      case 'lockModeActive': return <div key={key} style={mergedStyle}><Lock size={iconSize} /></div>;
+      default: return null;
+    }
+  };
 
   if (false as boolean) {
     console.log(isProcessing, processingStep);
@@ -387,7 +466,8 @@ function App() {
       addBookmark: 't',
       toggleMute: 'm',
       audioBoost: 'n',
-      frameStep: 'e'
+      frameStep: 'e',
+      screenshot: 's'
     },
     defaultAudio: 'ENG',
     defaultSub: 'ENG',
@@ -395,6 +475,7 @@ function App() {
     historySaveInterval: 5 as number,
     hideUIOverlays: false,
     hideVideoName: false,
+    uiHideTimeout: 1.5,
     toastDuration: 0.5,
     disableAnimations: false,
     pauseOnFocusChange: false,
@@ -407,6 +488,10 @@ function App() {
     blockSeekingCompletely: false,
     autoSkipIntroOutro: true,
     lockModeActive: false,
+    settingsOrder: [
+      'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+      'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+    ] as string[],
     saveHistory: true,
     saveTrackPreferences: true,
     saveVolume: true,
@@ -539,15 +624,33 @@ function App() {
         return;
       }
 
-      if ((e.key === 'm' || e.key === 'M') && !playingVideo) {
-        e.preventDefault();
-        // Find last played video in history
-        const lastPlayed = [...videos]
-          .filter(v => v.lastPlayedDate)
-          .sort((a, b) => new Date(b.lastPlayedDate!).getTime() - new Date(a.lastPlayedDate!).getTime())[0];
+      if (!playingVideo) {
+        const keyLower = e.key.toLowerCase();
+        if (keyLower === 's') {
+          e.preventDefault();
+          setActiveTab('settings');
+        } else if (keyLower === 'd') {
+          e.preventDefault();
+          setActiveTab('history');
+        } else if (keyLower === 'w') {
+          e.preventDefault();
+          setActiveTab('library');
+        } else if (keyLower === 'a') {
+          e.preventDefault();
+          setActiveTab('calendar');
+        } else if (keyLower === 'f') {
+          e.preventDefault();
+          setActiveTab('home');
+        } else if (keyLower === 'm') {
+          e.preventDefault();
+          // Find last played video in history
+          const lastPlayed = [...videos]
+            .filter(v => v.lastPlayedDate)
+            .sort((a, b) => new Date(b.lastPlayedDate!).getTime() - new Date(a.lastPlayedDate!).getTime())[0];
 
-        if (lastPlayed) {
-          handlePlayVideo(lastPlayed);
+          if (lastPlayed) {
+            handlePlayVideo(lastPlayed);
+          }
         }
       }
     };
@@ -1396,6 +1499,7 @@ function App() {
         onUpdateVideo={handleUpdateVideo}
         hideUIOverlays={settings.hideUIOverlays}
         hideVideoName={settings.hideVideoName}
+        uiHideTimeout={settings.uiHideTimeout}
         toastDuration={settings.toastDuration}
         disableAnimations={settings.disableAnimations}
         pauseOnFocusChange={settings.pauseOnFocusChange}
@@ -1412,6 +1516,7 @@ function App() {
         blockSeekingCompletely={settings.blockSeekingCompletely}
         autoSkipIntroOutro={settings.autoSkipIntroOutro}
         lockModeActive={settings.lockModeActive}
+        settingsOrder={settings.settingsOrder}
         onUpdateSubSettings={(newSubSettings) => {
           const updated = {
             ...settings,
@@ -1451,7 +1556,7 @@ function App() {
   }
 
   return (
-    <div className={`app-layout ${settings.disableAnimations ? 'no-animations' : ''}`}>
+    <div className={`app-layout ${settings.disableAnimations ? 'no-animations' : ''} ${activeTab === 'settings' ? 'settings-active' : ''}`}>
       {/* Sidebar - Desktop and Tablet */}
       <aside className="app-sidebar">
         <div className="sidebar-header">
@@ -1911,6 +2016,12 @@ function App() {
                       Subtitle Style
                     </button>
                     <button 
+                      className={`settings-nav-btn ${settingsTab === 'gridOverlay' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('gridOverlay')}
+                    >
+                      Settings Grid Overlay
+                    </button>
+                    <button 
                       className={`settings-nav-btn ${settingsTab === 'storage' ? 'active' : ''}`}
                       onClick={() => setSettingsTab('storage')}
                     >
@@ -1984,6 +2095,14 @@ function App() {
                                   value={settings.toastDuration} 
                                   onChange={(val) => handleDefaultLangChange('toastDuration', val)}
                                   options={toastOptions}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">UI Overlays Auto-Hide Timeout</span>
+                                <CustomSelect 
+                                  value={settings.uiHideTimeout || 1.5} 
+                                  onChange={(val) => handleDefaultLangChange('uiHideTimeout', val)}
+                                  options={uiHideTimeoutOptions}
                                 />
                               </div>
                             </div>
@@ -2103,40 +2222,376 @@ function App() {
 
                     {/* Hotkeys Section */}
                     {settingsTab === 'hotkeys' && (
-                      <div className="settings-tab-content animate-fade-in">
-                        <div className="settings-section max-w-md">
-                          <h3>Keyboard Customization</h3>
-                          <p className="settings-section-desc">Click on a key box and press any key to rebind it.</p>
-                          <div className="keybind-list">
-                            {Object.entries(settings.keybinds).map(([key, value]) => {
-                              const labelMap: Record<string, string> = {
-                                playPause: 'Play / Pause',
-                                rewind: 'Rewind 10s',
-                                forward: 'Forward 10s',
-                                fullscreen: 'Toggle Fullscreen',
-                                exit: 'Exit Player / Back',
-                                nextSubtitle: 'Cycle Subtitles',
-                                nextAudio: 'Cycle Audio',
-                                lockControls: 'Toggle Lock Screen / Controls (W)',
-                                openSettings: 'Toggle UI Customization Drawer (Delete)',
-                                addBookmark: 'Create Bookmark (T)',
-                                toggleMute: 'Toggle Mute / Unmute (M)',
-                                audioBoost: 'Cycle Audio Boost (N)',
-                                frameStep: 'Step Frame Forward (E)'
-                              };
-                              return (
-                                <div className="keybind-row" key={key}>
-                                  <span className="keybind-label">{labelMap[key] || key}</span>
-                                  <button 
-                                    className={`keybind-capture-btn ${listeningKeyFor === key ? 'listening' : ''}`}
-                                    onClick={() => setListeningKeyFor(key as any)}
-                                  >
-                                    {listeningKeyFor === key ? 'Press any key...' : value === ' ' ? 'Space' : value}
-                                  </button>
-                                </div>
-                              );
-                            })}
+                      <div className="settings-tab-content animate-fade-in" style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', width: '100%' }}>
+                          
+                          {/* Left Column: Key Customization */}
+                          <div style={{ flex: '1 1 420px', minWidth: '320px' }}>
+                            <div className="settings-section">
+                              <h3>Keyboard Customization</h3>
+                              <p className="settings-section-desc">Click on a key box and press any key to rebind it. Hover over a setting to highlight it in the player map.</p>
+                              
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(1, 1fr)', gap: '0.4rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.75rem' }}>
+                                {Object.entries(settings.keybinds).map(([key, value]) => {
+                                  const labelMap: Record<string, string> = {
+                                    playPause: 'Play / Pause',
+                                    rewind: 'Rewind 10s',
+                                    forward: 'Forward 10s',
+                                    fullscreen: 'Toggle Fullscreen',
+                                    exit: 'Exit Player / Back',
+                                    nextSubtitle: 'Cycle Subtitles',
+                                    nextAudio: 'Cycle Audio',
+                                    lockControls: 'Toggle Lock Controls',
+                                    openSettings: 'Toggle UI settings modal',
+                                    addBookmark: 'Create Bookmark',
+                                    toggleMute: 'Toggle Mute / Unmute',
+                                    audioBoost: 'Cycle Audio Boost',
+                                    frameStep: 'Step Frame Forward',
+                                    screenshot: 'Take Video Screenshot'
+                                  };
+                                  return (
+                                    <div 
+                                      className="keybind-row-hoverable" 
+                                      key={key}
+                                      onMouseEnter={() => setHoveredHotkey(key)}
+                                      onMouseLeave={() => setHoveredHotkey(null)}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '0.4rem 0.6rem',
+                                        borderRadius: '6px',
+                                        background: hoveredHotkey === key ? 'rgba(229, 9, 20, 0.08)' : 'transparent',
+                                        border: hoveredHotkey === key ? '1px solid rgba(229, 9, 20, 0.2)' : '1px solid transparent',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      <span className="keybind-label" style={{ fontSize: '0.85rem', color: hoveredHotkey === key ? '#fff' : 'rgba(255,255,255,0.7)' }}>
+                                        {labelMap[key] || key}
+                                      </span>
+                                      <button 
+                                        className={`keybind-capture-btn ${listeningKeyFor === key ? 'listening' : ''}`}
+                                        onClick={() => setListeningKeyFor(key as any)}
+                                        style={{
+                                          background: listeningKeyFor === key ? '#e50914' : 'rgba(255,255,255,0.06)',
+                                          border: '1px solid rgba(255,255,255,0.1)',
+                                          borderRadius: '4px',
+                                          color: '#fff',
+                                          padding: '4px 10px',
+                                          fontSize: '0.75rem',
+                                          minWidth: '70px',
+                                          textAlign: 'center',
+                                          cursor: 'pointer',
+                                          outline: 'none'
+                                        }}
+                                      >
+                                        {listeningKeyFor === key ? 'Press key...' : (value as string) === ' ' ? 'Space' : (value as string)}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           </div>
+
+                          {/* Right Column: Player Interface HUD Diagram */}
+                          <div style={{ flex: '1 1 450px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div className="settings-section" style={{ width: '100%' }}>
+                              <h3>Player Shortcut Map</h3>
+                              <p className="settings-section-desc">Interactive representation of active player commands. Rebind keys on the left to see changes here.</p>
+                              
+                              {/* Simulated Player Screen with Pointers */}
+                              <div style={{
+                                position: 'relative',
+                                width: '100%',
+                                height: '350px',
+                                background: 'radial-gradient(circle at center, #1b2030 0%, #0d0f17 100%)',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                overflow: 'hidden',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between',
+                                padding: '1rem',
+                                boxSizing: 'border-box'
+                              }}>
+                                {/* Top Overlay Area */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                  {/* Back / Exit mapping */}
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    background: hoveredHotkey === 'exit' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.03)',
+                                    border: hoveredHotkey === 'exit' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.08)',
+                                    borderRadius: '6px',
+                                    padding: '3px 8px',
+                                    boxShadow: hoveredHotkey === 'exit' ? '0 0 10px rgba(229,9,20,0.4)' : 'none',
+                                    transition: 'all 0.2s ease'
+                                  }}>
+                                    <span style={{ fontSize: '0.65rem', color: '#888', fontWeight: 600 }}>Exit</span>
+                                    <kbd style={{ background: '#333', color: '#fff', padding: '1px 5px', borderRadius: '3px', fontSize: '0.65rem', fontWeight: 700 }}>
+                                      {settings.keybinds.exit === 'Escape' ? 'Esc' : settings.keybinds.exit}
+                                    </kbd>
+                                  </div>
+
+                                  {/* Lock mode mapping */}
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    background: hoveredHotkey === 'lockControls' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.03)',
+                                    border: hoveredHotkey === 'lockControls' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.08)',
+                                    borderRadius: '6px',
+                                    padding: '3px 8px',
+                                    boxShadow: hoveredHotkey === 'lockControls' ? '0 0 10px rgba(229,9,20,0.4)' : 'none',
+                                    transition: 'all 0.2s ease'
+                                  }}>
+                                    <span style={{ fontSize: '0.65rem', color: '#888', fontWeight: 600 }}>Lock Mode</span>
+                                    <kbd style={{ background: '#333', color: '#fff', padding: '1px 5px', borderRadius: '3px', fontSize: '0.65rem', fontWeight: 700 }}>
+                                      {settings.keybinds.lockControls === ' ' ? 'Space' : settings.keybinds.lockControls.toUpperCase()}
+                                    </kbd>
+                                  </div>
+                                </div>
+
+                                {/* Center Play & Seek Controls Diagram */}
+                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1.25rem', margin: 'auto 0' }}>
+                                  {/* Rewind */}
+                                  <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                    background: hoveredHotkey === 'rewind' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.03)',
+                                    border: hoveredHotkey === 'rewind' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.06)',
+                                    padding: '6px 12px',
+                                    borderRadius: '8px',
+                                    boxShadow: hoveredHotkey === 'rewind' ? '0 0 10px rgba(229,9,20,0.4)' : 'none',
+                                    transition: 'all 0.2s ease'
+                                  }}>
+                                    <span style={{ fontSize: '0.6rem', color: '#888', fontWeight: 600 }}>Rewind 10s</span>
+                                    <kbd style={{ background: '#222', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700 }}>
+                                      {settings.keybinds.rewind === 'ArrowLeft' ? '←' : settings.keybinds.rewind}
+                                    </kbd>
+                                  </div>
+
+                                  {/* Play/Pause */}
+                                  <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                    background: hoveredHotkey === 'playPause' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.03)',
+                                    border: hoveredHotkey === 'playPause' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.06)',
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    boxShadow: hoveredHotkey === 'playPause' ? '0 0 12px rgba(229,9,20,0.4)' : 'none',
+                                    transition: 'all 0.2s ease'
+                                  }}>
+                                    <span style={{ fontSize: '0.65rem', color: '#aaa', fontWeight: 600 }}>Play / Pause</span>
+                                    <kbd style={{ background: '#222', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700 }}>
+                                      {settings.keybinds.playPause === ' ' ? 'Space' : settings.keybinds.playPause}
+                                    </kbd>
+                                  </div>
+
+                                  {/* Forward */}
+                                  <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                    background: hoveredHotkey === 'forward' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.03)',
+                                    border: hoveredHotkey === 'forward' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.06)',
+                                    padding: '6px 12px',
+                                    borderRadius: '8px',
+                                    boxShadow: hoveredHotkey === 'forward' ? '0 0 10px rgba(229,9,20,0.4)' : 'none',
+                                    transition: 'all 0.2s ease'
+                                  }}>
+                                    <span style={{ fontSize: '0.6rem', color: '#888', fontWeight: 600 }}>Forward 10s</span>
+                                    <kbd style={{ background: '#222', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700 }}>
+                                      {settings.keybinds.forward === 'ArrowRight' ? '→' : settings.keybinds.forward}
+                                    </kbd>
+                                  </div>
+                                </div>
+
+                                {/* Floating Sidebar overlay representation for UI settings */}
+                                <div style={{
+                                  position: 'absolute',
+                                  right: '0.5rem',
+                                  top: '25%',
+                                  bottom: '25%',
+                                  width: '50px',
+                                  background: hoveredHotkey === 'openSettings' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.03)',
+                                  border: hoveredHotkey === 'openSettings' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '6px 0 0 6px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '0.25rem',
+                                  boxShadow: hoveredHotkey === 'openSettings' ? '-5px 0 10px rgba(229,9,20,0.3)' : 'none',
+                                  transition: 'all 0.2s ease'
+                                }}>
+                                  <span style={{ fontSize: '0.55rem', color: '#666', fontWeight: 600, textAlign: 'center', writingMode: 'vertical-lr', textTransform: 'uppercase' }}>Settings</span>
+                                  <kbd style={{ background: '#333', color: '#fff', padding: '1px 4px', borderRadius: '3px', fontSize: '0.55rem', fontWeight: 700 }}>
+                                    {settings.keybinds.openSettings === 'Delete' ? 'Del' : settings.keybinds.openSettings.toUpperCase()}
+                                  </kbd>
+                                </div>
+
+                                {/* Bottom Seekbar Line */}
+                                <div style={{
+                                  width: '100%',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.4rem',
+                                  marginTop: 'auto'
+                                }}>
+                                  {/* Frame step pointer */}
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '0 0.5rem'
+                                  }}>
+                                    {/* Mute and Boost indicators */}
+                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                      <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem',
+                                        background: hoveredHotkey === 'toggleMute' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.02)',
+                                        border: hoveredHotkey === 'toggleMute' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.06)',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        transition: 'all 0.15s ease'
+                                      }}>
+                                        <span style={{ fontSize: '0.55rem', color: '#666' }}>Mute</span>
+                                        <kbd style={{ background: '#333', color: '#fff', fontSize: '0.55rem', padding: '1px 3px', borderRadius: '2px' }}>{settings.keybinds.toggleMute.toUpperCase()}</kbd>
+                                      </div>
+                                      
+                                      <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem',
+                                        background: hoveredHotkey === 'audioBoost' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.02)',
+                                        border: hoveredHotkey === 'audioBoost' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.06)',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        transition: 'all 0.15s ease'
+                                      }}>
+                                        <span style={{ fontSize: '0.55rem', color: '#666' }}>Boost</span>
+                                        <kbd style={{ background: '#333', color: '#fff', fontSize: '0.55rem', padding: '1px 3px', borderRadius: '2px' }}>{settings.keybinds.audioBoost.toUpperCase()}</kbd>
+                                      </div>
+                                    </div>
+
+                                    {/* Screenshot indicator */}
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      background: hoveredHotkey === 'screenshot' ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.02)',
+                                      border: hoveredHotkey === 'screenshot' ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.06)',
+                                      borderRadius: '4px',
+                                      padding: '2px 6px',
+                                      transition: 'all 0.15s ease'
+                                    }}>
+                                      <span style={{ fontSize: '0.55rem', color: '#666' }}>Capture</span>
+                                      <kbd style={{ background: '#333', color: '#fff', fontSize: '0.55rem', padding: '1px 3px', borderRadius: '2px' }}>{(settings.keybinds.screenshot || 's').toUpperCase()}</kbd>
+                                    </div>
+                                  </div>
+
+                                  {/* Seekbar wireframe */}
+                                  <div style={{
+                                    height: '4px',
+                                    width: '100%',
+                                    borderRadius: '2px',
+                                    position: 'relative',
+                                    background: hoveredHotkey === 'frameStep' ? 'rgba(229, 9, 20, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                                    border: hoveredHotkey === 'frameStep' ? '1px solid #e50914' : 'none',
+                                    transition: 'all 0.15s ease'
+                                  }}>
+                                    <div style={{ position: 'absolute', left: '0', top: '0', bottom: '0', width: '35%', background: '#e50914', borderRadius: '2px' }}></div>
+                                    {hoveredHotkey === 'frameStep' && (
+                                      <div style={{
+                                        position: 'absolute',
+                                        bottom: '8px',
+                                        left: '35%',
+                                        transform: 'translateX(-50%)',
+                                        background: '#222',
+                                        border: '1px solid #e50914',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        fontSize: '0.55rem',
+                                        color: '#fff',
+                                        whiteSpace: 'nowrap'
+                                      }}>
+                                        Frame Step: <kbd style={{ background: '#333', padding: '1px 3px', borderRadius: '2px' }}>{settings.keybinds.frameStep.toUpperCase()}</kbd>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Subtitles / Audio Streams / Bookmarks / Fullscreen pointers */}
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    fontSize: '0.6rem',
+                                    color: 'rgba(255,255,255,0.5)'
+                                  }}>
+                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                      {/* Audio Cycle */}
+                                      <div style={{
+                                        background: hoveredHotkey === 'nextAudio' ? 'rgba(229, 9, 20, 0.25)' : 'transparent',
+                                        border: hoveredHotkey === 'nextAudio' ? '1px solid #e50914' : '1px solid transparent',
+                                        borderRadius: '4px',
+                                        padding: '1px 5px',
+                                        transition: 'all 0.15s ease'
+                                      }}>
+                                        Audio: <kbd>{settings.keybinds.nextAudio.toUpperCase()}</kbd>
+                                      </div>
+                                      
+                                      {/* Subs Cycle */}
+                                      <div style={{
+                                        background: hoveredHotkey === 'nextSubtitle' ? 'rgba(229, 9, 20, 0.25)' : 'transparent',
+                                        border: hoveredHotkey === 'nextSubtitle' ? '1px solid #e50914' : '1px solid transparent',
+                                        borderRadius: '4px',
+                                        padding: '1px 5px',
+                                        transition: 'all 0.15s ease'
+                                      }}>
+                                        Subs: <kbd>{settings.keybinds.nextSubtitle.toUpperCase()}</kbd>
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                      {/* Add Bookmark */}
+                                      <div style={{
+                                        background: hoveredHotkey === 'addBookmark' ? 'rgba(229, 9, 20, 0.25)' : 'transparent',
+                                        border: hoveredHotkey === 'addBookmark' ? '1px solid #e50914' : '1px solid transparent',
+                                        borderRadius: '4px',
+                                        padding: '1px 5px',
+                                        transition: 'all 0.15s ease'
+                                      }}>
+                                        Bookmark: <kbd>{settings.keybinds.addBookmark.toUpperCase()}</kbd>
+                                      </div>
+
+                                      {/* Fullscreen */}
+                                      <div style={{
+                                        background: hoveredHotkey === 'fullscreen' ? 'rgba(229, 9, 20, 0.25)' : 'transparent',
+                                        border: hoveredHotkey === 'fullscreen' ? '1px solid #e50914' : '1px solid transparent',
+                                        borderRadius: '4px',
+                                        padding: '1px 5px',
+                                        transition: 'all 0.15s ease'
+                                      }}>
+                                        FS: <kbd>{settings.keybinds.fullscreen.toUpperCase()}</kbd>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
                         </div>
                       </div>
                     )}
@@ -2369,10 +2824,250 @@ function App() {
                       </div>
                     )}
 
+                    {/* Settings Grid Overlay Section */}
+                    {settingsTab === 'gridOverlay' && (
+                      <div className="settings-tab-content animate-fade-in" style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', width: '100%' }}>
+                          
+                          {/* Left Column: Drag & Drop List */}
+                          <div style={{ flex: '1 1 350px' }}>
+                            <div className="settings-section">
+                              <h3>Settings Grid Ordering</h3>
+                              <p className="settings-section-desc">Drag and drop settings to change their order in the player's UI settings grid. Pinned items will be displayed in the collapsed view.</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.75rem' }}>
+                                {(settings.settingsOrder || [
+                                  'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+                                  'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+                                ]).map((key, index) => {
+                                  const labelMap: Record<string, string> = {
+                                    hideUIOverlays: 'UI Overlays',
+                                    hideVideoName: 'Video Name',
+                                    showPlayButton: 'Play Button HUD',
+                                    showTimeDisplay: 'Time Display',
+                                    showPlayBar: 'Timeline Scrub',
+                                    showVolumeControl: 'Volume Control',
+                                    showFullscreen: 'Fullscreen Toggle',
+                                    disableAnimations: 'Disable Animations',
+                                    pauseOnFocusChange: 'Disable Auto-Pause',
+                                    allowUiSkipping: 'Skip Buttons',
+                                    blockSeekingCompletely: 'Block Seeking',
+                                    autoSkipIntroOutro: 'Auto-Skip Intro/Outro',
+                                    lockModeActive: 'Lock Controls'
+                                  };
+                                  return (
+                                    <div
+                                      key={key}
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.setData('text/plain', index.toString());
+                                      }}
+                                      onDragOver={(e) => e.preventDefault()}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                                        const currentOrder = settings.settingsOrder || [
+                                          'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+                                          'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+                                        ];
+                                        const newOrder = [...currentOrder];
+                                        const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                        newOrder.splice(index, 0, movedItem);
+                                        handleDefaultLangChange('settingsOrder', newOrder);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        background: index < 5 ? 'rgba(0, 122, 255, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                                        border: index < 5 ? '1px dashed rgba(0, 122, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        cursor: 'grab',
+                                        fontSize: '0.85rem',
+                                        color: '#fff',
+                                        userSelect: 'none'
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 'bold' }}>{index + 1}</span>
+                                        <span>{labelMap[key] || key}</span>
+                                      </div>
+                                      {index < 5 ? (
+                                        <span style={{ fontSize: '0.7rem', color: '#007aff', fontWeight: 600, background: 'rgba(0, 122, 255, 0.1)', padding: '1px 6px', borderRadius: '3px' }}>
+                                          Pinned
+                                        </span>
+                                      ) : index === 5 ? (
+                                        <span style={{ fontSize: '0.7rem', color: '#888', fontWeight: 600, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: '3px' }}>
+                                          Grid Action
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right Column: Player Style Preview */}
+                          <div style={{ flex: '1 1 350px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div className="settings-section" style={{ width: '100%' }}>
+                              <h3>Real-time HUD Preview</h3>
+                              <p className="settings-section-desc">See how the overlay settings card looks on screen. Toggle collapsed/expanded view below.</p>
+                              
+                              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                                <button
+                                  className={`btn`}
+                                  onClick={() => setPreviewExpanded(false)}
+                                  style={{
+                                    padding: '0.4rem 1rem',
+                                    fontSize: '0.8rem',
+                                    background: !previewExpanded ? '#e50914' : 'rgba(255,255,255,0.08)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  Collapsed (3x2 Combo)
+                                </button>
+                                <button
+                                  className={`btn`}
+                                  onClick={() => setPreviewExpanded(true)}
+                                  style={{
+                                    padding: '0.4rem 1rem',
+                                    fontSize: '0.8rem',
+                                    background: previewExpanded ? '#e50914' : 'rgba(255,255,255,0.08)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  Expanded (4x4 Combo)
+                                </button>
+                              </div>
+
+                              {/* Simulated Video Frame */}
+                              <div style={{
+                                position: 'relative',
+                                width: '100%',
+                                height: '260px',
+                                background: 'radial-gradient(circle, #2a2a2a 0%, #111 100%)',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                overflow: 'hidden',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'flex-end'
+                              }}>
+                                <div style={{ position: 'absolute', left: '1.25rem', top: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '1px' }}>Video Player Preview</span>
+                                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>Mock Episode 01</span>
+                                </div>
+
+                                {/* Mock Volume Pill at the bottom-left corner */}
+                                <div className="mock-volume-pill" style={{ position: 'absolute', left: '1.25rem', bottom: '1.25rem', zIndex: 10 }}>
+                                  <div className="mock-volume-btn">
+                                    <Volume2 size={16} />
+                                  </div>
+                                  <div className="mock-volume-slider-container">
+                                    <div className="mock-volume-track">
+                                      <div className="mock-volume-thumb"></div>
+                                    </div>
+                                  </div>
+                                  <span className="mock-volume-percent">80</span>
+                                </div>
+
+                                {/* Mock Settings Overlay Card clinged to right edge */}
+                                <div style={{
+                                  background: 'rgba(18, 18, 18, 0.96)',
+                                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                                  borderRight: 'none',
+                                  borderRadius: '16px 0 0 16px',
+                                  padding: '1rem',
+                                  width: !previewExpanded ? '110px' : '200px',
+                                  height: '200px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.75rem',
+                                  boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
+                                  transition: 'all 0.3s ease',
+                                  boxSizing: 'border-box'
+                                }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.7rem', color: '#888', fontWeight: 600 }}>UI Settings</span>
+                                    <X size={12} style={{ color: '#555', cursor: 'default' }} />
+                                  </div>
+
+                                  {/* Grid representation */}
+                                  <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: !previewExpanded ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+                                    gap: '0.4rem',
+                                    justifyContent: 'center',
+                                    alignItems: 'center'
+                                  }}>
+                                    {!previewExpanded ? (
+                                      <>
+                                        {(settings.settingsOrder || [
+                                          'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+                                          'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+                                        ]).slice(0, 5).map((key) => renderMockPreviewButton(key))}
+                                        
+                                        <div style={{
+                                          background: 'rgba(255, 255, 255, 0.05)',
+                                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                                          color: 'rgba(255, 255, 255, 0.8)',
+                                          borderRadius: '6px',
+                                          padding: '5px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          fontSize: '0.75rem',
+                                          height: '28px'
+                                        }}>
+                                          <ChevronRight size={14} />
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        {(settings.settingsOrder || [
+                                          'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+                                          'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+                                        ]).map((key) => renderMockPreviewButton(key))}
+
+                                        <div style={{
+                                          background: 'rgba(255, 255, 255, 0.05)',
+                                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                                          color: 'rgba(255, 255, 255, 0.8)',
+                                          borderRadius: '6px',
+                                          padding: '5px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          fontSize: '0.75rem',
+                                          height: '28px'
+                                        }}>
+                                          <ChevronLeft size={14} />
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                        </div>
+                      </div>
+                    )}
+
                   </div>
 
                   <div className="settings-page-footer">
-                    <button className="btn btn-secondary" onClick={handleResetSettings}>
+                    <button className="btn-dark-reset" onClick={() => setShowResetConfirm(true)}>
                       Reset All Settings
                     </button>
                   </div>
@@ -2422,9 +3117,83 @@ function App() {
         </button>
       </div>
 
-
-
-
+      {/* Reset settings confirmation modal */}
+      {showResetConfirm && (
+        <div 
+          className="modal-backdrop-clean animate-fade-in" 
+          onClick={() => setShowResetConfirm(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div 
+            className="confirm-modal-box animate-scale-in" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#181818',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '12px',
+              padding: '2rem',
+              width: '380px',
+              textAlign: 'center',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+            }}
+          >
+            <h3 style={{ margin: '0 0 1rem 0', color: '#fff', fontSize: '1.25rem', fontFamily: 'sans-serif' }}>Reset All Settings?</h3>
+            <p style={{ margin: '0 0 1.5rem 0', color: '#aaa', fontSize: '0.9rem', lineHeight: '1.5', fontFamily: 'sans-serif' }}>
+              This will reset all player controls, keybinds, and display settings to their factory defaults. This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '6px',
+                  color: 'rgba(255,255,255,0.8)',
+                  padding: '0.6rem 1.5rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleResetSettings();
+                  setShowResetConfirm(false);
+                }}
+                style={{
+                  background: '#e50914',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  padding: '0.6rem 1.5rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(229,9,20,0.3)',
+                  transition: 'background 0.2s, transform 0.1s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f40b17'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#e50914'}
+              >
+                Yes, Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         html, body {
@@ -2598,6 +3367,9 @@ function App() {
           box-sizing: border-box;
           position: relative;
         }
+        .settings-active .main-layout-wrapper {
+          overflow-y: hidden !important;
+        }
 
         /* Header Navigation styling */
         .glass-navbar {
@@ -2745,14 +3517,16 @@ function App() {
           width: 100%;
         }
         .workspace-panel.settings-panel {
-          height: calc(100vh - 100px);
-          max-height: calc(100vh - 100px);
+          height: calc(100vh - 32px);
+          max-height: calc(100vh - 32px);
+          padding-top: 1.25rem;
+          padding-bottom: 1rem;
           display: flex;
           flex-direction: column;
           overflow: hidden;
         }
         .scrollable-panel {
-          max-height: 82vh;
+          max-height: calc(100vh - 124px);
           overflow-y: auto;
           scrollbar-width: thin;
         }
@@ -3045,11 +3819,113 @@ function App() {
           gap: 2rem;
         }
         .settings-page-footer {
-          margin-top: 2.5rem;
-          padding-top: 1.5rem;
+          margin-top: 1.5rem;
+          padding-top: 1rem;
           border-top: 1px solid rgba(255, 255, 255, 0.05);
           display: flex;
           justify-content: flex-end;
+        }
+        .btn-dark-reset {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 6px;
+          color: rgba(255, 255, 255, 0.7);
+          padding: 0.6rem 1.4rem;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          outline: none;
+        }
+        .btn-dark-reset:hover {
+          background: rgba(239, 68, 68, 0.1);
+          border-color: rgba(239, 68, 68, 0.4);
+          color: #ef4444;
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+        }
+        .mock-volume-pill {
+          display: flex;
+          align-items: center;
+          background: rgba(18, 18, 18, 0.95);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          padding: 2px;
+          height: 38px;
+          box-sizing: border-box;
+          gap: 0px;
+          transition: gap 0.25s cubic-bezier(0.16, 1, 0.3, 1), padding 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+          cursor: pointer;
+        }
+        .mock-volume-pill:hover {
+          gap: 12px;
+          padding-right: 12px;
+        }
+        .mock-volume-btn {
+          width: 32px;
+          height: 32px;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: rgba(255, 255, 255, 0.8);
+          transition: background 0.25s ease, border-color 0.25s ease;
+          flex-shrink: 0;
+        }
+        .mock-volume-pill:hover .mock-volume-btn {
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .mock-volume-slider-container {
+          width: 0;
+          min-width: 0;
+          overflow: hidden;
+          opacity: 0;
+          display: flex;
+          align-items: center;
+          transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+          flex-shrink: 0;
+        }
+        .mock-volume-pill:hover .mock-volume-slider-container {
+          width: 130px;
+          opacity: 1;
+        }
+        .mock-volume-track {
+          width: 130px;
+          height: 3px;
+          background: linear-gradient(to right, #007aff 0%, #007aff 80%, rgba(255, 255, 255, 0.08) 80%, rgba(255, 255, 255, 0.08) 100%);
+          border-radius: 2px;
+          position: relative;
+        }
+        .mock-volume-thumb {
+          position: absolute;
+          left: 80%;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: #007aff;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+        }
+        .mock-volume-percent {
+          color: #ffffff;
+          font-size: 0.85rem;
+          font-weight: 500;
+          width: 0;
+          min-width: 0;
+          overflow: hidden;
+          opacity: 0;
+          text-align: right;
+          font-family: 'Outfit', sans-serif;
+          flex-shrink: 0;
+          user-select: none;
+          transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+        }
+        .mock-volume-pill:hover .mock-volume-percent {
+          width: 24px;
+          opacity: 1;
         }
         .pref-row-vertical {
           display: flex;
@@ -3494,9 +4370,10 @@ function App() {
           color: #888;
         }
         .keybind-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 0.75rem 1.5rem;
+          width: 100%;
         }
         .keybind-row, .pref-row {
           display: flex;
