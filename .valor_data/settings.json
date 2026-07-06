@@ -29,7 +29,7 @@
   "showVolumeControl": true,
   "showFullscreen": false,
   "allowUiSkipping": false,
-  "blockSeekingCompletely": true,
+  "blockSeekingCompletely": false,
   "autoSkipIntroOutro": true,
   "lockModeActive": false,
   "saveHistory": true,

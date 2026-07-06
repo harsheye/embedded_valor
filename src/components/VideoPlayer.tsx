@@ -1922,7 +1922,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       e.preventDefault();
       if (videoRef.current) {
         setNewBookmarkTime(videoRef.current.currentTime);
-        setNewBookmarkEndTime(videoRef.current.currentTime + 90);
+        setNewBookmarkEndTime(videoRef.current.currentTime + 150);
         setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
         setIsIntro(false);
         setIsOutro(false);
@@ -2974,7 +2974,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </button>
 
                   {showBookmarksPopover && (
-                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '280px', maxHeight: '350px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in-pure" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '340px', maxHeight: '350px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
                       <div className="popover-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Bookmarks ({bookmarks.length})</span>
                         <button 
@@ -2983,7 +2983,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           onClick={() => {
                             if (videoRef.current) {
                               setNewBookmarkTime(videoRef.current.currentTime);
-                              setNewBookmarkEndTime(videoRef.current.currentTime + 90);
+                              setNewBookmarkEndTime(videoRef.current.currentTime + 150);
                               setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
                               setIsIntro(false);
                               setIsOutro(false);
@@ -3058,7 +3058,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Centered UI Settings Modal */}
       {showSettingsPanel && (
         <div 
-          className="settings-modal-overlay animate-fade-in" 
+          className="settings-modal-overlay animate-overlay-fade-in" 
           onClick={() => setShowSettingsPanel(false)}
           style={{
             position: 'absolute',
@@ -4863,6 +4863,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             opacity: 1;
             transform: translate(-50%, 0);
           }
+        }
+        .animate-overlay-fade-in {
+          animation: overlayFadeIn 0.2s ease forwards;
+        }
+        @keyframes overlayFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .animate-fade-in-pure {
+          animation: fadeInPure 0.2s ease forwards;
+        }
+        @keyframes fadeInPure {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
         .netflix-buffer-ring {
