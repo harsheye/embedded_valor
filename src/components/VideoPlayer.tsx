@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
-  Volume2, Volume1, VolumeX, AlertCircle, Lock
+  Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -14,6 +14,7 @@ import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParse
 import { ffmpegService } from '../services/ffmpeg';
 import { HttpByteSource, CachedByteSource, FileByteSource } from '../utils/remoteByteSource';
 import { logger } from '../utils/logger';
+import { classifyVideoTitle } from '../utils/libraryClassifier';
 
 interface VideoPlayerProps {
   video: VideoItem;
@@ -111,6 +112,155 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   ratingThreshold = 3
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // UI Customization & Bookmarks State
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showBookmarksPopover, setShowBookmarksPopover] = useState(false);
+  const bookmarksTimeoutRef = useRef<any>(null);
+  const [bookmarks, setBookmarks] = useState<any[]>(() => video.bookmarks || []);
+  const [newBookmarkTime, setNewBookmarkTime] = useState(0);
+  const [newBookmarkEndTime, setNewBookmarkEndTime] = useState(0);
+  const [newBookmarkLabel, setNewBookmarkLabel] = useState('');
+  const [isIntro, setIsIntro] = useState(false);
+  const [isOutro, setIsOutro] = useState(false);
+  const [skipEnabled, setSkipEnabled] = useState(false);
+
+  const [uiConfig, setUiConfig] = useState(() => {
+    const savedGlobal = localStorage.getItem('valor_settings');
+    if (savedGlobal) {
+      try {
+        const parsedGlobal = JSON.parse(savedGlobal);
+        if (parsedGlobal && parsedGlobal.allowUiSkipping !== undefined) {
+          return {
+            allowUiSkipping: parsedGlobal.allowUiSkipping,
+            blockSeekingCompletely: parsedGlobal.blockSeekingCompletely,
+            autoSkipIntroOutro: parsedGlobal.autoSkipIntroOutro
+          };
+        }
+      } catch {}
+    }
+    const saved = localStorage.getItem('valor_ui_customization');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      allowUiSkipping: true,
+      blockSeekingCompletely: false,
+      autoSkipIntroOutro: true
+    };
+  });
+
+  const updateUiConfig = (updates: Partial<typeof uiConfig>) => {
+    setUiConfig((prev: any) => {
+      const next = { ...prev, ...updates };
+      localStorage.setItem('valor_ui_customization', JSON.stringify(next));
+      
+      try {
+        const savedGlobal = localStorage.getItem('valor_settings');
+        const parsedGlobal = savedGlobal ? JSON.parse(savedGlobal) : {};
+        const updatedGlobal = {
+          ...parsedGlobal,
+          ...next
+        };
+        localStorage.setItem('valor_settings', JSON.stringify(updatedGlobal));
+      } catch {}
+
+      return next;
+    });
+  };
+
+  // Series Bookmarks Preset Syncing
+  useEffect(() => {
+    const savedVideos = localStorage.getItem('valor_videos');
+    if (!savedVideos) return;
+    try {
+      const allVideos = JSON.parse(savedVideos) as VideoItem[];
+      const seriesInfo = classifyVideoTitle(video.title);
+      if (seriesInfo.type === 'series' && seriesInfo.seriesTitle) {
+        const currentBookmarks = video.bookmarks || [];
+        const hasIntro = currentBookmarks.some((b: any) => b.isIntro);
+        const hasOutro = currentBookmarks.some((b: any) => b.isOutro);
+
+        if (!hasIntro || !hasOutro) {
+          const otherEpisodes = allVideos.filter(
+            v => v.id !== video.id && v.title && classifyVideoTitle(v.title).type === 'series' && classifyVideoTitle(v.title).seriesTitle === seriesInfo.seriesTitle
+          );
+          
+          let introToCopy: any = null;
+          let outroToCopy: any = null;
+
+          for (const ep of otherEpisodes) {
+            const epBms = ep.bookmarks || [];
+            if (!introToCopy) introToCopy = epBms.find((b: any) => b.isIntro);
+            if (!outroToCopy) outroToCopy = epBms.find((b: any) => b.isOutro);
+            if (introToCopy && outroToCopy) break;
+          }
+
+          const newBms = [...currentBookmarks];
+          let updated = false;
+
+          if (introToCopy && !hasIntro) {
+            newBms.push({ ...introToCopy, id: `bm-intro-${video.id}` });
+            updated = true;
+          }
+          if (outroToCopy && !hasOutro) {
+            newBms.push({ ...outroToCopy, id: `bm-outro-${video.id}` });
+            updated = true;
+          }
+
+          if (updated) {
+            const sortedBms = newBms.sort((a, b) => a.time - b.time);
+            setBookmarks(sortedBms);
+            onUpdateVideo((prev: any) => ({
+              ...prev,
+              bookmarks: sortedBms
+            }));
+            logger.player(`Auto-populated series bookmarks for ${video.title}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error loading series presets:', err);
+    }
+  }, [video.id]);
+
+  const handleSaveBookmark = () => {
+    const newBookmark = {
+      id: `bm-${Date.now()}`,
+      time: newBookmarkTime,
+      endTime: (isIntro || isOutro) ? newBookmarkEndTime : undefined,
+      label: newBookmarkLabel || `${isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark'} @ ${formatTime(newBookmarkTime)}`,
+      isIntro,
+      isOutro,
+      skipEnabled
+    };
+
+    const updatedBookmarks = [...bookmarks, newBookmark].sort((a, b) => a.time - b.time);
+    setBookmarks(updatedBookmarks);
+
+    onUpdateVideo((prev: any) => ({
+      ...prev,
+      bookmarks: updatedBookmarks
+    }));
+
+    setShowAddDialog(false);
+    if (videoRef.current && isPlaying) {
+      videoRef.current.play().catch(console.error);
+    }
+  };
+
+  const handleDeleteBookmark = (id: string) => {
+    const updatedBookmarks = bookmarks.filter(bm => bm.id !== id);
+    setBookmarks(updatedBookmarks);
+
+    onUpdateVideo((prev: any) => ({
+      ...prev,
+      bookmarks: updatedBookmarks
+    }));
+  };
   const [currentTime, setCurrentTime] = useState(video.currentTime || 0);
   const [duration, setDuration] = useState(0);
 
@@ -1281,6 +1431,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (uiConfig.blockSeekingCompletely) return;
     if (!videoRef.current) return;
     const seekTime = parseFloat(e.target.value);
     videoRef.current.currentTime = seekTime;
@@ -1565,7 +1716,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       exit: 'Escape',
       nextSubtitle: 'b',
       nextAudio: 'v',
-      lockControls: 'w'
+      lockControls: 'w',
+      openSettings: 'Delete',
+      addBookmark: 't',
+      toggleMute: 'm',
+      audioBoost: 'n',
+      frameStep: 'e'
     };
     const parsed = saved ? JSON.parse(saved) : {};
     const keybinds = {
@@ -1575,6 +1731,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const pressedKey = e.key.toLowerCase();
     const lockControlsKey = (keybinds.lockControls || 'w').toLowerCase();
+    const openSettingsKey = (keybinds.openSettings || 'delete').toLowerCase();
+    const addBookmarkKey = (keybinds.addBookmark || 't').toLowerCase();
+    const toggleMuteKey = (keybinds.toggleMute || 'm').toLowerCase();
+    const audioBoostKey = (keybinds.audioBoost || 'n').toLowerCase();
+    const frameStepKey = (keybinds.frameStep || 'e').toLowerCase();
+
+    if (pressedKey === openSettingsKey) {
+      e.preventDefault();
+      setShowSettingsPanel(prev => !prev);
+      return;
+    }
+
+    if (pressedKey === addBookmarkKey) {
+      e.preventDefault();
+      if (videoRef.current) {
+        setNewBookmarkTime(videoRef.current.currentTime);
+        setNewBookmarkEndTime(videoRef.current.currentTime + 90);
+        setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
+        setIsIntro(false);
+        setIsOutro(false);
+        setSkipEnabled(false);
+        setShowAddDialog(true);
+        videoRef.current.pause();
+      }
+      return;
+    }
     
     if (pressedKey === lockControlsKey) {
       e.preventDefault();
@@ -1631,12 +1813,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     } else if (pressedKey === rewindKey) {
       e.preventDefault();
+      if (uiConfig.blockSeekingCompletely) {
+        triggerSwitchToast('Seeking is blocked');
+        return;
+      }
       if (videoRef.current) {
         videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
         triggerHudFlash('rewind');
       }
     } else if (pressedKey === forwardKey) {
       e.preventDefault();
+      if (uiConfig.blockSeekingCompletely) {
+        triggerSwitchToast('Seeking is blocked');
+        return;
+      }
       if (videoRef.current) {
         videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 10);
         triggerHudFlash('forward');
@@ -1647,21 +1837,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } else if (pressedKey === nextAudioKey) {
       e.preventDefault();
       cycleAudio();
-    } else if (pressedKey === 'm') {
+    } else if (pressedKey === toggleMuteKey) {
       e.preventDefault();
       setIsMuted(prev => {
         const nextMuted = !prev;
         triggerVolumeToast(volume, nextMuted);
         return nextMuted;
       });
-    } else if (pressedKey === 'n') {
+    } else if (pressedKey === audioBoostKey) {
       e.preventDefault();
       let nextBoost = 100;
       if (audioBoost === 100) nextBoost = 150;
       else if (audioBoost === 150) nextBoost = 200;
       else nextBoost = 100;
       handleSetAudioBoost(nextBoost);
-    } else if (pressedKey === 'e') {
+    } else if (pressedKey === frameStepKey) {
       e.preventDefault();
       if (videoRef.current) {
         if (!videoRef.current.paused) {
@@ -2064,9 +2254,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }}
         onTimeUpdate={() => {
           if (videoRef.current) {
-            const shouldUpdate = !video.currentTime || hasSeekedRef.current || videoRef.current.currentTime > 0;
+            const time = videoRef.current.currentTime;
+            const shouldUpdate = !video.currentTime || hasSeekedRef.current || time > 0;
             if (shouldUpdate) {
-              setCurrentTime(videoRef.current.currentTime);
+              setCurrentTime(time);
+            }
+
+            // Auto-Skip Intros & Outros
+            if (uiConfig.autoSkipIntroOutro && !isScrubbing) {
+              const activeSkip = bookmarks.find(
+                bm => bm.skipEnabled && bm.endTime && time >= bm.time && time < bm.endTime
+              );
+              if (activeSkip) {
+                videoRef.current.currentTime = activeSkip.endTime;
+                setCurrentTime(activeSkip.endTime);
+                triggerSwitchToast(`Auto-Skipped ${activeSkip.isIntro ? 'Intro' : 'Outro'}`);
+              }
             }
           }
         }}
@@ -2233,23 +2436,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             togglePlay();
           }}
         >
-          <button className="hud-btn-clean" onClick={(e) => { e.stopPropagation(); handleRewind(); }} title="Rewind 10s">
-            <div className="seek-hud-container">
-              <RotateCcw size={64} strokeWidth={1.2} />
-              <span className="seek-hud-text">10</span>
-            </div>
-          </button>
+          {uiConfig.allowUiSkipping && (
+            <button className="hud-btn-clean" onClick={(e) => { e.stopPropagation(); if (uiConfig.blockSeekingCompletely) return; handleRewind(); }} title="Rewind 10s">
+              <div className="seek-hud-container">
+                <RotateCcw size={64} strokeWidth={1.2} />
+                <span className="seek-hud-text">10</span>
+              </div>
+            </button>
+          )}
           
           <button className="hud-btn-clean play-pause-hud-clean" onClick={(e) => { e.stopPropagation(); togglePlay(); }} title={isPlaying ? "Pause" : "Play"}>
             {isPlaying ? <Pause size={72} strokeWidth={1.2} /> : <Play size={72} strokeWidth={1.2} style={{ marginLeft: '6px' }} />}
           </button>
           
-          <button className="hud-btn-clean" onClick={(e) => { e.stopPropagation(); handleForward(); }} title="Forward 10s">
-            <div className="seek-hud-container">
-              <RotateCw size={64} strokeWidth={1.2} />
-              <span className="seek-hud-text">10</span>
-            </div>
-          </button>
+          {uiConfig.allowUiSkipping && (
+            <button className="hud-btn-clean" onClick={(e) => { e.stopPropagation(); if (uiConfig.blockSeekingCompletely) return; handleForward(); }} title="Forward 10s">
+              <div className="seek-hud-container">
+                <RotateCw size={64} strokeWidth={1.2} />
+                <span className="seek-hud-text">10</span>
+              </div>
+            </button>
+          )}
         </div>
       )}
 
@@ -2301,10 +2508,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           {(showPlayBar || showTimeDisplay) && (
             <div className="seekbar-row">
               {showPlayBar && (
-                <div className="scrub-container-premium">
+                <div className={`scrub-container-premium ${uiConfig.blockSeekingCompletely ? 'seeking-blocked' : ''}`}>
                   <div className="scrub-track-bg"></div>
                   <div className="scrub-track-buffered" style={{ width: `${bufferedPercent}%` }}></div>
                   <div className="scrub-track-progress" style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}></div>
+
+                  {/* Bookmark Timeline Dots */}
+                  {bookmarks.map((bm) => {
+                    const percent = (bm.time / (duration || 1)) * 100;
+                    return (
+                      <div 
+                        key={bm.id}
+                        className={`timeline-bookmark-dot ${bm.isIntro ? 'intro-dot' : bm.isOutro ? 'outro-dot' : ''}`}
+                        style={{ left: `${percent}%` }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (uiConfig.blockSeekingCompletely) return;
+                          if (videoRef.current) {
+                            videoRef.current.currentTime = bm.time;
+                            setCurrentTime(bm.time);
+                          }
+                        }}
+                      >
+                        <div className="timeline-bookmark-tooltip">
+                          <span className="tooltip-label">{bm.label}</span>
+                          <span className="tooltip-time">{formatTime(bm.time)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                   
                   {/* Hover / Scrub Preview Tooltip (Always rendered to keep preview video loaded and warm) */}
                   <div 
@@ -2360,6 +2592,86 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button className="control-btn-pip" onClick={togglePiP} title="Picture in Picture">
                   <MonitorPlay size={22} />
                 </button>
+                <div 
+                  className="popover-wrapper"
+                  onMouseEnter={() => {
+                    if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
+                    setShowBookmarksPopover(true);
+                  }}
+                  onMouseLeave={() => {
+                    bookmarksTimeoutRef.current = setTimeout(() => {
+                      setShowBookmarksPopover(false);
+                    }, 150);
+                  }}
+                >
+                  <button 
+                    className="control-btn-bookmark-list" 
+                    onClick={() => setShowBookmarksPopover(prev => !prev)} 
+                    title="Bookmarks"
+                  >
+                    <Pencil size={20} />
+                  </button>
+
+                  {showBookmarksPopover && (
+                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in" style={{ bottom: '45px', left: '0', width: '280px', maxHeight: '350px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="popover-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Bookmarks ({bookmarks.length})</span>
+                        <button 
+                          className="drawer-add-btn"
+                          style={{ padding: '2px 8px', fontSize: '0.7rem' }}
+                          onClick={() => {
+                            if (videoRef.current) {
+                              setNewBookmarkTime(videoRef.current.currentTime);
+                              setNewBookmarkEndTime(videoRef.current.currentTime + 90);
+                              setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
+                              setIsIntro(false);
+                              setIsOutro(false);
+                              setSkipEnabled(false);
+                              setShowAddDialog(true);
+                              videoRef.current.pause();
+                              setShowBookmarksPopover(false);
+                            }
+                          }}
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {bookmarks.length === 0 ? (
+                          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', fontStyle: 'italic', margin: 0 }}>No bookmarks added yet.</p>
+                        ) : (
+                          bookmarks.map((bm) => (
+                            <div className="drawer-bookmark-item" key={bm.id} style={{ padding: '6px 8px' }}>
+                              <div 
+                                className="bookmark-item-info"
+                                onClick={() => {
+                                  if (videoRef.current) {
+                                    videoRef.current.currentTime = bm.time;
+                                    setCurrentTime(bm.time);
+                                  }
+                                }}
+                              >
+                                <span className={`bookmark-item-badge ${bm.isIntro ? 'badge-intro' : bm.isOutro ? 'badge-outro' : ''}`} style={{ fontSize: '0.6rem' }}>
+                                  {bm.isIntro ? 'Intro' : bm.isOutro ? 'Outro' : 'Mark'}
+                                </span>
+                                <span className="bookmark-item-label" title={bm.label} style={{ fontSize: '0.8rem' }}>{bm.label}</span>
+                                <span className="bookmark-item-time" style={{ fontSize: '0.75rem' }}>{formatTime(bm.time)}</span>
+                              </div>
+                              <button 
+                                className="bookmark-delete-btn"
+                                onClick={() => handleDeleteBookmark(bm.id)}
+                                title="Delete Bookmark"
+                              >
+                                <Trash size={12} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {showVolumeControl && (
                   <div className="volume-control-group-premium">
                     <button 
@@ -2469,6 +2781,177 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Right Side UI Customization Drawer */}
+      {showSettingsPanel && (
+        <div className="right-settings-drawer animate-slide-in-right" onClick={(e) => e.stopPropagation()}>
+          <div className="drawer-header">
+            <h3>UI Settings</h3>
+            <button className="drawer-close-btn" onClick={() => setShowSettingsPanel(false)}>
+              <X size={20} />
+            </button>
+          </div>
+          
+          <div className="drawer-content">
+            <div className="drawer-section">
+              <h4>General Controls</h4>
+              <div className="drawer-option">
+                <label className="drawer-checkbox-label" style={{ opacity: uiConfig.blockSeekingCompletely ? 0.5 : 1, cursor: uiConfig.blockSeekingCompletely ? 'not-allowed' : 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={uiConfig.allowUiSkipping}
+                    disabled={uiConfig.blockSeekingCompletely}
+                    onChange={(e) => updateUiConfig({ allowUiSkipping: e.target.checked })}
+                  />
+                  <span>Show Skip Buttons in UI</span>
+                </label>
+              </div>
+              
+              <div className="drawer-option">
+                <label className="drawer-checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    checked={uiConfig.blockSeekingCompletely}
+                    onChange={(e) => {
+                      const block = e.target.checked;
+                      updateUiConfig({ 
+                        blockSeekingCompletely: block,
+                        allowUiSkipping: block ? false : uiConfig.allowUiSkipping
+                      });
+                    }}
+                  />
+                  <span style={{ color: '#ff4444' }}>Block Seeking Completely</span>
+                </label>
+              </div>
+
+              <div className="drawer-option">
+                <label className="drawer-checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    checked={uiConfig.autoSkipIntroOutro}
+                    onChange={(e) => updateUiConfig({ autoSkipIntroOutro: e.target.checked })}
+                  />
+                  <span>Auto-Skip Intros & Outros</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Bookmark Dialog Overlay */}
+      {showAddDialog && (
+        <div className="bookmark-dialog-overlay" onClick={() => {
+          setShowAddDialog(false);
+          if (videoRef.current && isPlaying) {
+            videoRef.current.play().catch(console.error);
+          }
+        }}>
+          <div className="bookmark-dialog-box animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <h3>Add Bookmark</h3>
+            
+            <div className="dialog-field">
+              <label>Label</label>
+              <input 
+                type="text" 
+                value={newBookmarkLabel} 
+                onChange={(e) => setNewBookmarkLabel(e.target.value)}
+                placeholder="e.g. Intro Start"
+                autoFocus
+              />
+            </div>
+            
+            <div className="dialog-field-row">
+              <div className="dialog-field">
+                <label>Start Time (s)</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  value={newBookmarkTime} 
+                  onChange={(e) => setNewBookmarkTime(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              
+              {(isIntro || isOutro) && (
+                <div className="dialog-field">
+                  <label>End Time (s)</label>
+                  <input 
+                    type="number" 
+                    step="0.1"
+                    value={newBookmarkEndTime} 
+                    onChange={(e) => setNewBookmarkEndTime(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="dialog-checkboxes">
+              <label className="dialog-checkbox-label">
+                <input 
+                  type="checkbox"
+                  checked={isIntro}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsIntro(checked);
+                    if (checked) {
+                      setIsOutro(false);
+                      setSkipEnabled(true);
+                      setNewBookmarkLabel('Intro');
+                    }
+                  }}
+                />
+                <span>Mark as Intro</span>
+              </label>
+
+              <label className="dialog-checkbox-label">
+                <input 
+                  type="checkbox"
+                  checked={isOutro}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsOutro(checked);
+                    if (checked) {
+                      setIsIntro(false);
+                      setSkipEnabled(true);
+                      setNewBookmarkLabel('Outro');
+                    }
+                  }}
+                />
+                <span>Mark as Outro</span>
+              </label>
+
+              <label className="dialog-checkbox-label">
+                <input 
+                  type="checkbox"
+                  checked={skipEnabled}
+                  onChange={(e) => setSkipEnabled(e.target.checked)}
+                />
+                <span>Enable Auto-Skip</span>
+              </label>
+            </div>
+            
+            <div className="dialog-actions">
+              <button 
+                className="dialog-btn btn-secondary"
+                onClick={() => {
+                  setShowAddDialog(false);
+                  if (videoRef.current && isPlaying) {
+                    videoRef.current.play().catch(console.error);
+                  }
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="dialog-btn btn-primary"
+                onClick={handleSaveBookmark}
+              >
+                Save
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2604,6 +3087,373 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           width: 100%;
           max-width: 100%;
         }
+        /* Timeline Bookmarks & Dots */
+        .timeline-bookmark-dot {
+          position: absolute;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background-color: #ffffff;
+          border: 1px solid #000000;
+          z-index: 25;
+          cursor: pointer;
+          pointer-events: auto;
+          transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+        .timeline-bookmark-dot:hover {
+          transform: translate(-50%, -50%) scale(1.5);
+          background-color: #e50914 !important;
+          z-index: 30;
+        }
+        .timeline-bookmark-dot.intro-dot {
+          background-color: #3b82f6;
+        }
+        .timeline-bookmark-dot.outro-dot {
+          background-color: #10b981;
+        }
+        .timeline-bookmark-tooltip {
+          position: absolute;
+          bottom: 12px;
+          left: 50%;
+          transform: translateX(-50%) translateY(5px);
+          background: rgba(18, 18, 18, 0.95);
+          color: #ffffff;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 0.65rem;
+          white-space: nowrap;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.15s ease, transform 0.15s ease;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+          font-family: sans-serif;
+        }
+        .timeline-bookmark-tooltip .tooltip-label {
+          font-weight: 600;
+        }
+        .timeline-bookmark-tooltip .tooltip-time {
+          color: rgba(255, 255, 255, 0.6);
+        }
+        .timeline-bookmark-dot:hover .timeline-bookmark-tooltip {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+
+        /* Right settings drawer panel */
+        .right-settings-drawer {
+          position: absolute;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          width: 320px;
+          background: rgba(18, 18, 18, 0.96);
+          border-left: 1px solid rgba(255, 255, 255, 0.1);
+          z-index: 50;
+          display: flex;
+          flex-direction: column;
+          backdrop-filter: blur(15px);
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+          font-family: sans-serif;
+        }
+        .drawer-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1.25rem 1rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .drawer-header h3 {
+          margin: 0;
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: #ffffff;
+        }
+        .drawer-close-btn {
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.6);
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.15s ease;
+        }
+        .drawer-close-btn:hover {
+          color: #ffffff;
+        }
+        .drawer-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+        .drawer-section {
+          display: flex;
+          flex-direction: column;
+        }
+        .drawer-section h4 {
+          margin: 0 0 0.75rem 0;
+          font-size: 0.85rem;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.4);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .drawer-option {
+          margin-bottom: 0.75rem;
+        }
+        .drawer-checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 0.9rem;
+          user-select: none;
+        }
+        .drawer-checkbox-label input {
+          width: 16px;
+          height: 16px;
+          cursor: pointer;
+          accent-color: #e50914;
+        }
+        .drawer-add-btn {
+          background: #e50914;
+          border: none;
+          color: #ffffff;
+          padding: 4px 10px;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.15s ease;
+        }
+        .drawer-add-btn:hover {
+          background: #b80710;
+        }
+        .no-bookmarks-text {
+          color: rgba(255, 255, 255, 0.4);
+          font-size: 0.85rem;
+          font-style: italic;
+          margin: 0;
+        }
+        .bookmarks-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          max-height: 350px;
+          overflow-y: auto;
+        }
+        .drawer-bookmark-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px;
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.02);
+          transition: background-color 0.15s ease;
+        }
+        .drawer-bookmark-item:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+        .bookmark-item-info {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          min-width: 0;
+        }
+        .bookmark-item-badge {
+          font-size: 0.65rem;
+          font-weight: 700;
+          padding: 2px 6px;
+          border-radius: 3px;
+          background: rgba(255, 255, 255, 0.15);
+          color: #ffffff;
+          text-transform: uppercase;
+        }
+        .bookmark-item-badge.badge-intro {
+          background: rgba(59, 130, 246, 0.25);
+          color: #3b82f6;
+          border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+        .bookmark-item-badge.badge-outro {
+          background: rgba(16, 185, 129, 0.25);
+          color: #10b981;
+          border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        .bookmark-item-label {
+          color: #ffffff;
+          font-size: 0.85rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          flex: 1;
+        }
+        .bookmark-item-time {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.8rem;
+          font-family: monospace;
+        }
+        .bookmark-delete-btn {
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.4);
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.15s ease;
+        }
+        .bookmark-delete-btn:hover {
+          color: #ff4444;
+        }
+
+        /* Bookmark dialog popup */
+        .bookmark-dialog-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.6);
+          z-index: 60;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          backdrop-filter: blur(4px);
+        }
+        .bookmark-dialog-box {
+          background: #181818;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          width: 90%;
+          max-width: 400px;
+          border-radius: 12px;
+          padding: 1.5rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+          font-family: sans-serif;
+        }
+        .bookmark-dialog-box h3 {
+          margin: 0;
+          font-size: 1.2rem;
+          font-weight: 600;
+          color: #ffffff;
+        }
+        .dialog-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .dialog-field label {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.4);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .dialog-field input[type="text"],
+        .dialog-field input[type="number"] {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: #ffffff;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font-size: 0.9rem;
+          outline: none;
+          transition: border-color 0.15s ease;
+        }
+        .dialog-field input:focus {
+          border-color: #e50914;
+        }
+        .dialog-field-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .dialog-checkboxes {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 4px;
+        }
+        .dialog-checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 0.85rem;
+          cursor: pointer;
+          user-select: none;
+        }
+        .dialog-checkbox-label input {
+          width: 15px;
+          height: 15px;
+          cursor: pointer;
+          accent-color: #e50914;
+        }
+        .dialog-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 4px;
+        }
+        .dialog-btn {
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          border: none;
+          transition: background-color 0.15s ease;
+        }
+        .dialog-btn.btn-secondary {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+        }
+        .dialog-btn.btn-secondary:hover {
+          background: rgba(255, 255, 255, 0.15);
+        }
+        .dialog-btn.btn-primary {
+          background: #e50914;
+          color: #ffffff;
+        }
+        .dialog-btn.btn-primary:hover {
+          background: #b80710;
+        }
+
+        /* Animations */
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .animate-slide-in-right {
+          animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .animate-scale-in {
+          animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .seeking-blocked {
+          pointer-events: none !important;
+        }
+
         /* Odometer Clock Styles */
         .odo-clock-container {
           display: inline-flex;
@@ -3115,7 +3965,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           border-color: rgba(255, 255, 255, 0.3);
           transform: scale(1.03);
         }
-        .control-btn-pip, .control-btn-fullscreen {
+        .control-btn-pip, .control-btn-fullscreen, .control-btn-bookmark-list {
           background: none;
           border: none;
           color: rgba(255, 255, 255, 0.8);
@@ -3126,7 +3976,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           justify-content: center;
           transition: color 0.2s, transform 0.2s;
         }
-        .control-btn-pip:hover, .control-btn-fullscreen:hover {
+        .control-btn-pip:hover, .control-btn-fullscreen:hover, .control-btn-bookmark-list:hover {
           color: white;
           transform: scale(1.15);
         }

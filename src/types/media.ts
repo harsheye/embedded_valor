@@ -49,4 +49,15 @@ export interface VideoItem {
   rating?: number;
   totalTimeWatched?: number;
   timeToFinish?: number;
+  bookmarks?: Bookmark[];
+}
+
+export interface Bookmark {
+  id: string;
+  time: number;
+  endTime?: number;
+  label: string;
+  isIntro?: boolean;
+  isOutro?: boolean;
+  skipEnabled?: boolean;
 }

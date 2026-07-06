@@ -1,0 +1,1994 @@
+[
+  {
+    "id": "url-1783349746303",
+    "title": "See.You.at.Work.Tomorrow.S01E05.AMZN.x264.1080p[MkvDrama.net].mkv",
+    "url": "",
+    "type": "local",
+    "fileName": "See.You.at.Work.Tomorrow.S01E05.AMZN.x264.1080p[MkvDrama.net].mkv",
+    "duration": "1:09:53",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (High)",
+        "details": "h264 (High), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 23.98 fps, 23.98 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "aac (HE-AAC)",
+        "language": "dub",
+        "details": "aac (HE-AAC), 48000 Hz, stereo, fltp (dub)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip (default)",
+        "language": "eng",
+        "details": "subrip (default)"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ara",
+        "details": "subrip"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "chi",
+        "details": "subrip"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "cze",
+        "details": "subrip"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dan",
+        "details": "subrip"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dut",
+        "details": "subrip"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "eng",
+        "details": "subrip"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fil",
+        "details": "subrip"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fin",
+        "details": "subrip"
+      },
+      {
+        "index": 14,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 15,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ger",
+        "details": "subrip"
+      },
+      {
+        "index": 16,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "gre",
+        "details": "subrip"
+      },
+      {
+        "index": 17,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "hin",
+        "details": "subrip"
+      },
+      {
+        "index": 18,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "hun",
+        "details": "subrip"
+      },
+      {
+        "index": 19,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ind",
+        "details": "subrip"
+      },
+      {
+        "index": 20,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ita",
+        "details": "subrip"
+      },
+      {
+        "index": 21,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "jpn",
+        "details": "subrip"
+      },
+      {
+        "index": 22,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "kor",
+        "details": "subrip"
+      },
+      {
+        "index": 23,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "may",
+        "details": "subrip"
+      },
+      {
+        "index": 24,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "nob",
+        "details": "subrip"
+      },
+      {
+        "index": 25,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "pol",
+        "details": "subrip"
+      },
+      {
+        "index": 26,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      },
+      {
+        "index": 27,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "rum",
+        "details": "subrip"
+      },
+      {
+        "index": 28,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      },
+      {
+        "index": 29,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "swe",
+        "details": "subrip"
+      },
+      {
+        "index": 30,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "tha",
+        "details": "subrip"
+      },
+      {
+        "index": 31,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "tur",
+        "details": "subrip"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 314.373893,
+    "lastPlayedDate": "2026-07-06T15:28:59.490Z",
+    "totalTimeWatched": 265,
+    "localFilePath": "F:\\Ent-Series\\See.You.at.Work.Tomorrow.S01E05.AMZN.x264.1080p[MkvDrama.net].mkv",
+    "playedDates": [
+      "2026-07-06T14:55:47.209Z"
+    ]
+  },
+  {
+    "id": "url-1783027980609",
+    "title": "The Devil Wears Prada 2 (2026) English 1080p (10bit) WEB-DL ESub [BollyFlix].mkv",
+    "url": "",
+    "type": "local",
+    "fileName": "The Devil Wears Prada 2 (2026) English 1080p (10bit) WEB-DL ESub [BollyFlix].mkv",
+    "duration": "2:00:16",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "hevc (Main 10)",
+        "details": "hevc (Main 10), yuv420p10le(tv, bt709), 1920x800, SAR 1:1 DAR 12:5, 24 fps, 24 tbr, 1k tbn"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "aac (HE-AAC)",
+        "language": "eng",
+        "details": "aac (HE-AAC), 48000 Hz, 5.1, fltp (default)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip (default)",
+        "language": "eng",
+        "details": "subrip (default)"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dan",
+        "details": "subrip"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dut",
+        "details": "subrip"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fin",
+        "details": "subrip"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ger",
+        "details": "subrip"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ger",
+        "details": "subrip"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ita",
+        "details": "subrip"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ita",
+        "details": "subrip"
+      },
+      {
+        "index": 14,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "jpn",
+        "details": "subrip"
+      },
+      {
+        "index": 15,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "jpn",
+        "details": "subrip"
+      },
+      {
+        "index": 16,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "pol",
+        "details": "subrip"
+      },
+      {
+        "index": 17,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      },
+      {
+        "index": 18,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      },
+      {
+        "index": 19,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      },
+      {
+        "index": 20,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "swe",
+        "details": "subrip"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 114.864403,
+    "lastPlayedDate": "2026-07-06T15:12:05.437Z",
+    "totalTimeWatched": 116,
+    "localFilePath": "F:\\Ent-Series\\The Devil Wears Prada 2 (2026) English 1080p (10bit) WEB-DL ESub [BollyFlix].mkv",
+    "playedDates": [
+      "2026-07-02T21:33:01.622Z"
+    ]
+  },
+  {
+    "id": "local-Pursuit.of.Jade.S01E20.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv_2104415270_1783113144418",
+    "title": "Pursuit.of.Jade.S01E20.1080p.NF.WEB-DL.DDP5.1.H.264-Marco",
+    "url": "",
+    "type": "local",
+    "fileName": "Pursuit.of.Jade.S01E20.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv",
+    "duration": "00:43:49.95",
+    "format": "matroska",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (High)",
+        "language": "chi",
+        "details": "h264 (High), yuv420p(progressive), 1920x1080 [SAR 1:1 DAR 16:9], 25 fps, 25 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "eac3",
+        "language": "chi",
+        "details": "eac3, 48000 Hz, 5.1(side), fltp, 640 kb/s (default) (original)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip (original)",
+        "language": "chi",
+        "details": "subrip (original)"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip (default) (dub)",
+        "language": "eng",
+        "details": "subrip (default) (dub)"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ind",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "jpn",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "kor",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tha",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "vie",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip (original)",
+        "language": "chi",
+        "details": "subrip (original)"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 2475.984162,
+    "lastPlayedDate": "2026-07-05T19:16:09.417Z",
+    "totalTimeWatched": 381,
+    "rating": 2
+  },
+  {
+    "id": "local-See.You.at.Work.Tomorrow.S01E04.1080p.AMZN.WEB-DL.AAC2.0.H.264-Marco.mkv.fdmdownload_3780232443_1782942471105",
+    "title": "See.You.at.Work.Tomorrow.S01E04.1080p.AMZN.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "url": "",
+    "type": "local",
+    "fileName": "See.You.at.Work.Tomorrow.S01E04.1080p.AMZN.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "duration": "1:10:26",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (High)",
+        "language": "eng",
+        "details": "h264 (High), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 23.98 fps, 23.98 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "aac (LC)",
+        "language": "kor",
+        "details": "aac (LC), 48000 Hz, stereo, fltp (dub)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ara",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "cze",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "dan",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ger",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "gre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip (default) (dub)",
+        "language": "eng",
+        "details": "subrip (default) (dub)"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fin",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fil",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 14,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "hin",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 15,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "hun",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 16,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ind",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 17,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ita",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 18,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "jpn",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 19,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "kor",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 20,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "may",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 21,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "nob",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 22,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "dut",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 23,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "pol",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 24,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 25,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 26,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "rum",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 27,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "swe",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 28,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tha",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 29,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tur",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 30,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "chi",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 31,
+        "type": "subtitle",
+        "codec": "subrip (dub) (hearing impaired)",
+        "language": "eng",
+        "details": "subrip (dub) (hearing impaired)"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 2732.88574,
+    "lastPlayedDate": "2026-07-05T18:58:33.210Z",
+    "totalTimeWatched": 1298,
+    "localFilePath": "F:\\Ent-Series\\See.You.at.Work.Tomorrow.S01E04.1080p.AMZN.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "playedDates": [
+      "2026-07-02T07:11:31.206Z",
+      "2026-07-05T18:58:31.557Z"
+    ]
+  },
+  {
+    "id": "local-Reborn.Rookie.S01E12.1080p.WEB-DL.AAC2.0.H.264-Marco.mkv_1440012813_1783272447440",
+    "title": "Reborn.Rookie.S01E12.1080p.WEB-DL.AAC2.0.H.264-Marco",
+    "url": "",
+    "type": "local",
+    "fileName": "Reborn.Rookie.S01E12.1080p.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "duration": "01:04:24.02",
+    "format": "matroska",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (High)",
+        "details": "h264 (High), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 29.97 fps, 29.97 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "aac (LC)",
+        "details": "aac (LC), 48000 Hz, stereo, fltp (default) (original)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "kor",
+        "details": "subrip"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ara",
+        "details": "subrip"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dut",
+        "details": "subrip"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip (default)",
+        "language": "eng",
+        "details": "subrip (default)"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ger",
+        "details": "subrip"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "hin",
+        "details": "subrip"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ita",
+        "details": "subrip"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "pol",
+        "details": "subrip"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "rum",
+        "details": "subrip"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 3780.927643,
+    "lastPlayedDate": "2026-07-05T18:56:13.514Z",
+    "totalTimeWatched": 2466,
+    "rating": 4,
+    "timeToFinish": 2735
+  },
+  {
+    "id": "local-Reborn.Rookie.S01E11.1080p.WEB-DL.AAC2.0.H.264-Marco.mkv_1307207526_1783183392935",
+    "title": "Reborn.Rookie.S01E11.1080p.WEB-DL.AAC2.0.H.264-Marco",
+    "url": "",
+    "type": "local",
+    "fileName": "Reborn.Rookie.S01E11.1080p.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "duration": "1:00:50",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (High)",
+        "details": "h264 (High), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 29.97 fps, 29.97 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "aac (LC)",
+        "details": "aac (LC), 48000 Hz, stereo, fltp (default) (original)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ara",
+        "details": "subrip"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dut",
+        "details": "subrip"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip (default)",
+        "language": "eng",
+        "details": "subrip (default)"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ger",
+        "details": "subrip"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "hin",
+        "details": "subrip"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ita",
+        "details": "subrip"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "kor",
+        "details": "subrip"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "pol",
+        "details": "subrip"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "rum",
+        "details": "subrip"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 3615.187635,
+    "lastPlayedDate": "2026-07-05T18:10:28.449Z",
+    "totalTimeWatched": 1830,
+    "rating": 3,
+    "timeToFinish": 4570
+  },
+  {
+    "id": "url-1783095350406",
+    "title": "Pursuit.of.Jade.S01E18.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv",
+    "url": "",
+    "type": "local",
+    "fileName": "Pursuit.of.Jade.S01E18.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv",
+    "duration": "46:18",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (High)",
+        "language": "chi",
+        "details": "h264 (High), yuv420p(progressive), 1920x1080 [SAR 1:1 DAR 16:9], 25 fps, 25 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "eac3",
+        "language": "chi",
+        "details": "eac3, 48000 Hz, 5.1(side), fltp, 640 kb/s (default) (original)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip (original)",
+        "language": "chi",
+        "details": "subrip (original)"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip (default) (dub)",
+        "language": "eng",
+        "details": "subrip (default) (dub)"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ind",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "jpn",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "kor",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tha",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "vie",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip (original)",
+        "language": "chi",
+        "details": "subrip (original)"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 1087.768127,
+    "lastPlayedDate": "2026-07-03T16:16:13.049Z",
+    "totalTimeWatched": 22,
+    "localFilePath": "F:\\Ent-Series\\Pursuit.of.Jade.S01E18.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv",
+    "playedDates": [
+      "2026-07-03T16:15:51.039Z"
+    ]
+  },
+  {
+    "id": "url-1782928514223",
+    "title": "See.You.at.Work.Tomorrow.S01E03.1080p.AMZN.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "url": "",
+    "type": "local",
+    "fileName": "See.You.at.Work.Tomorrow.S01E03.1080p.AMZN.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "duration": "1:10:46",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (High)",
+        "language": "eng",
+        "details": "h264 (High), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 23.98 fps, 23.98 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "aac (LC)",
+        "language": "kor",
+        "details": "aac (LC), 48000 Hz, stereo, fltp (dub)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ara",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "cze",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "dan",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ger",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "gre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip (default) (dub)",
+        "language": "eng",
+        "details": "subrip (default) (dub)"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fin",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fil",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 14,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "hin",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 15,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "hun",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 16,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ind",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 17,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ita",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 18,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "jpn",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 19,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "kor",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 20,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "may",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 21,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "nob",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 22,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "dut",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 23,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "pol",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 24,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 25,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 26,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "rum",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 27,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "swe",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 28,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tha",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 29,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tur",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 30,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "chi",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 31,
+        "type": "subtitle",
+        "codec": "subrip (dub) (hearing impaired)",
+        "language": "eng",
+        "details": "subrip (dub) (hearing impaired)"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 4059.410124,
+    "lastPlayedDate": "2026-07-01T21:43:53.385Z",
+    "totalTimeWatched": 3744,
+    "timeToFinish": 6160,
+    "localFilePath": "F:\\Ent-Series\\See.You.at.Work.Tomorrow.S01E03.1080p.AMZN.WEB-DL.AAC2.0.H.264-Marco.mkv",
+    "playedDates": [
+      "2026-07-01T17:55:14.969Z",
+      "2026-07-01T20:00:27.107Z",
+      "2026-07-01T20:01:10.020Z"
+    ]
+  },
+  {
+    "id": "url-1782720958414",
+    "title": "Notes.from.the.Last.Row.S01E03.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv",
+    "url": "",
+    "type": "local",
+    "fileName": "Notes.from.the.Last.Row.S01E03.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv",
+    "duration": "55:56",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "h264 (Main)",
+        "language": "kor",
+        "details": "h264 (Main), yuv420p(progressive), 1920x1080 [SAR 1:1 DAR 16:9], 23.98 fps, 23.98 tbr, 1k tbn (default) (original)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "eac3",
+        "language": "kor",
+        "details": "eac3, 48000 Hz, 5.1(side), fltp, 640 kb/s (default) (original)"
+      },
+      {
+        "index": 2,
+        "type": "subtitle",
+        "codec": "subrip (original) (hearing impaired)",
+        "language": "kor",
+        "details": "subrip (original) (hearing impaired)"
+      },
+      {
+        "index": 3,
+        "type": "subtitle",
+        "codec": "subrip (original)",
+        "language": "kor",
+        "details": "subrip (original)"
+      },
+      {
+        "index": 4,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ara",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "cze",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "dan",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ger",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "gre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip (default) (dub)",
+        "language": "eng",
+        "details": "subrip (default) (dub)"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fin",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fil",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 14,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "fre",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 15,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "heb",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 16,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "hrv",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 17,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "hun",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 18,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ind",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 19,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ita",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 20,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "jpn",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 21,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "may",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 22,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "nob",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 23,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "dut",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 24,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "pol",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 25,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 26,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 27,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "rum",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 28,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "rus",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 29,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "swe",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 30,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tha",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 31,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "tur",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 32,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "ukr",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 33,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "vie",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 34,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "chi",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 35,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "chi",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 36,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "eng",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 37,
+        "type": "subtitle",
+        "codec": "subrip (dub) (hearing impaired)",
+        "language": "eng",
+        "details": "subrip (dub) (hearing impaired)"
+      },
+      {
+        "index": 38,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "spa",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 39,
+        "type": "subtitle",
+        "codec": "subrip (dub) (hearing impaired)",
+        "language": "spa",
+        "details": "subrip (dub) (hearing impaired)"
+      },
+      {
+        "index": 40,
+        "type": "subtitle",
+        "codec": "subrip (dub)",
+        "language": "por",
+        "details": "subrip (dub)"
+      },
+      {
+        "index": 41,
+        "type": "subtitle",
+        "codec": "subrip (dub) (hearing impaired)",
+        "language": "por",
+        "details": "subrip (dub) (hearing impaired)"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 1802.038967,
+    "lastPlayedDate": "2026-06-29T10:07:57.914Z",
+    "totalTimeWatched": 331,
+    "localFilePath": "F:\\Ent-Series\\Notes.from.the.Last.Row.S01E03.1080p.NF.WEB-DL.DDP5.1.H.264-Marco.mkv",
+    "playedDates": [
+      "2026-06-29T08:15:59.088Z"
+    ]
+  },
+  {
+    "id": "url-1782716343938",
+    "title": "House Of The Dragon (2026) Season 03 Episode 02 2160p HMAX WEB-DL SDR HEVC [Telugu + Hindi + Tamil JHS AAC 2.0 ~ 128Kbps + English DDP Atmos 5.1] H.265 ESub - NiTU - ETHEL.mkv",
+    "url": "",
+    "type": "local",
+    "fileName": "House Of The Dragon (2026) Season 03 Episode 02 2160p HMAX WEB-DL SDR HEVC [Telugu + Hindi + Tamil JHS AAC 2.0 ~ 128Kbps + English DDP Atmos 5.1] H.265 ESub - NiTU - ETHEL.mkv",
+    "duration": "1:03:59",
+    "format": "mkv",
+    "streams": [
+      {
+        "index": 0,
+        "type": "video",
+        "codec": "hevc (Main 10)",
+        "details": "hevc (Main 10), yuv420p10le(tv, bt709), 3840x1920 [SAR 1:1 DAR 2:1], 23.98 fps, 23.98 tbr, 1k tbn (default)"
+      },
+      {
+        "index": 1,
+        "type": "audio",
+        "codec": "eac3",
+        "language": "eng",
+        "details": "eac3, 48000 Hz, 5.1(side), fltp, 640 kb/s (default)"
+      },
+      {
+        "index": 2,
+        "type": "audio",
+        "codec": "aac (LC)",
+        "language": "hin",
+        "details": "aac (LC), 48000 Hz, stereo, fltp (default)"
+      },
+      {
+        "index": 3,
+        "type": "audio",
+        "codec": "aac (LC)",
+        "language": "tel",
+        "details": "aac (LC), 48000 Hz, stereo, fltp"
+      },
+      {
+        "index": 4,
+        "type": "audio",
+        "codec": "aac (LC)",
+        "language": "tam",
+        "details": "aac (LC), 48000 Hz, stereo, fltp"
+      },
+      {
+        "index": 5,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "eng",
+        "details": "subrip"
+      },
+      {
+        "index": 6,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "eng",
+        "details": "subrip"
+      },
+      {
+        "index": 7,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "bul",
+        "details": "subrip"
+      },
+      {
+        "index": 8,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "cze",
+        "details": "subrip"
+      },
+      {
+        "index": 9,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dan",
+        "details": "subrip"
+      },
+      {
+        "index": 10,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ger",
+        "details": "subrip"
+      },
+      {
+        "index": 11,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "gre",
+        "details": "subrip"
+      },
+      {
+        "index": 12,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      },
+      {
+        "index": 13,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      },
+      {
+        "index": 14,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "est",
+        "details": "subrip"
+      },
+      {
+        "index": 15,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fin",
+        "details": "subrip"
+      },
+      {
+        "index": 16,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "fre",
+        "details": "subrip"
+      },
+      {
+        "index": 17,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "heb",
+        "details": "subrip"
+      },
+      {
+        "index": 18,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "hrv",
+        "details": "subrip"
+      },
+      {
+        "index": 19,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "hun",
+        "details": "subrip"
+      },
+      {
+        "index": 20,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ind",
+        "details": "subrip"
+      },
+      {
+        "index": 21,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ice",
+        "details": "subrip"
+      },
+      {
+        "index": 22,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "ita",
+        "details": "subrip"
+      },
+      {
+        "index": 23,
+        "type": "subtitle",
+        "codec": "subrip",
+        "details": "subrip"
+      },
+      {
+        "index": 24,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "lit",
+        "details": "subrip"
+      },
+      {
+        "index": 25,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "lav",
+        "details": "subrip"
+      },
+      {
+        "index": 26,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "mac",
+        "details": "subrip"
+      },
+      {
+        "index": 27,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "may",
+        "details": "subrip"
+      },
+      {
+        "index": 28,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "nob",
+        "details": "subrip"
+      },
+      {
+        "index": 29,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "dut",
+        "details": "subrip"
+      },
+      {
+        "index": 30,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "pol",
+        "details": "subrip"
+      },
+      {
+        "index": 31,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      },
+      {
+        "index": 32,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      },
+      {
+        "index": 33,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "rum",
+        "details": "subrip"
+      },
+      {
+        "index": 34,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "slo",
+        "details": "subrip"
+      },
+      {
+        "index": 35,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "slv",
+        "details": "subrip"
+      },
+      {
+        "index": 36,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "srp",
+        "details": "subrip"
+      },
+      {
+        "index": 37,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "swe",
+        "details": "subrip"
+      },
+      {
+        "index": 38,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "tha",
+        "details": "subrip"
+      },
+      {
+        "index": 39,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "tur",
+        "details": "subrip"
+      },
+      {
+        "index": 40,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "vie",
+        "details": "subrip"
+      },
+      {
+        "index": 41,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "chi",
+        "details": "subrip"
+      },
+      {
+        "index": 42,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "chi",
+        "details": "subrip"
+      },
+      {
+        "index": 43,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "chi",
+        "details": "subrip"
+      },
+      {
+        "index": 44,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "spa",
+        "details": "subrip"
+      },
+      {
+        "index": 45,
+        "type": "subtitle",
+        "codec": "subrip",
+        "language": "por",
+        "details": "subrip"
+      }
+    ],
+    "audioTracks": [],
+    "subtitleTracks": [],
+    "currentTime": 0,
+    "lastPlayedDate": "2026-06-29T08:15:28.274Z",
+    "totalTimeWatched": 232,
+    "localFilePath": "F:\\Ent-Series\\House Of The Dragon (2026) Season 03 Episode 02 2160p HMAX WEB-DL SDR HEVC [Telugu + Hindi + Tamil JHS AAC 2.0 ~ 128Kbps + English DDP Atmos 5.1] H.265 ESub - NiTU - ETHEL.mkv",
+    "playedDates": [
+      "2026-06-29T06:59:04.583Z",
+      "2026-06-29T07:05:21.217Z",
+      "2026-06-29T08:13:46.302Z",
+      "2026-06-29T08:13:54.797Z",
+      "2026-06-29T08:14:41.312Z"
+    ]
+  }
+]

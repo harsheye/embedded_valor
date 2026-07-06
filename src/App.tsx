@@ -364,7 +364,12 @@ function App() {
       exit: 'Escape',
       nextSubtitle: 'b',
       nextAudio: 'v',
-      lockControls: 'w'
+      lockControls: 'w',
+      openSettings: 'Delete',
+      addBookmark: 't',
+      toggleMute: 'm',
+      audioBoost: 'n',
+      frameStep: 'e'
     },
     defaultAudio: 'ENG',
     defaultSub: 'ENG',
@@ -380,6 +385,9 @@ function App() {
     showPlayBar: true,
     showVolumeControl: true,
     showFullscreen: true,
+    allowUiSkipping: true,
+    blockSeekingCompletely: false,
+    autoSkipIntroOutro: true,
     saveHistory: true,
     saveTrackPreferences: true,
     saveVolume: true,
@@ -622,21 +630,89 @@ function App() {
 
 
   const handleUpdateVideo = (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting = false) => {
-    setVideos((prev) =>
-      prev.map((v) => {
-        const isTarget = typeof updatedVideoOrUpdater === 'function'
-          ? (playingVideo && v.id === playingVideo.id)
-          : v.id === updatedVideoOrUpdater.id;
+    setVideos((prev) => {
+      let targetVideo: VideoItem | null = null;
+      if (typeof updatedVideoOrUpdater !== 'function') {
+        targetVideo = updatedVideoOrUpdater;
+      } else {
+        const activePlaying = playingVideo;
+        if (activePlaying) {
+          const current = prev.find(v => v.id === activePlaying.id);
+          if (current) {
+            targetVideo = (updatedVideoOrUpdater as Function)(current);
+          }
+        }
+      }
+
+      if (!targetVideo) {
+        return prev.map((v) => {
+          const isTarget = typeof updatedVideoOrUpdater === 'function'
+            ? (playingVideo && v.id === playingVideo.id)
+            : v.id === updatedVideoOrUpdater.id;
+          if (isTarget) {
+            const updatedItem = typeof updatedVideoOrUpdater === 'function' ? (updatedVideoOrUpdater as Function)(v) : updatedVideoOrUpdater;
+            return {
+              ...updatedItem,
+              lastPlayedDate: new Date().toISOString()
+            };
+          }
+          return v;
+        });
+      }
+
+      const seriesInfo = targetVideo.title ? classifyVideoTitle(targetVideo.title) : null;
+      const isSeries = seriesInfo && seriesInfo.type === 'series';
+      const seriesTitle = isSeries ? seriesInfo.seriesTitle : undefined;
+      const targetBookmarks = targetVideo.bookmarks || [];
+
+      const introBm = targetBookmarks.find((b) => b.isIntro);
+      const outroBm = targetBookmarks.find((b) => b.isOutro);
+
+      return prev.map((v) => {
+        const isTarget = v.id === targetVideo!.id;
         if (isTarget) {
-          const updatedItem = typeof updatedVideoOrUpdater === 'function' ? (updatedVideoOrUpdater as Function)(v) : updatedVideoOrUpdater;
           return {
-            ...updatedItem,
+            ...targetVideo!,
             lastPlayedDate: new Date().toISOString()
           };
         }
+
+        if (seriesTitle && v.title) {
+          const otherSeriesInfo = classifyVideoTitle(v.title);
+          if (otherSeriesInfo.type === 'series' && otherSeriesInfo.seriesTitle === seriesTitle) {
+            const otherBookmarks = v.bookmarks || [];
+            let updatedOtherBookmarks = [...otherBookmarks];
+
+            if (introBm) {
+              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
+              updatedOtherBookmarks.push({
+                ...introBm,
+                id: `bm-intro-${v.id}`
+              });
+            } else {
+              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
+            }
+
+            if (outroBm) {
+              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
+              updatedOtherBookmarks.push({
+                ...outroBm,
+                id: `bm-outro-${v.id}`
+              });
+            } else {
+              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
+            }
+
+            return {
+              ...v,
+              bookmarks: updatedOtherBookmarks.sort((a, b) => a.time - b.time)
+            };
+          }
+        }
+
         return v;
-      })
-    );
+      });
+    });
     if (!isExiting) {
       setPlayingVideo((prevPlaying) => {
         if (prevPlaying) {
@@ -1939,6 +2015,45 @@ function App() {
                                   onChange={(e) => handleDefaultLangChange('pauseOnFocusChange', !e.target.checked)}
                                 />
                               </div>
+                              <div className="pref-row" style={{ opacity: settings.blockSeekingCompletely ? 0.5 : 1 }}>
+                                <span className="pref-label">Show Skip Buttons in Player UI</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={settings.allowUiSkipping}
+                                  disabled={settings.blockSeekingCompletely}
+                                  onChange={(e) => handleDefaultLangChange('allowUiSkipping', e.target.checked)}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label" style={{ color: '#ff4444' }}>Block Seeking / Skipping Completely</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={settings.blockSeekingCompletely}
+                                  onChange={(e) => {
+                                    const block = e.target.checked;
+                                    setSettings((prev) => {
+                                      const updated = {
+                                        ...prev,
+                                        blockSeekingCompletely: block,
+                                        allowUiSkipping: block ? false : prev.allowUiSkipping
+                                      };
+                                      saveSettingsToStorage(updated);
+                                      return updated;
+                                    });
+                                  }}
+                                />
+                              </div>
+                              <div className="pref-row">
+                                <span className="pref-label">Auto-Skip Intros & Outros</span>
+                                <input 
+                                  type="checkbox" 
+                                  className="pref-checkbox"
+                                  checked={settings.autoSkipIntroOutro}
+                                  onChange={(e) => handleDefaultLangChange('autoSkipIntroOutro', e.target.checked)}
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1961,7 +2076,12 @@ function App() {
                                 exit: 'Exit Player / Back',
                                 nextSubtitle: 'Cycle Subtitles',
                                 nextAudio: 'Cycle Audio',
-                                lockControls: 'Toggle Lock Screen / Controls (W)'
+                                lockControls: 'Toggle Lock Screen / Controls (W)',
+                                openSettings: 'Toggle UI Customization Drawer (Delete)',
+                                addBookmark: 'Create Bookmark (T)',
+                                toggleMute: 'Toggle Mute / Unmute (M)',
+                                audioBoost: 'Cycle Audio Boost (N)',
+                                frameStep: 'Step Frame Forward (E)'
                               };
                               return (
                                 <div className="keybind-row" key={key}>
