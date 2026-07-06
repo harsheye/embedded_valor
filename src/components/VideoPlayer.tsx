@@ -3,7 +3,7 @@ import {
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
   Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash,
-  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee
+  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -139,6 +139,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [skipEnabled, setSkipEnabled] = useState(false);
 
   const [hoveredSetting, setHoveredSetting] = useState<string | null>(null);
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
 
   interface PlayerSettings {
     hideUIOverlays: boolean | 'enable' | 'hide' | 'disable';
@@ -1914,7 +1915,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         triggerSwitchToast("Controls are Locked");
         return;
       }
-      setShowSettingsPanel(prev => !prev);
+      setShowSettingsPanel(prev => {
+        const next = !prev;
+        if (!next) {
+          setIsSettingsExpanded(false);
+        }
+        return next;
+      });
       return;
     }
 
@@ -1922,7 +1929,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       e.preventDefault();
       if (videoRef.current) {
         setNewBookmarkTime(videoRef.current.currentTime);
-        setNewBookmarkEndTime(videoRef.current.currentTime + 150);
+        setNewBookmarkEndTime(videoRef.current.currentTime + 90);
         setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
         setIsIntro(false);
         setIsOutro(false);
@@ -2594,23 +2601,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {video.title}
                 </h2>
               )}
-              <div style={{
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                color: 'rgba(255, 255, 255, 0.9)',
-                fontFamily: 'monospace',
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '2px 10px',
-                borderRadius: '4px',
-                border: '1px solid rgba(255,255,255,0.06)',
-                marginTop: '2px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <OdometerClock date={systemTime} />
-              </div>
+              {(showVideoNameMode === 'enable' || hoveredSetting === 'showVideoName') && (
+                <div style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: '#00ffcc',
+                  fontFamily: "'Share Tech Mono', Courier, monospace",
+                  background: 'rgba(0, 255, 204, 0.05)',
+                  padding: '3px 10px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(0, 255, 204, 0.15)',
+                  marginTop: '6px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  textShadow: '0 0 5px rgba(0, 255, 204, 0.4)',
+                  letterSpacing: '1px'
+                }}>
+                  <OdometerClock date={systemTime} />
+                </div>
+              )}
               {video.isRemote && (
                 <div className="playback-mode-badge-container">
                   {video.playbackMode === 'advanced' ? (
@@ -2646,7 +2656,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Center Screen HUD Controls */}
-      {!hideUIOverlays && (showPlayButton || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') && (
+      {!hideUIOverlays && (showPlayButton || uiConfig.allowUiSkipping || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') && (
         <div 
           className={`center-controls-hud ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showPlayButton')}`} 
           onClick={(e) => {
@@ -2974,7 +2984,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </button>
 
                   {showBookmarksPopover && (
-                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in-pure" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '340px', maxHeight: '350px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                    <div className="audio-sub-popover audio-sub-popover-center animate-fade-in-pure" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '340px', maxHeight: '480px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
                       <div className="popover-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Bookmarks ({bookmarks.length})</span>
                         <button 
@@ -2983,7 +2993,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           onClick={() => {
                             if (videoRef.current) {
                               setNewBookmarkTime(videoRef.current.currentTime);
-                              setNewBookmarkEndTime(videoRef.current.currentTime + 150);
+                              setNewBookmarkEndTime(videoRef.current.currentTime + 90);
                               setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
                               setIsIntro(false);
                               setIsOutro(false);
@@ -3059,7 +3069,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {showSettingsPanel && (
         <div 
           className="settings-modal-overlay animate-overlay-fade-in" 
-          onClick={() => setShowSettingsPanel(false)}
+          onClick={() => {
+            setShowSettingsPanel(false);
+            setIsSettingsExpanded(false);
+          }}
           style={{
             position: 'absolute',
             top: 0,
@@ -3072,11 +3085,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             zIndex: 150,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'flex-end',
+            paddingRight: '2rem'
           }}
         >
           <div 
-            className="settings-modal-card animate-scale-in" 
+            className="settings-modal-card animate-slide-in-right" 
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'rgba(18, 18, 18, 0.95)',
@@ -3094,7 +3108,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#ffffff' }}>UI Settings</h3>
               <button 
-                onClick={() => setShowSettingsPanel(false)}
+                onClick={() => {
+                  setShowSettingsPanel(false);
+                  setIsSettingsExpanded(false);
+                }}
                 style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.6)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s ease' }}
                 onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
                 onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'}
@@ -3178,87 +3195,135 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <Volume2 size={22} />
               </button>
 
-              {/* Disable Fullscreen Toggle Button */}
-              <button
-                onClick={() => cycleSetting('showFullscreen')}
-                onMouseEnter={() => setHoveredSetting('showFullscreen')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title={"Disable Fullscreen Toggle Button" + getSettingLabelSuffix('showFullscreen')}
-                className={getToggleBtnClass('showFullscreen')}
-              >
-                <Maximize size={22} />
-              </button>
+              {!isSettingsExpanded ? (
+                /* Uncollapse button */
+                <button
+                  onClick={() => setIsSettingsExpanded(true)}
+                  title="Show More Settings"
+                  className="settings-icon-toggle"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'rgba(255, 255, 255, 0.8)',
+                    borderRadius: '8px',
+                    padding: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s, border-color 0.2s',
+                    height: '100%'
+                  }}
+                >
+                  <ChevronRight size={22} />
+                </button>
+              ) : (
+                <>
+                  {/* Disable Fullscreen Toggle Button */}
+                  <button
+                    onClick={() => cycleSetting('showFullscreen')}
+                    onMouseEnter={() => setHoveredSetting('showFullscreen')}
+                    onMouseLeave={() => setHoveredSetting(null)}
+                    title={"Disable Fullscreen Toggle Button" + getSettingLabelSuffix('showFullscreen')}
+                    className={getToggleBtnClass('showFullscreen')}
+                  >
+                    <Maximize size={22} />
+                  </button>
 
-              {/* Disable Floating & Hover Animations */}
-              <button
-                onClick={() => updatePlayerSetting('disableAnimations', !playerSettings.disableAnimations)}
-                onMouseEnter={() => setHoveredSetting('disableAnimations')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Floating & Hover Animations"
-                className={`settings-icon-toggle ${playerSettings.disableAnimations ? 'active-red' : ''}`}
-              >
-                <Zap size={22} />
-              </button>
+                  {/* Disable Floating & Hover Animations */}
+                  <button
+                    onClick={() => updatePlayerSetting('disableAnimations', !playerSettings.disableAnimations)}
+                    onMouseEnter={() => setHoveredSetting('disableAnimations')}
+                    onMouseLeave={() => setHoveredSetting(null)}
+                    title="Disable Floating & Hover Animations"
+                    className={`settings-icon-toggle ${playerSettings.disableAnimations ? 'active-red' : ''}`}
+                  >
+                    <Zap size={22} />
+                  </button>
 
-              {/* Disable Focus Loss Auto-Pause */}
-              <button
-                onClick={() => updatePlayerSetting('pauseOnFocusChange', !playerSettings.pauseOnFocusChange)}
-                onMouseEnter={() => setHoveredSetting('pauseOnFocusChange')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title="Disable Focus Loss Auto-Pause"
-                className={`settings-icon-toggle ${!playerSettings.pauseOnFocusChange ? 'active-red' : ''}`}
-              >
-                <Coffee size={22} />
-              </button>
+                  {/* Disable Focus Loss Auto-Pause */}
+                  <button
+                    onClick={() => updatePlayerSetting('pauseOnFocusChange', !playerSettings.pauseOnFocusChange)}
+                    onMouseEnter={() => setHoveredSetting('pauseOnFocusChange')}
+                    onMouseLeave={() => setHoveredSetting(null)}
+                    title="Disable Focus Loss Auto-Pause"
+                    className={`settings-icon-toggle ${!playerSettings.pauseOnFocusChange ? 'active-red' : ''}`}
+                  >
+                    <Coffee size={22} />
+                  </button>
 
-              {/* Show Skip Buttons in Player UI */}
-              <button
-                onClick={() => {
-                  if (!playerSettings.blockSeekingCompletely) {
-                    updatePlayerSetting('allowUiSkipping', !playerSettings.allowUiSkipping);
-                  }
-                }}
-                onMouseEnter={() => setHoveredSetting('allowUiSkipping')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                disabled={playerSettings.blockSeekingCompletely}
-                title={playerSettings.blockSeekingCompletely ? "Show Skip Buttons (Disabled - Seeking Blocked)" : "Show Skip Buttons in Player UI"}
-                className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'disabled' : ''} ${playerSettings.allowUiSkipping ? 'active-blue' : 'active-red'}`}
-              >
-                <SkipForward size={22} />
-              </button>
+                  {/* Show Skip Buttons in Player UI */}
+                  <button
+                    onClick={() => {
+                      if (!playerSettings.blockSeekingCompletely) {
+                        updatePlayerSetting('allowUiSkipping', !playerSettings.allowUiSkipping);
+                      }
+                    }}
+                    onMouseEnter={() => setHoveredSetting('allowUiSkipping')}
+                    onMouseLeave={() => setHoveredSetting(null)}
+                    disabled={playerSettings.blockSeekingCompletely}
+                    title={playerSettings.blockSeekingCompletely ? "Show Skip Buttons (Disabled - Seeking Blocked)" : "Show Skip Buttons in Player UI"}
+                    className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'disabled' : ''} ${playerSettings.allowUiSkipping ? 'active-blue' : 'active-red'}`}
+                  >
+                    <SkipForward size={22} />
+                  </button>
 
-              {/* Block Seeking / Skipping Completely */}
-              <button
-                onClick={() => updatePlayerSetting('blockSeekingCompletely', !playerSettings.blockSeekingCompletely)}
-                onMouseEnter={() => setHoveredSetting('blockSeekingCompletely')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title="Block Seeking / Skipping Completely"
-                className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'active-red' : ''}`}
-              >
-                <Ban size={22} />
-              </button>
+                  {/* Block Seeking / Skipping Completely */}
+                  <button
+                    onClick={() => updatePlayerSetting('blockSeekingCompletely', !playerSettings.blockSeekingCompletely)}
+                    onMouseEnter={() => setHoveredSetting('blockSeekingCompletely')}
+                    onMouseLeave={() => setHoveredSetting(null)}
+                    title="Block Seeking / Skipping Completely"
+                    className={`settings-icon-toggle ${playerSettings.blockSeekingCompletely ? 'active-red' : ''}`}
+                  >
+                    <Ban size={22} />
+                  </button>
 
-              {/* Auto-Skip Intros & Outros */}
-              <button
-                onClick={() => updatePlayerSetting('autoSkipIntroOutro', !playerSettings.autoSkipIntroOutro)}
-                onMouseEnter={() => setHoveredSetting('autoSkipIntroOutro')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title="Auto-Skip Intros & Outros"
-                className={`settings-icon-toggle ${playerSettings.autoSkipIntroOutro ? 'active-blue' : ''}`}
-              >
-                <FastForward size={22} />
-              </button>
+                  {/* Auto-Skip Intros & Outros */}
+                  <button
+                    onClick={() => updatePlayerSetting('autoSkipIntroOutro', !playerSettings.autoSkipIntroOutro)}
+                    onMouseEnter={() => setHoveredSetting('autoSkipIntroOutro')}
+                    onMouseLeave={() => setHoveredSetting(null)}
+                    title="Auto-Skip Intros & Outros"
+                    className={`settings-icon-toggle ${playerSettings.autoSkipIntroOutro ? 'active-blue' : ''}`}
+                  >
+                    <FastForward size={22} />
+                  </button>
 
-              {/* Lock Mode Active (Lock Controls on Startup) */}
-              <button
-                onClick={() => updatePlayerSetting('lockModeActive', !playerSettings.lockModeActive)}
-                onMouseEnter={() => setHoveredSetting('lockModeActive')}
-                onMouseLeave={() => setHoveredSetting(null)}
-                title="Lock Mode Active (Lock Controls on Startup)"
-                className={`settings-icon-toggle ${playerSettings.lockModeActive ? 'active-blue' : ''}`}
-              >
-                <Lock size={22} />
-              </button>
+                  {/* Lock Mode Active (Lock Controls on Startup) */}
+                  <button
+                    onClick={() => updatePlayerSetting('lockModeActive', !playerSettings.lockModeActive)}
+                    onMouseEnter={() => setHoveredSetting('lockModeActive')}
+                    onMouseLeave={() => setHoveredSetting(null)}
+                    title="Lock Mode Active (Lock Controls on Startup)"
+                    className={`settings-icon-toggle ${playerSettings.lockModeActive ? 'active-blue' : ''}`}
+                  >
+                    <Lock size={22} />
+                  </button>
+
+                  {/* Collapse button */}
+                  <button
+                    onClick={() => setIsSettingsExpanded(false)}
+                    title="Show Less Settings"
+                    className="settings-icon-toggle"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: 'rgba(255, 255, 255, 0.8)',
+                      borderRadius: '8px',
+                      padding: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s, border-color 0.2s',
+                      height: '100%'
+                    }}
+                  >
+                    <ChevronLeft size={22} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
