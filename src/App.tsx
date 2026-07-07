@@ -102,11 +102,13 @@ const intervalOptions = [
 ];
 
 const toastOptions = [
-  { value: 0.5, label: '0.5 seconds (Default)' },
-  { value: 1, label: '1.0 second' },
-  { value: 1.5, label: '1.5 seconds' },
-  { value: 2, label: '2.0 seconds' },
-  { value: 3, label: '3.0 seconds' }
+  { value: 0.5, label: '0.5 seconds' },
+  { value: 1.0, label: '1.0 second' },
+  { value: 2.0, label: '2.0 seconds' },
+  { value: 3.0, label: '3.0 seconds' },
+  { value: 4.0, label: '4.0 seconds (Default)' },
+  { value: 6.0, label: '6.0 seconds' },
+  { value: 8.0, label: '8.0 seconds' }
 ];
 
 const uiHideTimeoutOptions = [
@@ -563,7 +565,7 @@ function App() {
     hideUIOverlays: false,
     hideVideoName: false,
     uiHideTimeout: 1.5,
-    toastDuration: 0.5,
+    toastDuration: 4.0,
     disableAnimations: false,
     pauseOnFocusChange: false,
     showPlayButton: true,
@@ -618,13 +620,14 @@ function App() {
   const addToast = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
     const title = type === 'success' ? 'Changes saved' : type === 'error' ? 'Error' : 'Warning';
+    const durationMs = (settings.toastDuration || 4.0) * 1000;
     setToasts(prev => [...prev, { 
       id, 
       title, 
       text, 
       type, 
-      duration: 4000, 
-      timeLeft: 4000, 
+      duration: durationMs, 
+      timeLeft: durationMs, 
       isPaused: false 
     }]);
   };
