@@ -633,6 +633,12 @@ function App() {
   // Delete profile modal state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTargetProfile, setDeleteTargetProfile] = useState<any | null>(null);
+
+  // Direct Profile Creation Modal (directly in settings, bypassing onboarding)
+  const [isCreateProfileModalOpen, setIsCreateProfileModalOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [newProfilePassword, setNewProfilePassword] = useState('');
+  const [createProfileError, setCreateProfileError] = useState('');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   // Remove profile (hide from switcher) state
@@ -3369,6 +3375,15 @@ function App() {
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
                                 {availableProfiles.filter(p => !hiddenProfileIds.includes(p.userId)).map(p => {
                                   const isActive = settings.userId === p.userId;
+                                  const isLocal = p.userId === 'local' || p.userId.startsWith('local_');
+                                  
+                                  const themeColor = isLocal ? '#2ecc71' : '#ef4444'; 
+                                  const themeActiveBg = isLocal ? 'rgba(46, 204, 113, 0.18)' : 'rgba(239, 68, 68, 0.18)';
+                                  const themeInactiveBg = isLocal ? 'rgba(46, 204, 113, 0.04)' : 'rgba(239, 68, 68, 0.04)';
+                                  const themeBorder = isLocal ? 'rgba(46, 204, 113, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+                                  const themeDotBg = isLocal ? 'rgba(46, 204, 113, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                                  const themeGlow = isLocal ? '0 0 12px rgba(46, 204, 113, 0.3)' : '0 0 12px rgba(239, 68, 68, 0.3)';
+
                                   return (
                                     <div
                                       key={p.userId}
@@ -3380,14 +3395,14 @@ function App() {
                                         }
                                         
                                         localStorage.setItem('valor_active_user_id', p.userId);
-                                        const isLocal = p.userId === 'local' || p.userId.startsWith('local_');
+                                        const isLocalSelect = p.userId === 'local' || p.userId.startsWith('local_');
                                         setSettings(prev => ({
                                           ...prev,
                                           userId: p.userId,
-                                          storageMode: isLocal ? 'localstorage' : 'file'
+                                          storageMode: isLocalSelect ? 'localstorage' : 'file'
                                         }));
 
-                                        if (!isLocal) {
+                                        if (!isLocalSelect) {
                                           try {
                                             const pData = await gqlFetch(`
                                               query GetProfileData($userId: String!) {
@@ -3442,8 +3457,9 @@ function App() {
                                         }
                                       }}
                                       style={{
-                                        background: isActive ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.03)',
-                                        border: isActive ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                                        background: isActive ? themeActiveBg : themeInactiveBg,
+                                        border: isActive ? `1px solid ${themeColor}` : `1px solid ${themeBorder}`,
+                                        boxShadow: isActive ? themeGlow : 'none',
                                         padding: '12px 10px',
                                         borderRadius: '8px',
                                         cursor: isActive ? 'default' : 'pointer',
@@ -3455,8 +3471,18 @@ function App() {
                                         opacity: isActive ? 1 : 0.8,
                                         position: 'relative'
                                       }}
-                                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-                                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                                      onMouseEnter={(e) => { 
+                                        if (!isActive) {
+                                          e.currentTarget.style.background = isLocal ? 'rgba(46, 204, 113, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                                          e.currentTarget.style.borderColor = themeColor;
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => { 
+                                        if (!isActive) {
+                                          e.currentTarget.style.background = themeInactiveBg;
+                                          e.currentTarget.style.borderColor = themeBorder;
+                                        }
+                                      }}
                                     >
                                       {/* Small Delete Icon Overlay (Only show if not active profile) */}
                                       {!isActive && (
@@ -3496,13 +3522,14 @@ function App() {
                                         width: '32px',
                                         height: '32px',
                                         borderRadius: '50%',
-                                        background: isActive ? '#3b82f6' : 'rgba(255,255,255,0.1)',
+                                        background: isActive ? themeColor : themeDotBg,
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         fontWeight: 'bold',
                                         fontSize: '0.9rem',
-                                        color: '#fff'
+                                        color: '#fff',
+                                        border: `1px solid ${themeColor}`
                                       }}>
                                         {(p.name?.[0] || 'U').toUpperCase()}
                                       </div>
@@ -3516,10 +3543,10 @@ function App() {
                                 {/* Add Profile Tile */}
                                 <div
                                   onClick={() => {
-                                    setSettings(prev => ({
-                                      ...prev,
-                                      isOnboarded: false
-                                    }));
+                                    setNewProfileName('');
+                                    setNewProfilePassword('');
+                                    setCreateProfileError('');
+                                    setIsCreateProfileModalOpen(true);
                                   }}
                                   style={{
                                     background: 'rgba(255,255,255,0.01)',
@@ -5476,9 +5503,8 @@ function App() {
       {/* Global Toast Container */}
       <div style={{
         position: 'fixed',
-        top: '40px',
-        left: '50%',
-        transform: 'translateX(-50%)',
+        bottom: '24px',
+        right: '24px',
         zIndex: 9999,
         display: 'flex',
         flexDirection: 'column',
@@ -5490,14 +5516,14 @@ function App() {
             key={t.id}
             style={{
               pointerEvents: 'auto',
-              background: 'rgba(0, 0, 0, 0.75)',
+              background: 'rgba(15, 5, 5, 0.92)',
               backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
               color: '#fff',
               padding: '10px 22px',
               borderRadius: '999px',
-              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.6)',
+              boxShadow: '0 10px 30px rgba(239, 68, 68, 0.25)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -5515,8 +5541,8 @@ function App() {
                 width: '8px', 
                 height: '8px', 
                 borderRadius: '50%', 
-                background: t.type === 'success' ? '#2ecc71' : '#ef4444', 
-                boxShadow: t.type === 'success' ? '0 0 10px #2ecc71' : '0 0 10px #ef4444',
+                background: t.type === 'success' ? '#ef4444' : '#ef5a3b', 
+                boxShadow: t.type === 'success' ? '0 0 10px #ef4444' : '0 0 10px #ef5a3b',
                 flexShrink: 0 
               }} />
               <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#ffffff' }}>{t.text}</span>
@@ -5578,7 +5604,7 @@ function App() {
             width: '380px',
             background: '#141414',
             borderRadius: '16px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)',
+            boxShadow: '0 0 35px rgba(239, 68, 68, 0.18)',
             overflow: 'hidden',
             padding: '32px 24px 28px 24px',
             display: 'flex',
@@ -5586,7 +5612,7 @@ function App() {
             gap: '20px',
             animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
             position: 'relative',
-            border: '1px solid rgba(255, 255, 255, 0.08)'
+            border: '1px solid rgba(239, 68, 68, 0.25)'
           }}>
             {/* Close Button */}
             <button
@@ -5623,7 +5649,7 @@ function App() {
                 margin: 0, 
                 fontSize: '1.35rem', 
                 fontWeight: 700, 
-                color: '#ffffff', 
+                color: '#ef4444', 
                 fontFamily: 'Outfit, sans-serif' 
               }}>
                 Log in or create account
@@ -5650,7 +5676,7 @@ function App() {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: authModalTab === 'login' ? '#ffffff' : 'rgba(255, 255, 255, 0.4)',
+                    color: authModalTab === 'login' ? '#ef4444' : 'rgba(255, 255, 255, 0.4)',
                     fontWeight: 700,
                     fontSize: '0.9rem',
                     cursor: 'pointer',
@@ -5667,7 +5693,7 @@ function App() {
                       left: 0,
                       right: 0,
                       height: '2px',
-                      background: '#ffffff'
+                      background: 'linear-gradient(90deg, #ef4444, #f97316)'
                     }} />
                   )}
                 </button>
@@ -5677,7 +5703,7 @@ function App() {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: authModalTab === 'signup' ? '#ffffff' : 'rgba(255, 255, 255, 0.4)',
+                    color: authModalTab === 'signup' ? '#ef4444' : 'rgba(255, 255, 255, 0.4)',
                     fontWeight: 700,
                     fontSize: '0.9rem',
                     cursor: 'pointer',
@@ -5694,7 +5720,7 @@ function App() {
                       left: 0,
                       right: 0,
                       height: '2px',
-                      background: '#ffffff'
+                      background: 'linear-gradient(90deg, #ef4444, #f97316)'
                     }} />
                   )}
                 </button>
@@ -5925,26 +5951,274 @@ function App() {
               }}
               style={{
                 width: '100%',
-                background: '#ffffff',
+                background: 'linear-gradient(135deg, #ef4444, #f97316)',
                 border: 'none',
-                color: '#000000',
+                color: '#ffffff',
                 padding: '14px',
                 fontSize: '0.9rem',
                 borderRadius: '999px',
                 cursor: 'pointer',
                 fontWeight: 600,
                 marginTop: '10px',
-                transition: 'background-color 0.2s',
-                fontFamily: 'Outfit, sans-serif'
+                transition: 'opacity 0.2s',
+                fontFamily: 'Outfit, sans-serif',
+                boxShadow: '0 4px 15px rgba(249, 115, 22, 0.3)'
               }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)'}
-              onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
               {selectedProfileForLogin || authModalTab === 'login' ? 'Sign in' : 'Create account'}
             </button>
           </div>
         </div>
       )}
+
+      {/* Direct Profile Creation Modal (Bypasses onboarding) */}
+      {isCreateProfileModalOpen && (() => {
+        const isServerMode = settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_');
+        const activeServerProfile = (availableProfiles || []).find(p => p.userId === settings.userId);
+        const loggedInUsername = activeServerProfile?.username || localStorage.getItem('valor_logged_in_username') || '';
+        
+        const themeColor = isServerMode ? '#ef4444' : '#2ecc71';
+        const themeBorder = isServerMode ? 'rgba(239, 68, 68, 0.25)' : 'rgba(46, 204, 113, 0.25)';
+        const themeTitle = isServerMode ? 'Create Server Profile' : 'Create Local Profile';
+        const themeButtonBg = isServerMode ? 'linear-gradient(135deg, #ef4444, #f97316)' : 'linear-gradient(135deg, #2ecc71, #27ae60)';
+        
+        return (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 9990,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <div style={{
+              width: '380px',
+              background: '#141414',
+              borderRadius: '16px',
+              border: `1px solid ${themeBorder}`,
+              boxShadow: isServerMode ? '0 0 30px rgba(239,68,68,0.15)' : '0 0 30px rgba(46,204,113,0.15)',
+              padding: '28px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '18px',
+              animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              position: 'relative'
+            }}>
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setIsCreateProfileModalOpen(false)}
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  right: '16px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  cursor: 'pointer',
+                  fontSize: '1.25rem',
+                  fontWeight: 'bold',
+                  padding: 0
+                }}
+              >
+                ×
+              </button>
+
+              <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700, color: themeColor, fontFamily: 'Outfit, sans-serif' }}>
+                  {themeTitle}
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontFamily: 'Outfit, sans-serif', lineHeight: 1.4 }}>
+                  {isServerMode 
+                    ? `Create a new syncing profile under your account: ${loggedInUsername}`
+                    : 'Create a new local storage profile inside your browser.'}
+                </p>
+              </div>
+
+              {createProfileError && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  color: '#ef4444',
+                  fontSize: '0.75rem',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  fontFamily: 'Outfit, sans-serif'
+                }}>
+                  ⚠️ {createProfileError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
+                    Profile Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter profile name..."
+                    value={newProfileName}
+                    onChange={e => setNewProfileName(e.target.value)}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      fontSize: '0.88rem',
+                      color: '#ffffff',
+                      outline: 'none',
+                      fontFamily: 'Outfit, sans-serif'
+                    }}
+                  />
+                </div>
+
+                {isServerMode && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
+                      Account Password
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••••••••••"
+                      value={newProfilePassword}
+                      onChange={e => setNewProfilePassword(e.target.value)}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderRadius: '8px',
+                        padding: '10px 12px',
+                        fontSize: '0.88rem',
+                        color: '#ffffff',
+                        outline: 'none',
+                        fontFamily: 'Outfit, sans-serif'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setCreateProfileError('');
+                  if (!newProfileName.trim()) {
+                    setCreateProfileError('Profile name is required');
+                    return;
+                  }
+                  if (isServerMode && !newProfilePassword) {
+                    setCreateProfileError('Account password is required');
+                    return;
+                  }
+
+                  if (isServerMode) {
+                    try {
+                      const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/migrate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          name: newProfileName.trim(), 
+                          username: loggedInUsername,
+                          password: newProfilePassword,
+                          settings: { ...settings, isOnboarded: true },
+                          history: [] 
+                        })
+                      });
+                      const resData = await res.json();
+                      if (resData.success) {
+                        localStorage.setItem('valor_active_user_id', resData.userId);
+                        setSettings({
+                          ...defaultSettings,
+                          userId: resData.userId,
+                          profileName: newProfileName.trim(),
+                          storageMode: 'file',
+                          isOnboarded: true
+                        });
+                        setVideos([]);
+                        addToast(`Successfully created Server Profile: ${newProfileName.trim()}`, 'success');
+                        setIsCreateProfileModalOpen(false);
+                        await fetchProfiles();
+                      } else {
+                        setCreateProfileError(resData.error || 'Failed to create profile');
+                      }
+                    } catch (err: any) {
+                      setCreateProfileError(err.message || 'Creation failed.');
+                    }
+                  } else {
+                    const newUserId = 'local_' + Math.random().toString(36).substring(2, 11);
+                    localStorage.setItem('valor_active_user_id', newUserId);
+                    
+                    let localProfiles = [];
+                    try {
+                      const localSaved = localStorage.getItem('valor_local_profiles');
+                      if (localSaved) localProfiles = JSON.parse(localSaved);
+                    } catch {}
+                    
+                    const newProfile = {
+                      userId: newUserId,
+                      name: newProfileName.trim(),
+                      storageMode: 'localstorage',
+                      hasPassword: false
+                    };
+                    localProfiles.push(newProfile);
+                    localStorage.setItem('valor_local_profiles', JSON.stringify(localProfiles));
+                    
+                    try {
+                      const settingsKey = `valor_settings_${newUserId}`;
+                      localStorage.setItem(settingsKey, JSON.stringify({
+                        ...defaultSettings,
+                        profileName: newProfileName.trim(),
+                        userId: newUserId,
+                        storageMode: 'localstorage',
+                        isOnboarded: true
+                      }));
+                    } catch {}
+                    
+                    // Switch profile
+                    setSettings({
+                      ...defaultSettings,
+                      profileName: newProfileName.trim(),
+                      userId: newUserId,
+                      storageMode: 'localstorage',
+                      isOnboarded: true
+                    });
+                    setVideos([]);
+                    
+                    addToast(`Successfully created Local Profile: ${newProfileName.trim()}`, 'success');
+                    setIsCreateProfileModalOpen(false);
+                    await fetchProfiles();
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  background: themeButtonBg,
+                  border: 'none',
+                  color: '#ffffff',
+                  padding: '12px',
+                  fontSize: '0.88rem',
+                  borderRadius: '999px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  marginTop: '6px',
+                  transition: 'opacity 0.2s',
+                  fontFamily: 'Outfit, sans-serif'
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                Create Profile
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (
