@@ -72,6 +72,7 @@ interface Onboarding01Props {
   onSelectProfile: (userId: string, storageMode: 'localstorage' | 'file') => void;
   videos: any[];
   openAuthModal: (tab: 'login' | 'signup', targetProfile?: any, onSuccess?: (userId: string) => void) => void;
+  availableProfiles?: any[];
 }
 
 function CircularProgress({
@@ -143,7 +144,8 @@ export function Onboarding01({
   onComplete,
   onSelectProfile,
   videos,
-  openAuthModal
+  openAuthModal,
+  availableProfiles = []
 }: Onboarding01Props) {
   const [currentSteps, setCurrentSteps] = useState<OnboardingStep[]>(initialSteps);
   const [openStepId, setOpenStepId] = useState<string | null>(() => {
@@ -159,6 +161,7 @@ export function Onboarding01({
   const [isMigrating, setIsMigrating] = useState(false);
   const [chosenMode, setChosenMode] = useState<'server' | 'local' | null>(null);
   const [localProfileName, setLocalProfileName] = useState('');
+  const [serverProfileName, setServerProfileName] = useState('');
   const [serverUsername, setServerUsername] = useState('');
   const [serverPassword, setServerPassword] = useState('');
 
@@ -350,9 +353,6 @@ export function Onboarding01({
                   };
                   localProfiles.push(newProfile);
                   localStorage.setItem('valor_local_profiles', JSON.stringify(localProfiles));
-                  
-                  onSelectProfile(newUserId, 'localstorage');
-                  
                   try {
                     const settingsKey = `valor_settings_${newUserId}`;
                     const saved = localStorage.getItem(settingsKey) || '{}';
@@ -362,6 +362,8 @@ export function Onboarding01({
                     parsed.storageMode = 'localstorage';
                     localStorage.setItem(settingsKey, JSON.stringify(parsed));
                   } catch {}
+                  
+                  onSelectProfile(newUserId, 'localstorage');
                   
                   setHasConfiguredProfile(true);
                   autoAdvance();
@@ -400,6 +402,10 @@ export function Onboarding01({
         );
       }
 
+      const isAlreadyLoggedIn = activeUserId !== 'local' && !activeUserId.startsWith('local_');
+      const activeServerProfile = (availableProfiles || []).find(p => p.userId === activeUserId);
+      const loggedInUsername = activeServerProfile?.username || localStorage.getItem('valor_logged_in_username') || '';
+
       return (
         <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {onboardingError && (
@@ -416,13 +422,14 @@ export function Onboarding01({
             </div>
           )}
 
+          {/* Profile Name Input */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>Username</label>
+            <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>Profile Name</label>
             <input
               type="text"
-              placeholder="Enter username..."
-              value={serverUsername}
-              onChange={e => setServerUsername(e.target.value)}
+              placeholder="e.g. My Server Profile"
+              value={serverProfileName}
+              onChange={e => setServerProfileName(e.target.value)}
               style={{
                 background: 'rgba(0,0,0,0.4)',
                 border: '1px solid rgba(255,255,255,0.08)',
@@ -438,7 +445,31 @@ export function Onboarding01({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>Password</label>
+            <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>Username</label>
+            <input
+              type="text"
+              placeholder="Enter username..."
+              disabled={isAlreadyLoggedIn}
+              value={isAlreadyLoggedIn ? loggedInUsername : serverUsername}
+              onChange={e => setServerUsername(e.target.value)}
+              style={{
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                fontSize: '0.85rem',
+                color: isAlreadyLoggedIn ? 'rgba(255,255,255,0.4)' : '#fff',
+                outline: 'none',
+                fontFamily: 'Outfit, sans-serif',
+                transition: 'border-color 0.2s'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
+              {isAlreadyLoggedIn ? 'Account Password' : 'Password'}
+            </label>
             <input
               type="password"
               placeholder="Enter password..."
@@ -461,17 +492,18 @@ export function Onboarding01({
           <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
             <button
               type="button"
-              disabled={!serverUsername.trim() || !serverPassword}
+              disabled={!serverProfileName.trim() || (!isAlreadyLoggedIn && !serverUsername.trim()) || !serverPassword}
               onClick={async () => {
                 setOnboardingError('');
-                const profileName = serverUsername.trim();
+                const name = serverProfileName.trim();
+                const uName = isAlreadyLoggedIn ? loggedInUsername : serverUsername.trim();
                 try {
                   const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/migrate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                      name: profileName, 
-                      username: serverUsername.trim(),
+                      name, 
+                      username: uName,
                       password: serverPassword,
                       settings: { ...settings, isOnboarded: false },
                       history: videos 
@@ -479,8 +511,10 @@ export function Onboarding01({
                   });
                   const resData = await res.json();
                   if (resData.success) {
+                    localStorage.setItem('valor_logged_in_username', uName);
                     onSelectProfile(resData.userId, 'file');
                     setHasConfiguredProfile(true);
+                    setServerProfileName('');
                     setServerUsername('');
                     setServerPassword('');
                     autoAdvance();
@@ -499,56 +533,61 @@ export function Onboarding01({
                 padding: '8px 16px',
                 fontSize: '0.78rem',
                 fontWeight: 600,
-                cursor: (serverUsername.trim() && serverPassword) ? 'pointer' : 'not-allowed',
-                opacity: (serverUsername.trim() && serverPassword) ? 1 : 0.6
+                cursor: (serverProfileName.trim() && (isAlreadyLoggedIn || serverUsername.trim()) && serverPassword) ? 'pointer' : 'not-allowed',
+                opacity: (serverProfileName.trim() && (isAlreadyLoggedIn || serverUsername.trim()) && serverPassword) ? 1 : 0.6
               }}
             >
-              Create & Sync
+              {isAlreadyLoggedIn ? 'Create Profile & Sync' : 'Create & Sync'}
             </button>
 
-            <button
-              type="button"
-              disabled={!serverUsername.trim() || !serverPassword}
-              onClick={async () => {
-                setOnboardingError('');
-                try {
-                  const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: serverUsername.trim(), password: serverPassword })
-                  });
-                  const resData = await res.json();
-                  if (resData.success) {
-                    onSelectProfile(resData.userId, 'file');
-                    setHasConfiguredProfile(true);
-                    setServerUsername('');
-                    setServerPassword('');
-                    autoAdvance();
-                  } else {
-                    setOnboardingError(resData.error || 'Incorrect username or password');
+            {!isAlreadyLoggedIn && (
+              <button
+                type="button"
+                disabled={!serverUsername.trim() || !serverPassword}
+                onClick={async () => {
+                  setOnboardingError('');
+                  const uName = serverUsername.trim();
+                  try {
+                    const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username: uName, password: serverPassword })
+                    });
+                    const resData = await res.json();
+                    if (resData.success) {
+                      localStorage.setItem('valor_logged_in_username', uName);
+                      onSelectProfile(resData.userId, 'file');
+                      setHasConfiguredProfile(true);
+                      setServerProfileName('');
+                      setServerUsername('');
+                      setServerPassword('');
+                      autoAdvance();
+                    } else {
+                      setOnboardingError(resData.error || 'Incorrect username or password');
+                    }
+                  } catch (err: any) {
+                    setOnboardingError(err.message || 'Login failed.');
                   }
-                } catch (err: any) {
-                  setOnboardingError(err.message || 'Login failed.');
-                }
-              }}
-              style={{
-                background: '#2ecc71',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '0.78rem',
-                fontWeight: 600,
-                cursor: (serverUsername.trim() && serverPassword) ? 'pointer' : 'not-allowed',
-                opacity: (serverUsername.trim() && serverPassword) ? 1 : 0.6
-              }}
-            >
-              Login & Sync
-            </button>
+                }}
+                style={{
+                  background: '#2ecc71',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: (serverUsername.trim() && serverPassword) ? 'pointer' : 'not-allowed',
+                  opacity: (serverUsername.trim() && serverPassword) ? 1 : 0.6
+                }}
+              >
+                Login & Sync
+              </button>
+            )}
 
             <button
               type="button"
-              onClick={() => { setChosenMode(null); setServerUsername(''); setServerPassword(''); }}
+              onClick={() => { setChosenMode(null); setServerProfileName(''); setServerUsername(''); setServerPassword(''); }}
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 color: '#fff',

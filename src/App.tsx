@@ -715,9 +715,10 @@ function App() {
 
   const fetchProfiles = async () => {
     try {
+      const loggedInUsername = localStorage.getItem('valor_logged_in_username') || undefined;
       const data = await gqlFetch(`
-        query GetProfiles {
-          profiles {
+        query GetProfiles($username: String) {
+          profiles(username: $username) {
             userId
             name
             username
@@ -725,7 +726,7 @@ function App() {
             createdAt
           }
         }
-      `);
+      `, { username: loggedInUsername });
       const serverList = data.profiles || [];
       
       // Load local profiles list from localStorage
@@ -829,7 +830,9 @@ function App() {
   }, []);
   const [settings, setSettings] = useState<typeof defaultSettings>(() => {
     try {
-      const saved = localStorage.getItem('valor_settings');
+      const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+      const settingsKey = activeUserId === 'local' ? 'valor_settings' : `valor_settings_${activeUserId}`;
+      const saved = localStorage.getItem(settingsKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
@@ -1994,6 +1997,7 @@ function App() {
         }}
         videos={videos}
         openAuthModal={(tab, targetProfile, onSuccess) => openAuthModal(tab, targetProfile, onSuccess)}
+        availableProfiles={availableProfiles}
       />
     );
   }
@@ -3295,18 +3299,19 @@ function App() {
                                         }
                                       }}
                                       style={{ 
-                                        background: 'rgba(255,255,255,0.06)', 
+                                        background: 'rgba(255,255,255,0.04)', 
                                         border: '1px solid rgba(255,255,255,0.08)', 
                                         color: '#fff', 
-                                        padding: '6px 12px', 
-                                        fontSize: '0.72rem', 
-                                        borderRadius: '4px', 
+                                        padding: '8px 20px', 
+                                        fontSize: '0.8rem', 
+                                        borderRadius: '999px', 
                                         cursor: 'pointer',
                                         fontWeight: 600,
-                                        transition: 'background 0.2s'
+                                        transition: 'background 0.2s',
+                                        fontFamily: 'Outfit, sans-serif'
                                       }}
                                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
                                     >
                                       Logout
                                     </button>
@@ -3321,18 +3326,19 @@ function App() {
                                         }
                                       }}
                                       style={{ 
-                                        background: 'rgba(239,68,68,0.1)', 
-                                        border: '1px solid rgba(239,68,68,0.2)', 
+                                        background: 'rgba(239,68,68,0.06)', 
+                                        border: '1px solid rgba(239,68,68,0.25)', 
                                         color: '#ef4444', 
-                                        padding: '6px 12px', 
-                                        fontSize: '0.72rem', 
-                                        borderRadius: '4px', 
+                                        padding: '8px 20px', 
+                                        fontSize: '0.8rem', 
+                                        borderRadius: '999px', 
                                         cursor: 'pointer',
                                         fontWeight: 600,
-                                        transition: 'background 0.2s'
+                                        transition: 'background 0.2s',
+                                        fontFamily: 'Outfit, sans-serif'
                                       }}
-                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.18)'}
-                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'}
                                     >
                                       Delete Profile & Data
                                     </button>
@@ -3342,15 +3348,19 @@ function App() {
                                     type="button"
                                     onClick={() => openAuthModal('signup')}
                                     style={{ 
-                                      background: '#3b82f6', 
+                                      background: '#ffffff', 
                                       border: 'none', 
-                                      color: '#fff', 
-                                      padding: '8px 16px', 
-                                      fontSize: '0.75rem', 
-                                      borderRadius: '4px', 
+                                      color: '#000000', 
+                                      padding: '8px 20px', 
+                                      fontSize: '0.8rem', 
+                                      borderRadius: '999px', 
                                       cursor: 'pointer',
-                                      fontWeight: 600
+                                      fontWeight: 600,
+                                      fontFamily: 'Outfit, sans-serif',
+                                      transition: 'background-color 0.2s'
                                     }}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
                                   >
                                     Create Server Profile & Sync
                                   </button>
@@ -3360,19 +3370,20 @@ function App() {
                                   type="button"
                                   onClick={handleExportData}
                                   style={{ 
-                                    background: 'rgba(255,255,255,0.06)', 
+                                    background: 'rgba(255,255,255,0.04)', 
                                     border: '1px solid rgba(255,255,255,0.08)', 
                                     color: '#fff', 
-                                    padding: '6px 12px', 
-                                    fontSize: '0.72rem', 
-                                    borderRadius: '4px', 
+                                    padding: '8px 20px', 
+                                    fontSize: '0.8rem', 
+                                    borderRadius: '999px', 
                                     cursor: 'pointer',
                                     fontWeight: 600,
                                     transition: 'background 0.2s',
-                                    marginLeft: 'auto'
+                                    marginLeft: 'auto',
+                                    fontFamily: 'Outfit, sans-serif'
                                   }}
                                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
                                 >
                                   Export Data (CSV)
                                 </button>
@@ -5736,6 +5747,31 @@ function App() {
 
             {/* Form Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Profile Name Input (Only on Sign Up) */}
+              {authModalTab === 'signup' && !selectedProfileForLogin && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
+                    Profile Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter profile name..."
+                    value={authName}
+                    onChange={e => setAuthName(e.target.value)}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      fontSize: '0.88rem',
+                      color: '#ffffff',
+                      outline: 'none',
+                      fontFamily: 'Outfit, sans-serif'
+                    }}
+                  />
+                </div>
+              )}
+
               {/* Username Input */}
               {!selectedProfileForLogin && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -5801,7 +5837,7 @@ function App() {
                 const isSignUp = authModalTab === 'signup' && !selectedProfileForLogin;
                 
                 if (isSignUp) {
-                  const profileName = authUsername.trim() || 'New User';
+                  const profileName = authName.trim() || authUsername.trim() || 'New User';
                   const currentIsOnboarded = settings.isOnboarded;
                   try {
                     const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/migrate`, {
@@ -5818,6 +5854,7 @@ function App() {
                     const resData = await res.json();
                     if (resData.success) {
                       localStorage.setItem('valor_active_user_id', resData.userId);
+                      localStorage.setItem('valor_logged_in_username', authUsername.trim());
                       setSettings(prev => ({
                         ...prev,
                         userId: resData.userId,
@@ -5865,7 +5902,11 @@ function App() {
                     const resData = await res.json();
                     if (resData.success) {
                       const pId = resData.userId;
+                      const finalUsername = selectedProfileForLogin ? selectedProfileForLogin.username : authUsername.trim();
                       localStorage.setItem('valor_active_user_id', pId);
+                      if (finalUsername) {
+                        localStorage.setItem('valor_logged_in_username', finalUsername);
+                      }
                       setSettings(prev => ({
                         ...prev,
                         userId: pId,
@@ -5896,6 +5937,7 @@ function App() {
                         onAuthSuccess(pId);
                       }
                       
+                      setAuthName('');
                       setAuthUsername('');
                       setAuthPassword('');
                       setSelectedProfileForLogin(null);

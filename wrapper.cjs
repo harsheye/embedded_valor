@@ -69,7 +69,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS profiles (
     userId TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    username TEXT UNIQUE,
+    username TEXT,
     password TEXT,
     createdAt TEXT DEFAULT (datetime('now'))
   );
@@ -78,7 +78,31 @@ db.exec(`
 // Try to alter profiles table if columns are missing (migrations)
 try { db.exec(`ALTER TABLE profiles ADD COLUMN username TEXT;`); } catch(e){}
 try { db.exec(`ALTER TABLE profiles ADD COLUMN password TEXT;`); } catch(e){}
-try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);`); } catch(e){}
+
+// Migration to remove UNIQUE constraint from username
+try {
+  db.exec(`DROP INDEX IF EXISTS idx_profiles_username;`);
+  const indexList = db.prepare("PRAGMA index_list('profiles')").all();
+  const hasUniqueIndex = indexList.some(idx => idx.unique === 1 && idx.name.includes('username'));
+  
+  if (hasUniqueIndex) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS profiles_temp (
+        userId TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        username TEXT,
+        password TEXT,
+        createdAt TEXT DEFAULT (datetime('now'))
+      );
+    `);
+    db.exec(`INSERT OR REPLACE INTO profiles_temp SELECT userId, name, username, password, createdAt FROM profiles;`);
+    db.exec(`DROP TABLE profiles;`);
+    db.exec(`ALTER TABLE profiles_temp RENAME TO profiles;`);
+    console.log('[SQLite Migration] Successfully removed UNIQUE constraint from profiles.username');
+  }
+} catch (e) {
+  console.log('[SQLite Migration] Note: profiles table already migrated or no UNIQUE index found:', e.message);
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS settings (
@@ -476,7 +500,13 @@ const backendServer = http.createServer((req, res) => {
       // GetProfiles query
       if (query.includes('profiles') || query.includes('GetProfiles')) {
         try {
-          const rows = db.prepare("SELECT userId, name, username, (password IS NOT NULL AND password != '') AS hasPassword, createdAt FROM profiles").all();
+          const usernameVal = variables.username;
+          let rows;
+          if (usernameVal) {
+            rows = db.prepare("SELECT userId, name, username, (password IS NOT NULL AND password != '') AS hasPassword, createdAt FROM profiles WHERE username = ?").all(usernameVal);
+          } else {
+            rows = db.prepare("SELECT userId, name, username, (password IS NOT NULL AND password != '') AS hasPassword, createdAt FROM profiles").all();
+          }
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ data: { profiles: rows } }));
