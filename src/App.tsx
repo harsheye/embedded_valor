@@ -5744,7 +5744,7 @@ function App() {
                 color: '#ef4444', 
                 fontFamily: 'Outfit, sans-serif' 
               }}>
-                Log in or create account
+                {selectedProfileForLogin ? "Enter Profile Password" : "Log in or create account"}
               </h2>
               {selectedProfileForLogin && (
                 <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontFamily: 'Outfit, sans-serif' }}>
