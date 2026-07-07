@@ -3389,7 +3389,8 @@ function App() {
                                       key={p.userId}
                                       onClick={async () => {
                                         if (isActive) return;
-                                        if (p.hasPassword) {
+                                        const loggedInUsername = localStorage.getItem('valor_logged_in_username');
+                                        if (p.hasPassword && (!loggedInUsername || p.username !== loggedInUsername)) {
                                           openAuthModal('login', p);
                                           return;
                                         }

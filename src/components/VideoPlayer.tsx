@@ -3056,7 +3056,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             borderRight: bm.isIntro ? '1px solid #3b82f6' : bm.isOutro ? '1px solid #a855f7' : '1px solid #eab308',
                             borderRadius: '3px',
                             cursor: 'pointer',
-                            zIndex: 3
+                            zIndex: 8
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -3667,23 +3667,62 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
                   Start Time ({formatTime(newBookmarkTime)})
                 </label>
-                <input 
-                  type="number" 
-                  step="0.1"
-                  value={newBookmarkTime} 
-                  onChange={(e) => setNewBookmarkTime(parseFloat(e.target.value) || 0)}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    padding: '0.6rem 0.85rem',
-                    fontSize: '0.9rem',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    outline: 'none'
-                  }}
-                />
+                <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="Min"
+                      value={Math.floor(newBookmarkTime / 60) || 0}
+                      onChange={(e) => {
+                        const minVal = parseInt(e.target.value) || 0;
+                        const secVal = newBookmarkTime % 60;
+                        setNewBookmarkTime(minVal * 60 + secVal);
+                      }}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderRadius: '6px',
+                        color: '#fff',
+                        padding: '0.6rem 0.5rem',
+                        fontSize: '0.9rem',
+                        textAlign: 'center',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Min</span>
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <input 
+                      type="number" 
+                      min="0"
+                      max="59"
+                      step="0.1"
+                      placeholder="Sec"
+                      value={Math.round((newBookmarkTime % 60) * 10) / 10 || 0}
+                      onChange={(e) => {
+                        const minVal = Math.floor(newBookmarkTime / 60);
+                        const secVal = parseFloat(e.target.value) || 0;
+                        setNewBookmarkTime(minVal * 60 + secVal);
+                      }}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderRadius: '6px',
+                        color: '#fff',
+                        padding: '0.6rem 0.5rem',
+                        fontSize: '0.9rem',
+                        textAlign: 'center',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Sec</span>
+                  </div>
+                </div>
               </div>
               
               {(bookmarkType === 'intro' || bookmarkType === 'outro' || isIntro || isOutro) && (
@@ -3691,23 +3730,62 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
                     End Time ({formatTime(newBookmarkEndTime)})
                   </label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    value={newBookmarkEndTime} 
-                    onChange={(e) => setNewBookmarkEndTime(parseFloat(e.target.value) || 0)}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '6px',
-                      color: '#fff',
-                      padding: '0.6rem 0.85rem',
-                      fontSize: '0.9rem',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      outline: 'none'
-                    }}
-                  />
+                  <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <input 
+                        type="number" 
+                        min="0"
+                        placeholder="Min"
+                        value={Math.floor(newBookmarkEndTime / 60) || 0}
+                        onChange={(e) => {
+                          const minVal = parseInt(e.target.value) || 0;
+                          const secVal = newBookmarkEndTime % 60;
+                          setNewBookmarkEndTime(minVal * 60 + secVal);
+                        }}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          borderRadius: '6px',
+                          color: '#fff',
+                          padding: '0.6rem 0.5rem',
+                          fontSize: '0.9rem',
+                          textAlign: 'center',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          outline: 'none'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Min</span>
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <input 
+                        type="number" 
+                        min="0"
+                        max="59"
+                        step="0.1"
+                        placeholder="Sec"
+                        value={Math.round((newBookmarkEndTime % 60) * 10) / 10 || 0}
+                        onChange={(e) => {
+                          const minVal = Math.floor(newBookmarkEndTime / 60);
+                          const secVal = parseFloat(e.target.value) || 0;
+                          setNewBookmarkEndTime(minVal * 60 + secVal);
+                        }}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          borderRadius: '6px',
+                          color: '#fff',
+                          padding: '0.6rem 0.5rem',
+                          fontSize: '0.9rem',
+                          textAlign: 'center',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          outline: 'none'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Sec</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -3989,9 +4067,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         .timeline-bookmark-tooltip .tooltip-time {
           color: rgba(255, 255, 255, 0.6);
         }
-        .timeline-bookmark-dot:hover .timeline-bookmark-tooltip {
+        .timeline-bookmark-dot:hover .timeline-bookmark-tooltip,
+        .timeline-bookmark-range:hover .timeline-bookmark-tooltip {
           opacity: 1;
           transform: translateX(-50%) translateY(0);
+          z-index: 99;
         }
         .highlight-active-blue {
           outline: 3px solid #3b82f6 !important;
