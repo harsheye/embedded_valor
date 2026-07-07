@@ -157,23 +157,41 @@ export function parseASS(content: string): SubtitleCue[] {
   const cues: SubtitleCue[] = [];
   let cueCount = 0;
 
+  // Default format indices in case Format line is missing
+  let startIndex = 1;
+  let endIndex = 2;
+  let textIndex = 9;
+  let totalFields = 10;
+
   for (const line of lines) {
     const trimmed = line.trim();
+
+    // Check for Format: header line in Events
+    if (trimmed.startsWith('Format:')) {
+      const formatStr = trimmed.substring('Format:'.length).trim();
+      const fields = formatStr.split(',').map(f => f.trim().toLowerCase());
+      startIndex = fields.indexOf('start');
+      endIndex = fields.indexOf('end');
+      textIndex = fields.indexOf('text');
+      if (startIndex === -1) startIndex = 1;
+      if (endIndex === -1) endIndex = 2;
+      if (textIndex === -1) textIndex = fields.length - 1;
+      totalFields = fields.length;
+      continue;
+    }
+
     if (!trimmed.startsWith('Dialogue:')) continue;
 
-    // Dialogue: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-    // Standard dialogues have at least 9 commas before text
-    // E.g., Dialogue: 0,0:01:20.10,0:01:22.50,Default,,0,0,0,,Hello world!
     const dialogPrefix = 'Dialogue:';
     const fieldsStr = trimmed.substring(dialogPrefix.length).trim();
     
-    // We split by comma but limit to 10 parts so the text remains intact
-    const parts = splitLimit(fieldsStr, ',', 10);
-    if (parts.length < 10) continue;
+    // Split by comma limiting to totalFields so that commas inside the Text field are preserved
+    const parts = splitLimit(fieldsStr, ',', totalFields);
+    if (parts.length < totalFields) continue;
 
-    const startStr = parts[1]; // 0:01:20.10
-    const endStr = parts[2];   // 0:01:22.50
-    const textRaw = parts[9];  // Text content, might contain ASS markup
+    const startStr = parts[startIndex];
+    const endStr = parts[endIndex];
+    const textRaw = parts[textIndex];
 
     const startTime = parseTimeToSeconds(startStr);
     const endTime = parseTimeToSeconds(endStr);

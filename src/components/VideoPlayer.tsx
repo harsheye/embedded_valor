@@ -443,6 +443,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }));
   };
   const [currentTime, setCurrentTime] = useState(video.currentTime || 0);
+  const latestTimeRef = useRef<number>(video.currentTime || 0);
+  useEffect(() => {
+    latestTimeRef.current = currentTime;
+  }, [currentTime]);
   const [duration, setDuration] = useState(0);
 
   const totalTimeWatchedRef = useRef<number>((video as any).totalTimeWatched || 0);
@@ -1568,12 +1572,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const handleExit = () => {
-    if (videoRef.current) {
-      onUpdateVideo({
-        ...video,
-        currentTime: videoRef.current.currentTime
-      }, true);
-    }
+    onUpdateVideo({
+      ...video,
+      currentTime: latestTimeRef.current
+    }, true);
     console.clear();
     onBack();
   };
@@ -2296,14 +2298,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       let timeToFinish = (video as any).timeToFinish;
       const currentDuration = durationRef.current;
-      if (!timeToFinish && currentDuration > 0 && videoRef.current && (videoRef.current.currentTime / currentDuration) >= 0.95) {
+      if (!timeToFinish && currentDuration > 0 && (latestTimeRef.current / currentDuration) >= 0.95) {
         const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
         timeToFinish = (exitTime - firstPlay) / 1000;
       }
 
       onUpdateVideoRef.current((prev: any) => ({
         ...prev,
-        currentTime: videoRef.current ? videoRef.current.currentTime : prev.currentTime,
+        currentTime: latestTimeRef.current,
         totalTimeWatched: Math.round(totalTimeWatchedRef.current),
         sessions: updatedSessions,
         timeToFinish: timeToFinish ? Math.round(timeToFinish) : prev.timeToFinish,
@@ -2328,14 +2330,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         let timeToFinish = (video as any).timeToFinish;
         const currentDuration = durationRef.current;
-        if (!timeToFinish && currentDuration > 0 && (videoRef.current.currentTime / currentDuration) >= 0.95) {
+        if (!timeToFinish && currentDuration > 0 && (latestTimeRef.current / currentDuration) >= 0.95) {
           const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
           timeToFinish = (exitTime - firstPlay) / 1000;
         }
 
         onUpdateVideoRef.current((prev: any) => ({
           ...prev,
-          currentTime: videoRef.current ? videoRef.current.currentTime : prev.currentTime,
+          currentTime: latestTimeRef.current,
           totalTimeWatched: Math.round(totalTimeWatchedRef.current),
           sessions: updatedSessions,
           timeToFinish: timeToFinish ? Math.round(timeToFinish) : prev.timeToFinish,
@@ -2740,6 +2742,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               const shouldUpdate = !video.currentTime || hasSeekedRef.current || time > 0;
               if (shouldUpdate) {
                 setCurrentTime(time);
+                latestTimeRef.current = time;
               }
   
               // Auto-Skip Intros & Outros
@@ -3978,9 +3981,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           inset: 0;
           z-index: 500;
           background-color: #000000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           overflow: hidden;
           user-select: none;
         }
