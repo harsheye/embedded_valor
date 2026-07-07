@@ -605,17 +605,46 @@ function App() {
   const [availableProfiles, setAvailableProfiles] = useState<any[]>([]);
   
   // Toast notifications state
-  const [toasts, setToasts] = useState<{ id: string; text: string; type: 'success' | 'error' }[]>([]);
+  const [toasts, setToasts] = useState<{ 
+    id: string; 
+    title: string; 
+    text: string; 
+    type: 'success' | 'error' | 'warning'; 
+    duration: number; 
+    timeLeft: number; 
+    isPaused: boolean 
+  }[]>([]);
   
-  const addToast = (text: string, type: 'success' | 'error') => {
+  const addToast = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, text, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    const title = type === 'success' ? 'Changes saved' : type === 'error' ? 'Error' : 'Warning';
+    setToasts(prev => [...prev, { 
+      id, 
+      title, 
+      text, 
+      type, 
+      duration: 4000, 
+      timeLeft: 4000, 
+      isPaused: false 
+    }]);
   };
 
-  const showProfileStatus = (text: string, type: 'success' | 'error') => {
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setToasts(prev => {
+        let hasChanges = false;
+        const next = prev.map(t => {
+          if (t.isPaused) return t;
+          hasChanges = true;
+          return { ...t, timeLeft: Math.max(0, t.timeLeft - 100) };
+        }).filter(t => t.timeLeft > 0);
+        return hasChanges ? next : prev;
+      });
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  const showProfileStatus = (text: string, type: 'success' | 'error' | 'warning') => {
     addToast(text, type);
   };
 
@@ -5517,77 +5546,134 @@ function App() {
         gap: '12px',
         pointerEvents: 'none'
       }}>
-        {toasts.map(t => (
-          <div
-            key={t.id}
-            style={{
-              pointerEvents: 'auto',
-              background: 'rgba(15, 5, 5, 0.92)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              border: '1px solid rgba(239, 68, 68, 0.35)',
-              color: '#fff',
-              padding: '10px 22px',
-              borderRadius: '999px',
-              boxShadow: '0 10px 30px rgba(239, 68, 68, 0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '16px',
-              minWidth: '280px',
-              maxWidth: '450px',
-              animation: 'slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-              position: 'relative',
-              overflow: 'hidden',
-              fontFamily: 'Outfit, sans-serif'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ 
-                width: '8px', 
-                height: '8px', 
-                borderRadius: '50%', 
-                background: t.type === 'success' ? '#ef4444' : '#ef5a3b', 
-                boxShadow: t.type === 'success' ? '0 0 10px #ef4444' : '0 0 10px #ef5a3b',
-                flexShrink: 0 
-              }} />
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#ffffff' }}>{t.text}</span>
-            </div>
-            <button
-              onClick={() => setToasts(prev => prev.filter(item => item.id !== t.id))}
+        {toasts.map(t => {
+          const isSuccess = t.type === 'success';
+          const isError = t.type === 'error';
+          const isWarning = t.type === 'warning';
+          
+          const iconColor = isSuccess ? '#10b981' : isError ? '#ef4444' : '#f59e0b';
+          const borderHighlight = isSuccess ? 'rgba(16, 185, 129, 0.25)' : isError ? 'rgba(239, 68, 68, 0.25)' : 'rgba(245, 158, 11, 0.25)';
+          const glowShadow = isSuccess ? '0 10px 25px rgba(16, 185, 129, 0.12)' : isError ? '0 10px 25px rgba(239, 68, 68, 0.12)' : '0 10px 25px rgba(245, 158, 11, 0.12)';
+
+          return (
+            <div
+              key={t.id}
               style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: 'none',
-                color: '#ffffff',
-                borderRadius: '50%',
-                width: '18px',
-                height: '18px',
+                pointerEvents: 'auto',
+                background: '#161616',
+                border: `1px solid ${borderHighlight}`,
+                color: '#fff',
+                borderRadius: '10px',
+                boxShadow: `0 15px 35px rgba(0, 0, 0, 0.6), ${glowShadow}`,
+                display: 'flex',
+                flexDirection: 'column',
+                width: '350px',
+                animation: 'slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                position: 'relative',
+                overflow: 'hidden',
+                fontFamily: 'Outfit, sans-serif'
+              }}
+            >
+              {/* Header Row */}
+              <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                fontSize: '0.7rem',
-                lineHeight: 1,
-                padding: 0,
-                transition: 'all 0.15s',
-                flexShrink: 0
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-            >
-              ×
-            </button>
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              height: '2px',
-              background: t.type === 'success' ? '#2ecc71' : '#ef4444',
-              width: '100%',
-              animation: 'toastProgress 4s linear forwards'
-            }} />
-          </div>
-        ))}
+                justifyContent: 'space-between',
+                padding: '16px 18px 6px 18px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* Icon */}
+                  {isSuccess && (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                  )}
+                  {isError && (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                  )}
+                  {isWarning && (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                  )}
+                  <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#ffffff' }}>{t.title}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setToasts(prev => prev.filter(item => item.id !== t.id))}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    cursor: 'pointer',
+                    fontSize: '1.2rem',
+                    padding: 0,
+                    lineHeight: 1,
+                    transition: 'color 0.15s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#ffffff'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.4)'}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Subtitle text */}
+              <div style={{
+                fontSize: '0.8rem',
+                color: 'rgba(255, 255, 255, 0.65)',
+                lineHeight: 1.4,
+                padding: '0 18px 12px 46px'
+              }}>
+                {t.text}
+              </div>
+
+              {/* Bottom countdown strip */}
+              <div 
+                onClick={() => {
+                  setToasts(prev => prev.map(item => {
+                    if (item.id === t.id) {
+                      return { ...item, isPaused: !item.isPaused };
+                    }
+                    return item;
+                  }));
+                }}
+                style={{
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.04)',
+                  padding: '8px 18px',
+                  fontSize: '0.72rem',
+                  color: 'rgba(255, 255, 255, 0.45)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  userSelect: 'none'
+                }}
+              >
+                {t.isPaused 
+                  ? "Auto-dismiss paused. Click to resume." 
+                  : `This message will close in ${Math.ceil(t.timeLeft / 1000)} seconds. Click to stop.`}
+              </div>
+
+              {/* Bottom Progress Bar */}
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                height: '2.5px',
+                background: iconColor,
+                width: `${(t.timeLeft / t.duration) * 100}%`,
+                transition: 'width 0.1s linear'
+              }} />
+            </div>
+          );
+        })}
       </div>
 
       {/* Global Auth Modal (Login / Signup) */}
