@@ -5983,64 +5983,131 @@ function App() {
                   }
                 } else {
                   try {
-                    const payload = selectedProfileForLogin 
-                      ? { userId: selectedProfileForLogin.userId, password: authPassword }
-                      : { username: authUsername.trim(), password: authPassword };
-                      
-                    const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(payload)
-                    });
-                    const resData = await res.json();
-                    if (resData.success) {
-                      const pId = resData.userId;
-                      const finalUsername = selectedProfileForLogin ? selectedProfileForLogin.username : authUsername.trim();
-                      localStorage.setItem('valor_active_user_id', pId);
-                      if (finalUsername) {
-                        localStorage.setItem('valor_logged_in_username', finalUsername);
+                    const isAccountLoginAndSync = !selectedProfileForLogin && (!settings.userId || settings.userId === 'local' || settings.userId.startsWith('local_'));
+                    
+                    if (isAccountLoginAndSync) {
+                      // 1. Verify credentials by attempting a login
+                      const verifyRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: authUsername.trim(), password: authPassword })
+                      });
+                      const verifyData = await verifyRes.json();
+                      if (!verifyData.success) {
+                        setAuthError(verifyData.error || 'Incorrect username or password');
+                        return;
                       }
-                      setSettings(prev => ({
-                        ...prev,
-                        userId: pId,
-                        storageMode: 'file'
-                      }));
                       
-                      const profileRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${pId}`);
-                      const profileData = await profileRes.json();
-                      if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
-                        setSettings({
-                          ...defaultSettings,
-                          ...profileData.settings,
+                      // 2. Credentials are correct! Create a new profile under this account with the current local data
+                      const profileName = settings.profileName || 'Local Browser Saves';
+                      const migrateRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/migrate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          name: profileName, 
+                          username: authUsername.trim(),
+                          password: authPassword,
+                          settings: { ...settings, isOnboarded: true }, 
+                          history: videos 
+                        })
+                      });
+                      const migrateData = await migrateRes.json();
+                      if (migrateData.success) {
+                        const pId = migrateData.userId;
+                        localStorage.setItem('valor_active_user_id', pId);
+                        localStorage.setItem('valor_logged_in_username', authUsername.trim());
+                        
+                        setSettings(prev => ({
+                          ...prev,
+                          userId: pId,
+                          storageMode: 'file',
+                          isOnboarded: true
+                        }));
+                        
+                        addToast(`Successfully created Server Profile under account: ${profileName}!`, 'success');
+                        addToast('Starting synchronization of watch history and settings...', 'success');
+                        
+                        const historyRes = await secureFetch(`${BACKEND_ORIGIN}/api/history?userId=${pId}`);
+                        const serverHistory = await historyRes.json();
+                        if (Array.isArray(serverHistory)) {
+                          setVideos(serverHistory);
+                        }
+                        
+                        addToast('Synchronization complete! All settings and watch history synced.', 'success');
+                        
+                        if (onAuthSuccess) {
+                          onAuthSuccess(pId);
+                        }
+                        
+                        setAuthName('');
+                        setAuthUsername('');
+                        setAuthPassword('');
+                        setIsAuthModalOpen(false);
+                        await fetchProfiles();
+                      } else {
+                        setAuthError(migrateData.error || 'Failed to create profile under account');
+                      }
+                    } else {
+                      // Regular login (unlocking an existing profile, or server profile switch)
+                      const payload = selectedProfileForLogin 
+                        ? { userId: selectedProfileForLogin.userId, password: authPassword }
+                        : { username: authUsername.trim(), password: authPassword };
+                        
+                      const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+                      const resData = await res.json();
+                      if (resData.success) {
+                        const pId = resData.userId;
+                        const finalUsername = selectedProfileForLogin ? selectedProfileForLogin.username : authUsername.trim();
+                        localStorage.setItem('valor_active_user_id', pId);
+                        if (finalUsername) {
+                          localStorage.setItem('valor_logged_in_username', finalUsername);
+                        }
+                        setSettings(prev => ({
+                          ...prev,
                           userId: pId,
                           storageMode: 'file'
-                        });
+                        }));
+                        
+                        const profileRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${pId}`);
+                        const profileData = await profileRes.json();
+                        if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                          setSettings({
+                            ...defaultSettings,
+                            ...profileData.settings,
+                            userId: pId,
+                            storageMode: 'file'
+                          });
+                        }
+                        if (profileData && Array.isArray(profileData.history)) {
+                          setVideos(profileData.history.map((v: any) => ({
+                            ...v,
+                            audioTracks: v.audioTracks || [],
+                            subtitleTracks: v.subtitleTracks || []
+                          })));
+                        }
+                        
+                        addToast(`Logged in and switched to profile: ${resData.name}`, 'success');
+                        
+                        if (onAuthSuccess) {
+                          onAuthSuccess(pId);
+                        }
+                        
+                        setAuthName('');
+                        setAuthUsername('');
+                        setAuthPassword('');
+                        setSelectedProfileForLogin(null);
+                        setIsAuthModalOpen(false);
+                        await fetchProfiles();
+                      } else {
+                        setAuthError(resData.error || 'Incorrect username or password');
                       }
-                      if (profileData && Array.isArray(profileData.history)) {
-                        setVideos(profileData.history.map((v: any) => ({
-                          ...v,
-                          audioTracks: v.audioTracks || [],
-                          subtitleTracks: v.subtitleTracks || []
-                        })));
-                      }
-                      
-                      addToast(`Logged in and switched to profile: ${resData.name}`, 'success');
-                      
-                      if (onAuthSuccess) {
-                        onAuthSuccess(pId);
-                      }
-                      
-                      setAuthName('');
-                      setAuthUsername('');
-                      setAuthPassword('');
-                      setSelectedProfileForLogin(null);
-                      setIsAuthModalOpen(false);
-                      await fetchProfiles();
-                    } else {
-                      setAuthError(resData.error || 'Incorrect username or password');
                     }
-                  } catch (e: any) {
-                    setAuthError(e.message || 'Login failed.');
+                  } catch (err: any) {
+                    setAuthError(err.message || 'Login / Sync failed.');
                   }
                 }
               }}
