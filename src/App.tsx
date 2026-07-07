@@ -738,26 +738,6 @@ function App() {
         }
       } catch {}
       
-      // Ensure there is always at least one default local profile if none exist
-      if (localProfiles.length === 0) {
-        let defaultName = 'Default Local';
-        try {
-          const savedSettings = localStorage.getItem('valor_settings');
-          if (savedSettings) {
-            defaultName = JSON.parse(savedSettings).profileName || 'Default Local';
-          }
-        } catch {}
-        
-        const defaultLocalProfile = {
-          userId: 'local',
-          name: defaultName,
-          storageMode: 'localstorage',
-          hasPassword: false
-        };
-        localProfiles = [defaultLocalProfile];
-        localStorage.setItem('valor_local_profiles', JSON.stringify(localProfiles));
-      }
-      
       const combined = [...localProfiles, ...serverList];
       setAvailableProfiles(combined);
       
@@ -1927,73 +1907,66 @@ function App() {
           setSettings(updated);
           saveSettingsToStorage(updated);
         }}
-        onSelectProfile={(userId, storageMode) => {
+        onSelectProfile={async (userId, storageMode) => {
           localStorage.setItem('valor_active_user_id', userId);
-          setSettings(prev => {
-            const updated = {
-              ...prev,
-              userId: userId,
-              storageMode: storageMode
-            };
-            // Trigger background reload of profile settings & history
-            const loadProfileData = async () => {
-              if (userId !== 'local' && !userId.startsWith('local_')) {
-                try {
-                  const pData = await gqlFetch(`
-                    query GetProfileData($userId: String!) {
-                      profile(userId: $userId) {
-                        settings
-                        history
-                      }
-                    }
-                  `, { userId });
-                  const profileData = pData.profile || {};
-                  if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
-                    setSettings({
-                      ...defaultSettings,
-                      ...profileData.settings,
-                      userId: userId,
-                      storageMode: 'file'
-                    });
+          setSettings(prev => ({
+            ...prev,
+            userId: userId,
+            storageMode: storageMode
+          }));
+          
+          if (userId !== 'local' && !userId.startsWith('local_')) {
+            try {
+              const pData = await gqlFetch(`
+                query GetProfileData($userId: String!) {
+                  profile(userId: $userId) {
+                    settings
+                    history
                   }
-                  if (profileData && Array.isArray(profileData.history)) {
-                    setVideos(profileData.history.map((v: any) => ({
-                      ...v,
-                      audioTracks: v.audioTracks || [],
-                      subtitleTracks: v.subtitleTracks || []
-                    })));
-                  }
-                } catch (e) {
-                  console.warn('Failed to load profile data from server');
                 }
-              } else {
-                // If switching to local profile, load from localStorage
-                const settingsKey = userId === 'local' ? 'valor_settings' : `valor_settings_${userId}`;
-                const videosKey = userId === 'local' ? 'valor_videos' : `valor_videos_${userId}`;
-                
-                const saved = localStorage.getItem(settingsKey);
-                if (saved) {
-                  try {
-                    setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: userId, storageMode: 'localstorage' });
-                  } catch {}
-                } else {
-                  const localProfiles = JSON.parse(localStorage.getItem('valor_local_profiles') || '[]');
-                  const pInfo = localProfiles.find((p: any) => p.userId === userId);
-                  setSettings({ ...defaultSettings, userId: userId, storageMode: 'localstorage', profileName: pInfo?.name || 'Local Profile' });
-                }
-                const savedVideos = localStorage.getItem(videosKey);
-                if (savedVideos) {
-                  try {
-                    setVideos(JSON.parse(savedVideos));
-                  } catch {}
-                } else {
-                  setVideos([]);
-                }
+              `, { userId });
+              const profileData = pData.profile || {};
+              if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                setSettings({
+                  ...defaultSettings,
+                  ...profileData.settings,
+                  userId: userId,
+                  storageMode: 'file'
+                });
               }
-            };
-            loadProfileData();
-            return updated;
-          });
+              if (profileData && Array.isArray(profileData.history)) {
+                setVideos(profileData.history.map((v: any) => ({
+                  ...v,
+                  audioTracks: v.audioTracks || [],
+                  subtitleTracks: v.subtitleTracks || []
+                })));
+              }
+            } catch (e) {
+              console.warn('Failed to load profile data from server');
+            }
+          } else {
+            const settingsKey = userId === 'local' ? 'valor_settings' : `valor_settings_${userId}`;
+            const videosKey = userId === 'local' ? 'valor_videos' : `valor_videos_${userId}`;
+            
+            const saved = localStorage.getItem(settingsKey);
+            if (saved) {
+              try {
+                setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: userId, storageMode: 'localstorage' });
+              } catch {}
+            } else {
+              const localProfiles = JSON.parse(localStorage.getItem('valor_local_profiles') || '[]');
+              const pInfo = localProfiles.find((p: any) => p.userId === userId);
+              setSettings({ ...defaultSettings, userId: userId, storageMode: 'localstorage', profileName: pInfo?.name || 'Local Profile' });
+            }
+            const savedVideos = localStorage.getItem(videosKey);
+            if (savedVideos) {
+              try {
+                setVideos(JSON.parse(savedVideos));
+              } catch {}
+            } else {
+              setVideos([]);
+            }
+          }
         }}
         videos={videos}
         openAuthModal={(tab, targetProfile, onSuccess) => openAuthModal(tab, targetProfile, onSuccess)}
@@ -3249,14 +3222,14 @@ function App() {
                                 }}>
                                   {availableProfiles.find(p => p.userId === settings.userId) 
                                      ? (availableProfiles.find(p => p.userId === settings.userId)?.name?.[0] || 'U').toUpperCase() 
-                                     : 'L'}
+                                     : (settings.profileName?.[0] || 'L').toUpperCase()}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
                                       {availableProfiles.find(p => p.userId === settings.userId) 
                                         ? (availableProfiles.find(p => p.userId === settings.userId)?.name || 'Profile') 
-                                        : 'Local Browser Saves'}
+                                        : (settings.profileName || 'Local Browser Saves')}
                                     </span>
                                     <span style={{ 
                                       fontSize: '0.68rem', 
@@ -3407,71 +3380,66 @@ function App() {
                                         }
                                         
                                         localStorage.setItem('valor_active_user_id', p.userId);
-                                        setSettings(prev => {
-                                          const updated = {
-                                            ...prev,
-                                            userId: p.userId,
-                                            storageMode: (p.userId === 'local' || p.userId.startsWith('local_')) ? 'localstorage' as const : 'file' as const
-                                          };
-                                          
-                                          const loadProfileData = async () => {
-                                            if (p.userId !== 'local' && !p.userId.startsWith('local_')) {
-                                              try {
-                                                const pData = await gqlFetch(`
-                                                  query GetProfileData($userId: String!) {
-                                                    profile(userId: $userId) {
-                                                      settings
-                                                      history
-                                                    }
-                                                  }
-                                                `, { userId: p.userId });
-                                                const profileData = pData.profile || {};
-                                                if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
-                                                  setSettings({
-                                                    ...defaultSettings,
-                                                    ...profileData.settings,
-                                                    userId: p.userId,
-                                                    storageMode: 'file'
-                                                  });
+                                        const isLocal = p.userId === 'local' || p.userId.startsWith('local_');
+                                        setSettings(prev => ({
+                                          ...prev,
+                                          userId: p.userId,
+                                          storageMode: isLocal ? 'localstorage' : 'file'
+                                        }));
+
+                                        if (!isLocal) {
+                                          try {
+                                            const pData = await gqlFetch(`
+                                              query GetProfileData($userId: String!) {
+                                                profile(userId: $userId) {
+                                                  settings
+                                                  history
                                                 }
-                                                if (profileData && Array.isArray(profileData.history)) {
-                                                  setVideos(profileData.history.map((v: any) => ({
-                                                    ...v,
-                                                    audioTracks: v.audioTracks || [],
-                                                    subtitleTracks: v.subtitleTracks || []
-                                                  })));
-                                                }
-                                                addToast(`Switched to profile: ${p.name}`, 'success');
-                                              } catch (e) {
-                                                console.warn('Failed to switch profile data');
-                                                addToast('Failed to switch profile data', 'error');
                                               }
-                                            } else {
-                                              const settingsKey = p.userId === 'local' ? 'valor_settings' : `valor_settings_${p.userId}`;
-                                              const videosKey = p.userId === 'local' ? 'valor_videos' : `valor_videos_${p.userId}`;
-                                              
-                                              const saved = localStorage.getItem(settingsKey);
-                                              if (saved) {
-                                                try {
-                                                  setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: p.userId, storageMode: 'localstorage' });
-                                                } catch {}
-                                              } else {
-                                                setSettings({ ...defaultSettings, userId: p.userId, storageMode: 'localstorage', profileName: p.name });
-                                              }
-                                              const savedVideos = localStorage.getItem(videosKey);
-                                              if (savedVideos) {
-                                                try {
-                                                  setVideos(JSON.parse(savedVideos));
-                                                } catch {}
-                                              } else {
-                                                setVideos([]);
-                                              }
-                                              addToast(`Switched to local profile: ${p.name}`, 'success');
+                                            `, { userId: p.userId });
+                                            const profileData = pData.profile || {};
+                                            if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                                              setSettings({
+                                                ...defaultSettings,
+                                                ...profileData.settings,
+                                                userId: p.userId,
+                                                storageMode: 'file'
+                                              });
                                             }
-                                          };
-                                          loadProfileData();
-                                          return updated;
-                                        });
+                                            if (profileData && Array.isArray(profileData.history)) {
+                                              setVideos(profileData.history.map((v: any) => ({
+                                                ...v,
+                                                audioTracks: v.audioTracks || [],
+                                                subtitleTracks: v.subtitleTracks || []
+                                              })));
+                                            }
+                                            addToast(`Switched to profile: ${p.name}`, 'success');
+                                          } catch (e) {
+                                            console.warn('Failed to switch profile data');
+                                            addToast('Failed to switch profile data', 'error');
+                                          }
+                                        } else {
+                                          const settingsKey = p.userId === 'local' ? 'valor_settings' : `valor_settings_${p.userId}`;
+                                          const videosKey = p.userId === 'local' ? 'valor_videos' : `valor_videos_${p.userId}`;
+                                          
+                                          const saved = localStorage.getItem(settingsKey);
+                                          if (saved) {
+                                            try {
+                                              setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: p.userId, storageMode: 'localstorage' });
+                                            } catch {}
+                                          } else {
+                                            setSettings({ ...defaultSettings, userId: p.userId, storageMode: 'localstorage', profileName: p.name });
+                                          }
+                                          const savedVideos = localStorage.getItem(videosKey);
+                                          if (savedVideos) {
+                                            try {
+                                              setVideos(JSON.parse(savedVideos));
+                                            } catch {}
+                                          } else {
+                                            setVideos([]);
+                                          }
+                                          addToast(`Switched to local profile: ${p.name}`, 'success');
+                                        }
                                       }}
                                       style={{
                                         background: isActive ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.03)',
@@ -5508,12 +5476,13 @@ function App() {
       {/* Global Toast Container */}
       <div style={{
         position: 'fixed',
-        top: '20px',
-        right: '20px',
+        top: '40px',
+        left: '50%',
+        transform: 'translateX(-50%)',
         zIndex: 9999,
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px',
+        gap: '12px',
         pointerEvents: 'none'
       }}>
         {toasts.map(t => (
@@ -5521,18 +5490,20 @@ function App() {
             key={t.id}
             style={{
               pointerEvents: 'auto',
-              background: '#141414',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(0, 0, 0, 0.75)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
               color: '#fff',
-              padding: '12px 18px',
-              borderRadius: '8px',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.7)',
+              padding: '10px 22px',
+              borderRadius: '999px',
+              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.6)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '16px',
-              minWidth: '300px',
-              maxWidth: '420px',
+              minWidth: '280px',
+              maxWidth: '450px',
               animation: 'slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',
               position: 'relative',
               overflow: 'hidden',
@@ -5548,14 +5519,14 @@ function App() {
                 boxShadow: t.type === 'success' ? '0 0 10px #2ecc71' : '0 0 10px #ef4444',
                 flexShrink: 0 
               }} />
-              <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'rgba(255, 255, 255, 0.95)' }}>{t.text}</span>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#ffffff' }}>{t.text}</span>
             </div>
             <button
               onClick={() => setToasts(prev => prev.filter(item => item.id !== t.id))}
               style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                color: 'rgba(255,255,255,0.6)',
+                background: 'rgba(255,255,255,0.08)',
+                border: 'none',
+                color: '#ffffff',
                 borderRadius: '50%',
                 width: '18px',
                 height: '18px',
@@ -5566,10 +5537,11 @@ function App() {
                 fontSize: '0.7rem',
                 lineHeight: 1,
                 padding: 0,
-                transition: 'all 0.15s'
+                transition: 'all 0.15s',
+                flexShrink: 0
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
             >
               ×
             </button>
