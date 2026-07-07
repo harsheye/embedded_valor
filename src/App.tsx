@@ -1885,6 +1885,7 @@ function App() {
       <VideoPlayer 
         key={playingVideo.id}
         video={playingVideo} 
+        userId={settings.userId}
         onBack={() => {
           setPlayingVideo(null);
           // Clear query parameter when returning to library

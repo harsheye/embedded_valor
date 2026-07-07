@@ -19,6 +19,7 @@ import { classifyVideoTitle } from '../utils/libraryClassifier';
 
 interface VideoPlayerProps {
   video: VideoItem;
+  userId?: string;
   onBack: () => void;
   onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean) => void;
   hideUIOverlays?: boolean;
@@ -102,6 +103,7 @@ const OdometerClock: React.FC<{ date: Date }> = ({ date }) => {
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video, 
+  userId,
   onBack, 
   onUpdateVideo, 
   hideUIOverlays: propHideUIOverlays = false,
@@ -352,7 +354,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Series Bookmarks Preset Syncing
   useEffect(() => {
-    const savedVideos = localStorage.getItem('valor_videos');
+    const videosKey = userId === 'local' || !userId ? 'valor_videos' : `valor_videos_${userId}`;
+    const savedVideos = localStorage.getItem(videosKey);
     if (!savedVideos) return;
     try {
       const allVideos = JSON.parse(savedVideos) as VideoItem[];
@@ -2692,65 +2695,76 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         toggleFullscreen();
       }}
     >
-      {/* Actual HTML5 Video Element */}
-      <video
-        ref={videoRef}
-        src={video.url}
-        controls={false}
-        crossOrigin={video.playbackMode === 'advanced' ? 'anonymous' : undefined}
-        className="main-video-element"
-        onLoadedMetadata={() => {
-          if (videoRef.current) {
-            const videoDuration = videoRef.current.duration;
-            setDuration(videoDuration);
-            if (video.currentTime && !hasSeekedRef.current) {
-              const remainingTime = videoDuration - video.currentTime;
-              // Lenient resume limits: resume if watched > 5s and remaining > 10s
-              if (video.currentTime > 5 && remainingTime > 10) {
-                logger.player(`Resume limits met: seeking to ${video.currentTime}s`);
-                videoRef.current.currentTime = video.currentTime;
-              } else {
-                logger.player(`Resume limits not met (currentTime: ${video.currentTime}s, remaining: ${remainingTime}s). Starting from 0.`);
-                videoRef.current.currentTime = 0;
-              }
-              hasSeekedRef.current = true;
-            }
-          }
+      {/* Wrapper to isolate flexbox from overlay rendering */}
+      <div 
+        style={{ 
+          position: 'absolute', 
+          inset: 0, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          zIndex: 10 
         }}
-        onTimeUpdate={() => {
-          if (videoRef.current) {
-            const time = videoRef.current.currentTime;
-            const shouldUpdate = !video.currentTime || hasSeekedRef.current || time > 0;
-            if (shouldUpdate) {
-              setCurrentTime(time);
-            }
-
-            // Auto-Skip Intros & Outros
-            if (uiConfig.autoSkipIntroOutro && !isScrubbing) {
-              const activeSkip = bookmarks.find(
-                bm => bm.skipEnabled && bm.endTime && time >= bm.time && time < bm.endTime
-              );
-              if (activeSkip) {
-                videoRef.current.currentTime = activeSkip.endTime;
-                setCurrentTime(activeSkip.endTime);
-                triggerSwitchToast(`Auto-Skipped ${activeSkip.isIntro ? 'Intro' : 'Outro'}`);
-              }
-            }
-          }
-        }}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onWaiting={() => setIsBuffering(true)}
-        onPlaying={() => setIsBuffering(false)}
-        onSeeked={handleVideoSeeked}
-        onSeeking={() => setIsBuffering(true)}
-        onError={handleVideoError}
         onClick={(e) => {
           e.stopPropagation();
           togglePlay();
         }}
-        playsInline
-      />
+      >
+        <video
+          ref={videoRef}
+          src={video.url}
+          controls={false}
+          crossOrigin={video.playbackMode === 'advanced' ? 'anonymous' : undefined}
+          className="main-video-element"
+          onLoadedMetadata={() => {
+            if (videoRef.current) {
+              const videoDuration = videoRef.current.duration;
+              setDuration(videoDuration);
+              if (video.currentTime && !hasSeekedRef.current) {
+                const remainingTime = videoDuration - video.currentTime;
+                // Lenient resume limits: resume if watched > 5s and remaining > 10s
+                if (video.currentTime > 5 && remainingTime > 10) {
+                  logger.player(`Resume limits met: seeking to ${video.currentTime}s`);
+                  videoRef.current.currentTime = video.currentTime;
+                } else {
+                  logger.player(`Resume limits not met (currentTime: ${video.currentTime}s, remaining: ${remainingTime}s). Starting from 0.`);
+                  videoRef.current.currentTime = 0;
+                }
+                hasSeekedRef.current = true;
+              }
+            }
+          }}
+          onTimeUpdate={() => {
+            if (videoRef.current) {
+              const time = videoRef.current.currentTime;
+              const shouldUpdate = !video.currentTime || hasSeekedRef.current || time > 0;
+              if (shouldUpdate) {
+                setCurrentTime(time);
+              }
+  
+              // Auto-Skip Intros & Outros
+              if (uiConfig.autoSkipIntroOutro && !isScrubbing) {
+                const activeSkip = bookmarks.find(
+                  bm => bm.skipEnabled && bm.endTime && time >= bm.time && time < bm.endTime
+                );
+                if (activeSkip) {
+                  videoRef.current.currentTime = activeSkip.endTime;
+                  setCurrentTime(activeSkip.endTime);
+                  triggerSwitchToast(`Auto-Skipped ${activeSkip.isIntro ? 'Intro' : 'Outro'}`);
+                }
+              }
+            }
+          }}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => setIsBuffering(false)}
+          onSeeked={handleVideoSeeked}
+          onSeeking={() => setIsBuffering(true)}
+          onError={handleVideoError}
+          playsInline
+        />
+      </div>
 
       {/* Hidden Secondary Audio Tag for sync tracks */}
       <audio 
