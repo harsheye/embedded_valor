@@ -5946,6 +5946,7 @@ function App() {
                     });
                     const resData = await res.json();
                     if (resData.success) {
+                      const oldUserId = settings.userId;
                       localStorage.setItem('valor_active_user_id', resData.userId);
                       localStorage.setItem('valor_logged_in_username', authUsername.trim());
                       setSettings(prev => ({
@@ -5954,6 +5955,22 @@ function App() {
                         storageMode: 'file',
                         isOnboarded: currentIsOnboarded
                       }));
+                      
+                      // Remove local profile from localStorage
+                      if (oldUserId && (oldUserId === 'local' || oldUserId.startsWith('local_'))) {
+                        let localProfiles = [];
+                        try {
+                          const localSaved = localStorage.getItem('valor_local_profiles');
+                          if (localSaved) localProfiles = JSON.parse(localSaved);
+                        } catch {}
+                        localProfiles = localProfiles.filter((p: any) => p.userId !== oldUserId);
+                        localStorage.setItem('valor_local_profiles', JSON.stringify(localProfiles));
+                        
+                        const oldSettingsKey = oldUserId === 'local' ? 'valor_settings' : `valor_settings_${oldUserId}`;
+                        const oldVideosKey = oldUserId === 'local' ? 'valor_videos' : `valor_videos_${oldUserId}`;
+                        localStorage.removeItem(oldSettingsKey);
+                        localStorage.removeItem(oldVideosKey);
+                      }
                       
                       addToast(`Successfully created Server Profile: ${profileName}!`, 'success');
                       addToast('Starting synchronization of watch history and settings...', 'success');
@@ -6013,6 +6030,7 @@ function App() {
                       });
                       const migrateData = await migrateRes.json();
                       if (migrateData.success) {
+                        const oldUserId = settings.userId;
                         const pId = migrateData.userId;
                         localStorage.setItem('valor_active_user_id', pId);
                         localStorage.setItem('valor_logged_in_username', authUsername.trim());
@@ -6023,6 +6041,22 @@ function App() {
                           storageMode: 'file',
                           isOnboarded: true
                         }));
+                        
+                        // Remove local profile from localStorage
+                        if (oldUserId && (oldUserId === 'local' || oldUserId.startsWith('local_'))) {
+                          let localProfiles = [];
+                          try {
+                            const localSaved = localStorage.getItem('valor_local_profiles');
+                            if (localSaved) localProfiles = JSON.parse(localSaved);
+                          } catch {}
+                          localProfiles = localProfiles.filter((p: any) => p.userId !== oldUserId);
+                          localStorage.setItem('valor_local_profiles', JSON.stringify(localProfiles));
+                          
+                          const oldSettingsKey = oldUserId === 'local' ? 'valor_settings' : `valor_settings_${oldUserId}`;
+                          const oldVideosKey = oldUserId === 'local' ? 'valor_videos' : `valor_videos_${oldUserId}`;
+                          localStorage.removeItem(oldSettingsKey);
+                          localStorage.removeItem(oldVideosKey);
+                        }
                         
                         addToast(`Successfully created Server Profile under account: ${profileName}!`, 'success');
                         addToast('Starting synchronization of watch history and settings...', 'success');
