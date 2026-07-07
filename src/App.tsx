@@ -3258,71 +3258,77 @@ function App() {
                               </div>
 
                               <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
-                                {(settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (confirm('Are you sure you want to logout? Your watch history and settings will remain on the server, and you will switch back to local browser storage.')) {
-                                          localStorage.setItem('valor_active_user_id', 'local');
-                                          setSettings(prev => ({
-                                            ...prev,
-                                            userId: 'local',
-                                            storageMode: 'localstorage'
-                                          }));
-                                          const savedVideos = localStorage.getItem('valor_videos');
-                                          if (savedVideos) {
-                                            try { setVideos(JSON.parse(savedVideos)); } catch {}
-                                          }
-                                          addToast('Logged out of server profile successfully', 'success');
+                                {/* Logout Button (Only if using server profile) */}
+                                {(settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm('Are you sure you want to logout? Your watch history and settings will remain on the server, and you will switch back to local browser storage.')) {
+                                        localStorage.setItem('valor_active_user_id', 'local');
+                                        setSettings(prev => ({
+                                          ...prev,
+                                          userId: 'local',
+                                          storageMode: 'localstorage'
+                                        }));
+                                        const savedVideos = localStorage.getItem('valor_videos');
+                                        if (savedVideos) {
+                                          try { setVideos(JSON.parse(savedVideos)); } catch {}
                                         }
-                                      }}
-                                      style={{ 
-                                        background: 'rgba(255,255,255,0.04)', 
-                                        border: '1px solid rgba(255,255,255,0.08)', 
-                                        color: '#fff', 
-                                        padding: '8px 20px', 
-                                        fontSize: '0.8rem', 
-                                        borderRadius: '999px', 
-                                        cursor: 'pointer',
-                                        fontWeight: 600,
-                                        transition: 'background 0.2s',
-                                        fontFamily: 'Outfit, sans-serif'
-                                      }}
-                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-                                    >
-                                      Logout
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const curProfile = availableProfiles.find(p => p.userId === settings.userId);
-                                        if (curProfile) {
-                                          setDeleteTargetProfile(curProfile);
-                                          setDeleteConfirmText('');
-                                          setIsDeleteModalOpen(true);
-                                        }
-                                      }}
-                                      style={{ 
-                                        background: 'rgba(239,68,68,0.06)', 
-                                        border: '1px solid rgba(239,68,68,0.25)', 
-                                        color: '#ef4444', 
-                                        padding: '8px 20px', 
-                                        fontSize: '0.8rem', 
-                                        borderRadius: '999px', 
-                                        cursor: 'pointer',
-                                        fontWeight: 600,
-                                        transition: 'background 0.2s',
-                                        fontFamily: 'Outfit, sans-serif'
-                                      }}
-                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
-                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'}
-                                    >
-                                      Delete Profile & Data
-                                    </button>
-                                  </>
-                                ) : (
+                                        addToast('Logged out of server profile successfully', 'success');
+                                      }
+                                    }}
+                                    style={{ 
+                                      background: 'rgba(255,255,255,0.04)', 
+                                      border: '1px solid rgba(255,255,255,0.08)', 
+                                      color: '#fff', 
+                                      padding: '8px 20px', 
+                                      fontSize: '0.8rem', 
+                                      borderRadius: '999px', 
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                      transition: 'background 0.2s',
+                                      fontFamily: 'Outfit, sans-serif'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                                  >
+                                    Logout
+                                  </button>
+                                )}
+
+                                {/* Delete Profile Button (Always show) */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const curProfile = availableProfiles.find(p => p.userId === settings.userId) || {
+                                      userId: settings.userId || 'local',
+                                      name: settings.profileName || 'Local Browser Saves',
+                                      storageMode: 'localstorage'
+                                    };
+                                    setDeleteTargetProfile(curProfile);
+                                    setDeleteConfirmText('');
+                                    setIsDeleteModalOpen(true);
+                                  }}
+                                  style={{ 
+                                    background: 'rgba(239,68,68,0.06)', 
+                                    border: '1px solid rgba(239,68,68,0.25)', 
+                                    color: '#ef4444', 
+                                    padding: '8px 20px', 
+                                    fontSize: '0.8rem', 
+                                    borderRadius: '999px', 
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    transition: 'background 0.2s',
+                                    fontFamily: 'Outfit, sans-serif'
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'}
+                                >
+                                  Delete Profile & Data
+                                </button>
+
+                                {/* Create Server Profile / Sync (Only if using local profile) */}
+                                {(!settings.userId || settings.userId === 'local' || settings.userId.startsWith('local_')) && (
                                   <button
                                     type="button"
                                     onClick={() => openAuthModal('signup')}
@@ -6081,10 +6087,10 @@ function App() {
                   />
                 </div>
 
-                {isServerMode && (
+                 {isServerMode && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
-                      Account Password
+                      Profile Password (Optional)
                     </label>
                     <input
                       type="password"
@@ -6112,10 +6118,6 @@ function App() {
                   setCreateProfileError('');
                   if (!newProfileName.trim()) {
                     setCreateProfileError('Profile name is required');
-                    return;
-                  }
-                  if (isServerMode && !newProfilePassword) {
-                    setCreateProfileError('Account password is required');
                     return;
                   }
 
@@ -6286,27 +6288,93 @@ function App() {
                 disabled={deleteConfirmText !== 'DELETE'}
                 onClick={async () => {
                   if (deleteConfirmText !== 'DELETE' || !deleteTargetProfile) return;
-                  try {
-                    const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/delete`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: deleteTargetProfile.userId })
-                    });
-                    const resData = await res.json();
-                    if (resData.success) {
-                      addToast(`Successfully deleted profile: ${deleteTargetProfile.name}`, 'success');
+                  const isLocalTarget = deleteTargetProfile.userId === 'local' || deleteTargetProfile.userId.startsWith('local_');
+                  
+                  if (isLocalTarget) {
+                    try {
+                      let localProfiles = [];
+                      try {
+                        const localSaved = localStorage.getItem('valor_local_profiles');
+                        if (localSaved) localProfiles = JSON.parse(localSaved);
+                      } catch {}
                       
-                      // If deleted profile was currently active, revert to local
+                      localProfiles = localProfiles.filter((p: any) => p.userId !== deleteTargetProfile.userId);
+                      localStorage.setItem('valor_local_profiles', JSON.stringify(localProfiles));
+                      
+                      const settingsKey = deleteTargetProfile.userId === 'local' ? 'valor_settings' : `valor_settings_${deleteTargetProfile.userId}`;
+                      const videosKey = deleteTargetProfile.userId === 'local' ? 'valor_videos' : `valor_videos_${deleteTargetProfile.userId}`;
+                      localStorage.removeItem(settingsKey);
+                      localStorage.removeItem(videosKey);
+                      
+                      addToast(`Successfully deleted local profile: ${deleteTargetProfile.name}`, 'success');
+                      
                       if (settings.userId === deleteTargetProfile.userId) {
-                        localStorage.setItem('valor_active_user_id', 'local');
-                        setSettings(prev => ({
-                          ...prev,
-                          userId: 'local',
-                          storageMode: 'localstorage'
-                        }));
-                        const savedVideos = localStorage.getItem('valor_videos');
-                        if (savedVideos) {
-                          try { setVideos(JSON.parse(savedVideos)); } catch {}
+                        const serverProfiles = availableProfiles.filter((p: any) => p.userId !== 'local' && !p.userId.startsWith('local_') && p.userId !== deleteTargetProfile.userId);
+                        const combinedRemaining = [...localProfiles, ...serverProfiles];
+                        
+                        if (combinedRemaining.length > 0) {
+                          const nextProfile = combinedRemaining[0];
+                          localStorage.setItem('valor_active_user_id', nextProfile.userId);
+                          
+                          const nextIsLocal = nextProfile.userId === 'local' || nextProfile.userId.startsWith('local_');
+                          if (nextIsLocal) {
+                            const nextSettingsKey = nextProfile.userId === 'local' ? 'valor_settings' : `valor_settings_${nextProfile.userId}`;
+                            const nextVideosKey = nextProfile.userId === 'local' ? 'valor_videos' : `valor_videos_${nextProfile.userId}`;
+                            const saved = localStorage.getItem(nextSettingsKey);
+                            if (saved) {
+                              try { setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: nextProfile.userId, storageMode: 'localstorage' }); } catch {}
+                            } else {
+                              setSettings({ ...defaultSettings, userId: nextProfile.userId, storageMode: 'localstorage', profileName: nextProfile.name });
+                            }
+                            const savedVids = localStorage.getItem(nextVideosKey);
+                            if (savedVids) {
+                              try { setVideos(JSON.parse(savedVids)); } catch {}
+                            } else {
+                              setVideos([]);
+                            }
+                          } else {
+                            setSettings({
+                              ...defaultSettings,
+                              userId: nextProfile.userId,
+                              storageMode: 'file'
+                            });
+                            
+                            try {
+                              const pData = await gqlFetch(`
+                                query GetProfileData($userId: String!) {
+                                  profile(userId: $userId) {
+                                    settings
+                                    history
+                                  }
+                                }
+                              `, { userId: nextProfile.userId });
+                              const profileData = pData.profile || {};
+                              if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                                setSettings({
+                                  ...defaultSettings,
+                                  ...profileData.settings,
+                                  userId: nextProfile.userId,
+                                  storageMode: 'file'
+                                });
+                              }
+                              if (profileData && Array.isArray(profileData.history)) {
+                                setVideos(profileData.history.map((v: any) => ({
+                                  ...v,
+                                  audioTracks: v.audioTracks || [],
+                                  subtitleTracks: v.subtitleTracks || []
+                                })));
+                              }
+                            } catch {}
+                          }
+                        } else {
+                          localStorage.removeItem('valor_active_user_id');
+                          setSettings({
+                            ...defaultSettings,
+                            userId: 'local',
+                            storageMode: 'localstorage',
+                            isOnboarded: false
+                          });
+                          setVideos([]);
                         }
                       }
                       
@@ -6314,11 +6382,43 @@ function App() {
                       setDeleteTargetProfile(null);
                       setDeleteConfirmText('');
                       await fetchProfiles();
-                    } else {
-                      addToast(resData.error || 'Deletion failed', 'error');
+                    } catch (e: any) {
+                      addToast(e.message || 'Deletion error', 'error');
                     }
-                  } catch (e: any) {
-                    addToast(e.message || 'Deletion error', 'error');
+                  } else {
+                    try {
+                      const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: deleteTargetProfile.userId })
+                      });
+                      const resData = await res.json();
+                      if (resData.success) {
+                        addToast(`Successfully deleted profile: ${deleteTargetProfile.name}`, 'success');
+                        
+                        if (settings.userId === deleteTargetProfile.userId) {
+                          localStorage.setItem('valor_active_user_id', 'local');
+                          setSettings(prev => ({
+                            ...prev,
+                            userId: 'local',
+                            storageMode: 'localstorage'
+                          }));
+                          const savedVideos = localStorage.getItem('valor_videos');
+                          if (savedVideos) {
+                            try { setVideos(JSON.parse(savedVideos)); } catch {}
+                          }
+                        }
+                        
+                        setIsDeleteModalOpen(false);
+                        setDeleteTargetProfile(null);
+                        setDeleteConfirmText('');
+                        await fetchProfiles();
+                      } else {
+                        addToast(resData.error || 'Deletion failed', 'error');
+                      }
+                    } catch (e: any) {
+                      addToast(e.message || 'Deletion error', 'error');
+                    }
                   }
                 }}
                 style={{
