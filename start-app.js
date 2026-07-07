@@ -71,9 +71,27 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS accounts (
+    username TEXT PRIMARY KEY,
+    password TEXT NOT NULL
+  );
+`);
+
 // Try to alter profiles table if columns are missing (migrations)
 try { db.exec(`ALTER TABLE profiles ADD COLUMN username TEXT;`); } catch(e){}
 try { db.exec(`ALTER TABLE profiles ADD COLUMN password TEXT;`); } catch(e){}
+
+// Populate accounts table from existing profiles for backward compatibility
+try {
+  const existingProfilesWithPasswords = db.prepare('SELECT username, password FROM profiles WHERE username IS NOT NULL AND password IS NOT NULL').all();
+  const insertAccount = db.prepare('INSERT OR IGNORE INTO accounts (username, password) VALUES (?, ?)');
+  for (const p of existingProfilesWithPasswords) {
+    insertAccount.run(p.username, p.password);
+  }
+} catch (e) {
+  console.warn('Failed to migrate existing profiles to accounts table:', e.message);
+}
 
 // Migration to remove UNIQUE constraint from username
 try {
@@ -382,11 +400,43 @@ const backendServer = http.createServer((req, res) => {
       const { userId, username, password } = data;
       
       let profile;
+      let account;
       try {
         if (userId) {
           profile = db.prepare('SELECT * FROM profiles WHERE userId = ?').get(userId);
+          if (!profile) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Profile not found' }));
+            return;
+          }
+          if (profile.password && profile.password !== password) {
+            res.statusCode = 401;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Incorrect profile password' }));
+            return;
+          }
         } else if (username) {
-          profile = db.prepare('SELECT * FROM profiles WHERE username = ?').get(username);
+          account = db.prepare('SELECT * FROM accounts WHERE username = ?').get(username);
+          if (!account) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Account not found' }));
+            return;
+          }
+          if (account.password !== password) {
+            res.statusCode = 401;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Incorrect username or password' }));
+            return;
+          }
+          profile = db.prepare('SELECT * FROM profiles WHERE username = ? ORDER BY createdAt ASC').get(username);
+          if (!profile) {
+            const fallbackId = `u_${Math.random().toString(36).substring(2, 11)}`;
+            db.prepare('INSERT INTO profiles (userId, name, username, password) VALUES (?, ?, ?, null)')
+              .run(fallbackId, username, username);
+            profile = { userId: fallbackId, name: username };
+          }
         }
       } catch (e) {
         res.statusCode = 500;
@@ -394,14 +444,7 @@ const backendServer = http.createServer((req, res) => {
         return;
       }
 
-      if (!profile) {
-        res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'Profile not found' }));
-        return;
-      }
-
-      const activeUsername = profile.username || profile.name;
+      const activeUsername = username || profile.username || profile.name;
 
       // Account lock check
       try {
@@ -414,8 +457,8 @@ const backendServer = http.createServer((req, res) => {
         }
       } catch (e) {}
 
-      // Validate password
-      if (!profile.password || profile.password === password) {
+      // Validate password success (already checked above)
+      if (true) {
         // Success! Reset attempts
         try {
           db.prepare('INSERT OR REPLACE INTO login_attempts (username, attempts, lockedUntil) VALUES (?, 0, NULL)').run(activeUsername);
@@ -763,10 +806,10 @@ const backendServer = http.createServer((req, res) => {
       
       console.log('[SQLite Migrate] Received settings keys:', Object.keys(settings), 'history size:', historyList.length);
 
-      // Check username uniqueness
-      if (username) {
+      // Check username uniqueness if registering a new account
+      if (username && data.isSignUp) {
         try {
-          const existing = db.prepare('SELECT userId FROM profiles WHERE username = ?').get(username);
+          const existing = db.prepare('SELECT username FROM accounts WHERE username = ?').get(username);
           if (existing) {
             res.statusCode = 400;
             res.setHeader('Content-Type', 'application/json');
@@ -800,9 +843,53 @@ const backendServer = http.createServer((req, res) => {
       }
 
       try {
-        // Create profile
-        const insertProfile = db.prepare('INSERT INTO profiles (userId, name, username, password) VALUES (?, ?, ?, ?)');
-        insertProfile.run(userId, name, username || null, password || null);
+        if (username) {
+          const existingAccount = db.prepare('SELECT * FROM accounts WHERE username = ?').get(username);
+          if (data.isSignUp) {
+            if (existingAccount) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Username already taken' }));
+              return;
+            }
+            db.prepare('INSERT INTO accounts (username, password) VALUES (?, ?)').run(username, password);
+            db.prepare('INSERT INTO profiles (userId, name, username, password) VALUES (?, ?, ?, null)')
+              .run(userId, name, username);
+          } else if (data.isLoginAndSync) {
+            if (!existingAccount) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Account not found' }));
+              return;
+            }
+            if (existingAccount.password !== password) {
+              res.statusCode = 401;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Incorrect account password' }));
+              return;
+            }
+            db.prepare('INSERT INTO profiles (userId, name, username, password) VALUES (?, ?, ?, null)')
+              .run(userId, name, username);
+          } else if (data.isLoggedIn) {
+            if (!existingAccount) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Account not found' }));
+              return;
+            }
+            db.prepare('INSERT INTO profiles (userId, name, username, password) VALUES (?, ?, ?, ?)')
+              .run(userId, name, username, password || null);
+          } else {
+            if (!existingAccount) {
+              db.prepare('INSERT INTO accounts (username, password) VALUES (?, ?)').run(username, password || '');
+            }
+            db.prepare('INSERT INTO profiles (userId, name, username, password) VALUES (?, ?, ?, ?)')
+              .run(userId, name, username, password || null);
+          }
+        } else {
+          db.prepare('INSERT INTO profiles (userId, name, username, password) VALUES (?, ?, null, null)')
+            .run(userId, name);
+        }
 
         // Save settings
         const insertSettings = db.prepare('INSERT OR REPLACE INTO settings (userId, settingsJson) VALUES (?, ?)');

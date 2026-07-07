@@ -5940,6 +5940,7 @@ function App() {
                         name: profileName, 
                         username: authUsername.trim() || undefined,
                         password: authPassword || undefined,
+                        isSignUp: true,
                         settings: { ...settings, isOnboarded: currentIsOnboarded }, 
                         history: videos 
                       })
@@ -6024,6 +6025,7 @@ function App() {
                           name: profileName, 
                           username: authUsername.trim(),
                           password: authPassword,
+                          isLoginAndSync: true,
                           settings: { ...settings, isOnboarded: true }, 
                           history: videos 
                         })
@@ -6319,6 +6321,7 @@ function App() {
                           name: newProfileName.trim(), 
                           username: loggedInUsername,
                           password: newProfilePassword,
+                          isLoggedIn: true,
                           settings: { ...settings, isOnboarded: true },
                           history: [] 
                         })
