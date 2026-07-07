@@ -276,23 +276,117 @@ function App() {
     const initData = async () => {
       let loadedSettings = defaultSettings;
       let settingsLoaded = false;
-      try {
-        const res = await fetch(`${BACKEND_ORIGIN}/api/settings`);
-        const fileSettings = await res.json();
-        if (fileSettings && Object.keys(fileSettings).length > 0) {
-          loadedSettings = {
-            ...defaultSettings,
-            ...fileSettings,
-            keybinds: { ...defaultSettings.keybinds, ...(fileSettings.keybinds || {}) },
-            subSettings: { ...defaultSettings.subSettings, ...(fileSettings.subSettings || {}) }
-          };
-          setSettings(loadedSettings);
-          settingsLoaded = true;
+      let loadedVideos: VideoItem[] = [];
+      let historyLoaded = false;
+
+      const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+
+      // 1. If we have a saved active SQLite profile ID, try to load it first
+      if (activeUserId && activeUserId !== 'local') {
+        try {
+          const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${activeUserId}`);
+          const profileData = await res.json();
+          if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+            loadedSettings = {
+              ...defaultSettings,
+              ...profileData.settings,
+              userId: activeUserId,
+              storageMode: 'file',
+              keybinds: { ...defaultSettings.keybinds, ...(profileData.settings.keybinds || {}) },
+              subSettings: { ...defaultSettings.subSettings, ...(profileData.settings.subSettings || {}) }
+            };
+            setSettings(loadedSettings);
+            settingsLoaded = true;
+          }
+          if (profileData && Array.isArray(profileData.history)) {
+            loadedVideos = profileData.history.map((v: any) => ({
+              ...v,
+              audioTracks: v.audioTracks || [],
+              subtitleTracks: v.subtitleTracks || []
+            }));
+            setVideos(loadedVideos);
+            historyLoaded = true;
+          }
+        } catch (e) {
+          console.warn('Failed to load profile data from saved local user ID');
         }
-      } catch (e) {
-        console.warn('Failed to load settings from server file');
       }
 
+      // 2. Fetch server settings to check if server-wide storage is active
+      if (!settingsLoaded) {
+        try {
+          const res = await secureFetch(`${BACKEND_ORIGIN}/api/settings`);
+          const serverSettings = await res.json();
+          
+          if (serverSettings && Object.keys(serverSettings).length > 0) {
+            const storageMode = serverSettings.storageMode || 'localstorage';
+            const userId = serverSettings.userId;
+
+            if (storageMode === 'file') {
+              if (userId && userId !== 'local') {
+                // This is a SQLite user! Fetch their profile data.
+                localStorage.setItem('valor_active_user_id', userId);
+                const profileRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${userId}`);
+                const profileData = await profileRes.json();
+                if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                  loadedSettings = {
+                    ...defaultSettings,
+                    ...profileData.settings,
+                    userId: userId,
+                    storageMode: 'file',
+                    keybinds: { ...defaultSettings.keybinds, ...(profileData.settings.keybinds || {}) },
+                    subSettings: { ...defaultSettings.subSettings, ...(profileData.settings.subSettings || {}) }
+                  };
+                  setSettings(loadedSettings);
+                  settingsLoaded = true;
+                }
+                if (profileData && Array.isArray(profileData.history)) {
+                  loadedVideos = profileData.history.map((v: any) => ({
+                    ...v,
+                    audioTracks: v.audioTracks || [],
+                    subtitleTracks: v.subtitleTracks || []
+                  }));
+                  setVideos(loadedVideos);
+                  historyLoaded = true;
+                }
+              } else {
+                // Legacy "Server File" user without a SQLite profile.
+                // Load the server file settings and history directly.
+                loadedSettings = {
+                  ...defaultSettings,
+                  ...serverSettings,
+                  userId: 'local',
+                  storageMode: 'file',
+                  keybinds: { ...defaultSettings.keybinds, ...(serverSettings.keybinds || {}) },
+                  subSettings: { ...defaultSettings.subSettings, ...(serverSettings.subSettings || {}) }
+                };
+                setSettings(loadedSettings);
+                settingsLoaded = true;
+
+                try {
+                  const historyRes = await secureFetch(`${BACKEND_ORIGIN}/api/history`);
+                  const fileHistory = await historyRes.json();
+                  if (Array.isArray(fileHistory)) {
+                    loadedVideos = fileHistory.map((v: any) => ({
+                      ...v,
+                      audioTracks: v.audioTracks || [],
+                      subtitleTracks: v.subtitleTracks || []
+                    }));
+                    setVideos(loadedVideos);
+                    historyLoaded = true;
+                  }
+                } catch (e) {
+                  console.warn('Failed to load history from legacy server file');
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to fetch server settings on startup');
+        }
+      }
+
+      // 3. Fallback to localStorage if still not loaded
       if (!settingsLoaded) {
         const saved = localStorage.getItem('valor_settings');
         if (saved) {
@@ -309,29 +403,7 @@ function App() {
         }
       }
 
-      // Load History
-      const storageMode = loadedSettings.storageMode || 'localstorage';
-      let loadedVideos: VideoItem[] = [];
-      let historyLoaded = false;
-
-      if (storageMode === 'file') {
-        try {
-          const res = await fetch(`${BACKEND_ORIGIN}/api/history`);
-          const fileHistory = await res.json();
-          if (Array.isArray(fileHistory)) {
-            loadedVideos = fileHistory.map((v: any) => ({
-              ...v,
-              audioTracks: v.audioTracks || [],
-              subtitleTracks: v.subtitleTracks || []
-            }));
-            setVideos(loadedVideos);
-            historyLoaded = true;
-          }
-        } catch (e) {
-          console.warn('Failed to load history from server file');
-        }
-      }
-
+      // 4. Load history from localStorage if history not loaded
       if (!historyLoaded) {
         const savedVideos = localStorage.getItem('valor_videos');
         if (savedVideos) {
@@ -348,7 +420,6 @@ function App() {
           } catch {}
         }
       }
-
     };
 
     initData();
@@ -496,6 +567,7 @@ function App() {
     saveTrackPreferences: true,
     saveVolume: true,
     saveSettings: true,
+    userId: 'local',
     storageMode: 'localstorage' as 'localstorage' | 'file',
     ratingThreshold: 3 as number,
     calendarStyle: 'grid' as 'grid' | 'list',
@@ -514,6 +586,150 @@ function App() {
 
 
   const [listeningKeyFor, setListeningKeyFor] = useState<keyof typeof defaultSettings.keybinds | null>(null);
+  const [availableProfiles, setAvailableProfiles] = useState<any[]>([]);
+  
+  // Toast notifications state
+  const [toasts, setToasts] = useState<{ id: string; text: string; type: 'success' | 'error' }[]>([]);
+  
+  const addToast = (text: string, type: 'success' | 'error') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, text, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
+
+  const showProfileStatus = (text: string, type: 'success' | 'error') => {
+    addToast(text, type);
+  };
+
+  // Auth (Login / Signup) modal state
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'signup'>('login');
+  const [authName, setAuthName] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [selectedProfileForLogin, setSelectedProfileForLogin] = useState<any | null>(null);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [onAuthSuccess, setOnAuthSuccess] = useState<((userId: string) => void) | null>(null);
+
+  // Delete profile modal state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTargetProfile, setDeleteTargetProfile] = useState<any | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // Remove profile (hide from switcher) state
+  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
+  const [removeTargetProfile, setRemoveTargetProfile] = useState<any | null>(null);
+  const [removePasswordText, setRemovePasswordText] = useState('');
+  const [removeError, setRemoveError] = useState('');
+  const [hiddenProfileIds, setHiddenProfileIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('valor_hidden_profile_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const openAuthModal = (tab: 'login' | 'signup', targetProfile?: any, onSuccess?: (userId: string) => void) => {
+    setAuthModalTab(tab);
+    setSelectedProfileForLogin(targetProfile || null);
+    setLoginPassword('');
+    setAuthError('');
+    setOnAuthSuccess(() => onSuccess || null);
+    setIsAuthModalOpen(true);
+  };
+
+  const secureFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const ipBlockedUntil = localStorage.getItem('valor_ip_blocked_until');
+    const accountLockedUntil = localStorage.getItem('valor_account_locked_until');
+    const now = Date.now();
+    
+    if (ipBlockedUntil && new Date(ipBlockedUntil).getTime() > now) {
+      const msg = `IP blocked until ${new Date(ipBlockedUntil).toLocaleString()}`;
+      showProfileStatus(msg, 'error');
+      throw new Error(msg);
+    }
+    
+    if (accountLockedUntil && new Date(accountLockedUntil).getTime() > now) {
+      const msg = `Account locked until ${new Date(accountLockedUntil).toLocaleString()}`;
+      showProfileStatus(msg, 'error');
+      throw new Error(msg);
+    }
+    
+    const response = await fetch(input, init);
+    
+    if (response.status === 403) {
+      try {
+        const clone = response.clone();
+        const data = await clone.json();
+        if (data.blockedUntil) {
+          localStorage.setItem('valor_ip_blocked_until', data.blockedUntil);
+          showProfileStatus(`IP blocked until ${new Date(data.blockedUntil).toLocaleString()}`, 'error');
+        }
+        if (data.lockedUntil) {
+          localStorage.setItem('valor_account_locked_until', data.lockedUntil);
+          showProfileStatus(`Account locked until ${new Date(data.lockedUntil).toLocaleString()}`, 'error');
+        }
+      } catch (e) {}
+    }
+    
+    return response;
+  };
+
+  const fetchProfiles = async () => {
+    try {
+      const res = await secureFetch(`${BACKEND_ORIGIN}/api/profiles`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setAvailableProfiles(data);
+        
+        // Auto-select if there is exactly 1 profile on the server and no profile is currently active
+        const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+        if (data.length === 1 && activeUserId === 'local') {
+          const singleProfile = data[0];
+          localStorage.setItem('valor_active_user_id', singleProfile.userId);
+          
+          try {
+            const profileRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${singleProfile.userId}`);
+            const profileData = await profileRes.json();
+            
+            setSettings(prev => {
+              const updated = {
+                ...defaultSettings,
+                ...(profileData.settings || {}),
+                userId: singleProfile.userId,
+                storageMode: 'file',
+                isOnboarded: true
+              };
+              saveSettingsToStorage(updated);
+              return updated;
+            });
+            
+            if (profileData && Array.isArray(profileData.history)) {
+              setVideos(profileData.history.map((v: any) => ({
+                ...v,
+                audioTracks: v.audioTracks || [],
+                subtitleTracks: v.subtitleTracks || []
+              })));
+            }
+            
+            showProfileStatus(`Auto-selected server profile: ${singleProfile.name}`, 'success');
+          } catch (e) {
+            console.warn('Failed to auto-select single profile data:', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch profiles:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchProfiles();
+  }, []);
   const [settings, setSettings] = useState<typeof defaultSettings>(() => {
     try {
       const saved = localStorage.getItem('valor_settings');
@@ -541,7 +757,10 @@ function App() {
   const saveSettingsToStorage = async (state: typeof defaultSettings) => {
     if (state.storageMode === 'file') {
       try {
-        await fetch(`${BACKEND_ORIGIN}/api/settings`, {
+        const url = state.userId && state.userId !== 'local'
+          ? `${BACKEND_ORIGIN}/api/settings?userId=${state.userId}`
+          : `${BACKEND_ORIGIN}/api/settings`;
+        await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(state)
@@ -641,6 +860,7 @@ function App() {
         } else if (keyLower === 'f') {
           e.preventDefault();
           setActiveTab('home');
+          handleSelectLocalFile();
         } else if (keyLower === 'm') {
           e.preventDefault();
           // Find last played video in history
@@ -724,10 +944,14 @@ function App() {
       // Sync to backend file if storageMode is file (debounced to once every 10 seconds)
       if (settings.storageMode === 'file') {
         const now = Date.now();
+        const url = settings.userId && settings.userId !== 'local'
+          ? `${BACKEND_ORIGIN}/api/history?userId=${settings.userId}`
+          : `${BACKEND_ORIGIN}/api/history`;
+
         if (now - lastHistorySyncTimeRef.current > 10000) {
           lastHistorySyncTimeRef.current = now;
           if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-          fetch(`${BACKEND_ORIGIN}/api/history`, {
+          fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(serialized)
@@ -736,7 +960,7 @@ function App() {
           if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
           historySyncTimeoutRef.current = setTimeout(() => {
             lastHistorySyncTimeRef.current = Date.now();
-            fetch(`${BACKEND_ORIGIN}/api/history`, {
+            fetch(url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(serialized)
@@ -756,7 +980,10 @@ function App() {
             try {
               localStorage.setItem('valor_videos', JSON.stringify(currentList));
               if (settings.storageMode === 'file') {
-                fetch(`${BACKEND_ORIGIN}/api/history`, {
+                const url = settings.userId && settings.userId !== 'local'
+                  ? `${BACKEND_ORIGIN}/api/history?userId=${settings.userId}`
+                  : `${BACKEND_ORIGIN}/api/history`;
+                fetch(url, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(currentList)
@@ -1551,6 +1778,60 @@ function App() {
           setSettings(updated);
           saveSettingsToStorage(updated);
         }}
+        onSelectProfile={(userId, storageMode) => {
+          localStorage.setItem('valor_active_user_id', userId);
+          setSettings(prev => {
+            const updated = {
+              ...prev,
+              userId: userId,
+              storageMode: storageMode
+            };
+            // Trigger background reload of profile settings & history
+            const loadProfileData = async () => {
+              if (userId !== 'local') {
+                try {
+                  const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${userId}`);
+                  const profileData = await res.json();
+                  if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                    setSettings({
+                      ...defaultSettings,
+                      ...profileData.settings,
+                      userId: userId,
+                      storageMode: 'file'
+                    });
+                  }
+                  if (profileData && Array.isArray(profileData.history)) {
+                    setVideos(profileData.history.map((v: any) => ({
+                      ...v,
+                      audioTracks: v.audioTracks || [],
+                      subtitleTracks: v.subtitleTracks || []
+                    })));
+                  }
+                } catch (e) {
+                  console.warn('Failed to load profile data from server');
+                }
+              } else {
+                // If switching to local profile, load from localStorage
+                const saved = localStorage.getItem('valor_settings');
+                if (saved) {
+                  try {
+                    setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: 'local', storageMode: 'localstorage' });
+                  } catch {}
+                }
+                const savedVideos = localStorage.getItem('valor_videos');
+                if (savedVideos) {
+                  try {
+                    setVideos(JSON.parse(savedVideos));
+                  } catch {}
+                }
+              }
+            };
+            loadProfileData();
+            return updated;
+          });
+        }}
+        videos={videos}
+        openAuthModal={(tab, targetProfile, onSuccess) => openAuthModal(tab, targetProfile, onSuccess)}
       />
     );
   }
@@ -2036,6 +2317,8 @@ function App() {
                       <div className="settings-tab-content animate-fade-in">
                         <div className="settings-page-grid">
                           <div className="settings-grid-col">
+
+
                             <div className="settings-section">
                               <h3>Preferred Languages</h3>
                               <p className="settings-section-desc">Default selections when loading a new video file.</p>
@@ -2764,6 +3047,308 @@ function App() {
                     {/* Storage & Saves Section */}
                     {settingsTab === 'storage' && (
                       <div className="settings-tab-content animate-fade-in">
+                        <div className="settings-section" style={{ marginBottom: '2rem' }}>
+                          <h3>Active User Profile</h3>
+                          <p className="settings-section-desc">Manage your profile storage and server synchronization.</p>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            
+                            {/* Active Profile Banner Card */}
+                            <div style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '12px', 
+                              background: (settings.userId && settings.userId !== 'local') 
+                                ? 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(37,99,235,0.06) 100%)' 
+                                : 'rgba(255,255,255,0.03)', 
+                              padding: '1.25rem', 
+                              borderRadius: '10px', 
+                              border: (settings.userId && settings.userId !== 'local') 
+                                ? '1px solid rgba(59,130,246,0.25)' 
+                                : '1px solid rgba(255,255,255,0.08)' 
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                <div style={{ 
+                                  width: '48px', 
+                                  height: '48px', 
+                                  borderRadius: '50%', 
+                                  background: (settings.userId && settings.userId !== 'local') ? '#3b82f6' : 'rgba(255,255,255,0.1)', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center', 
+                                  fontSize: '1.4rem', 
+                                  fontWeight: 'bold',
+                                  color: '#fff',
+                                  boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
+                                }}>
+                                  {(settings.userId && settings.userId !== 'local') 
+                                    ? (availableProfiles.find(p => p.userId === settings.userId)?.name?.[0] || 'U').toUpperCase() 
+                                    : 'L'}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                                      {(settings.userId && settings.userId !== 'local') 
+                                        ? (availableProfiles.find(p => p.userId === settings.userId)?.name || 'SQLite Profile') 
+                                        : 'Local Browser Saves'}
+                                    </span>
+                                    <span style={{ 
+                                      fontSize: '0.68rem', 
+                                      padding: '2px 8px', 
+                                      borderRadius: '4px', 
+                                      background: (settings.userId && settings.userId !== 'local') ? 'rgba(46,204,113,0.18)' : 'rgba(239,68,68,0.15)', 
+                                      color: (settings.userId && settings.userId !== 'local') ? '#2ecc71' : '#ef4444', 
+                                      fontWeight: 'bold',
+                                      letterSpacing: '0.5px'
+                                    }}>
+                                      {(settings.userId && settings.userId !== 'local') ? 'SYNCING ACTIVE' : 'LOCAL SAVE ONLY'}
+                                    </span>
+                                  </div>
+                                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', marginTop: '4px' }}>
+                                    {(settings.userId && settings.userId !== 'local') 
+                                      ? `User ID: ${settings.userId} • Username: ${availableProfiles.find(p => p.userId === settings.userId)?.username || 'None'}` 
+                                      : 'Playback data is saved locally inside your browser storage.'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                {(settings.userId && settings.userId !== 'local') ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm('Are you sure you want to logout? Your watch history and settings will remain on the server, and you will switch back to local browser storage.')) {
+                                          localStorage.setItem('valor_active_user_id', 'local');
+                                          setSettings(prev => ({
+                                            ...prev,
+                                            userId: 'local',
+                                            storageMode: 'localstorage'
+                                          }));
+                                          const savedVideos = localStorage.getItem('valor_videos');
+                                          if (savedVideos) {
+                                            try { setVideos(JSON.parse(savedVideos)); } catch {}
+                                          }
+                                          addToast('Logged out of server profile successfully', 'success');
+                                        }
+                                      }}
+                                      style={{ 
+                                        background: 'rgba(255,255,255,0.06)', 
+                                        border: '1px solid rgba(255,255,255,0.08)', 
+                                        color: '#fff', 
+                                        padding: '6px 12px', 
+                                        fontSize: '0.72rem', 
+                                        borderRadius: '4px', 
+                                        cursor: 'pointer',
+                                        fontWeight: 600,
+                                        transition: 'background 0.2s'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                                    >
+                                      Logout
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const curProfile = availableProfiles.find(p => p.userId === settings.userId);
+                                        if (curProfile) {
+                                          setDeleteTargetProfile(curProfile);
+                                          setDeleteConfirmText('');
+                                          setIsDeleteModalOpen(true);
+                                        }
+                                      }}
+                                      style={{ 
+                                        background: 'rgba(239,68,68,0.1)', 
+                                        border: '1px solid rgba(239,68,68,0.2)', 
+                                        color: '#ef4444', 
+                                        padding: '6px 12px', 
+                                        fontSize: '0.72rem', 
+                                        borderRadius: '4px', 
+                                        cursor: 'pointer',
+                                        fontWeight: 600,
+                                        transition: 'background 0.2s'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.18)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                                    >
+                                      Delete Profile & Data
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => openAuthModal('signup')}
+                                    style={{ 
+                                      background: '#3b82f6', 
+                                      border: 'none', 
+                                      color: '#fff', 
+                                      padding: '8px 16px', 
+                                      fontSize: '0.75rem', 
+                                      borderRadius: '4px', 
+                                      cursor: 'pointer',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    Create Server Profile & Sync
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Profiles Picker Grid */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                              <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>Profiles Switcher</span>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
+                                {availableProfiles.filter(p => !hiddenProfileIds.includes(p.userId)).map(p => {
+                                  const isActive = settings.userId === p.userId;
+                                  return (
+                                    <div
+                                      key={p.userId}
+                                      onClick={async () => {
+                                        if (isActive) return;
+                                        if (p.hasPassword) {
+                                          openAuthModal('login', p);
+                                          return;
+                                        }
+                                        
+                                        // Password-free, switch directly
+                                        localStorage.setItem('valor_active_user_id', p.userId);
+                                        setSettings(prev => ({
+                                          ...prev,
+                                          userId: p.userId,
+                                          storageMode: 'file'
+                                        }));
+                                        try {
+                                          const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${p.userId}`);
+                                          const profileData = await res.json();
+                                          if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                                            setSettings({
+                                              ...defaultSettings,
+                                              ...profileData.settings,
+                                              userId: p.userId,
+                                              storageMode: 'file'
+                                            });
+                                          }
+                                          if (profileData && Array.isArray(profileData.history)) {
+                                            setVideos(profileData.history.map((v: any) => ({
+                                              ...v,
+                                              audioTracks: v.audioTracks || [],
+                                              subtitleTracks: v.subtitleTracks || []
+                                            })));
+                                          }
+                                          addToast(`Switched to profile: ${p.name}`, 'success');
+                                        } catch (e) {
+                                          console.warn('Failed to switch profile data');
+                                          addToast('Failed to switch profile data', 'error');
+                                        }
+                                      }}
+                                      style={{
+                                        background: isActive ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.03)',
+                                        border: isActive ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                                        padding: '12px 10px',
+                                        borderRadius: '8px',
+                                        cursor: isActive ? 'default' : 'pointer',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.2s ease',
+                                        opacity: isActive ? 1 : 0.8,
+                                        position: 'relative'
+                                      }}
+                                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                                    >
+                                      {/* Small Delete Icon Overlay (Only show if not active profile) */}
+                                      {!isActive && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setRemoveTargetProfile(p);
+                                            setRemovePasswordText('');
+                                            setRemoveError('');
+                                            setIsRemoveModalOpen(true);
+                                          }}
+                                          style={{
+                                            position: 'absolute',
+                                            top: '4px',
+                                            right: '4px',
+                                            background: 'rgba(239, 68, 68, 0.1)',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            width: '18px',
+                                            height: '18px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            fontSize: '0.65rem',
+                                            zIndex: 10,
+                                            padding: 0
+                                          }}
+                                          title="Remove from Switcher"
+                                        >
+                                          ❌
+                                        </button>
+                                      )}
+
+                                      <div style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '50%',
+                                        background: isActive ? '#3b82f6' : 'rgba(255,255,255,0.1)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.9rem',
+                                        color: '#fff'
+                                      }}>
+                                        {(p.name?.[0] || 'U').toUpperCase()}
+                                      </div>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: isActive ? 600 : 400, color: '#fff', textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {p.name} {p.hasPassword ? '🔒' : ''}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+
+                                {/* Add Profile Tile */}
+                                <div
+                                  onClick={() => {
+                                    setSettings(prev => ({
+                                      ...prev,
+                                      isOnboarded: false
+                                    }));
+                                  }}
+                                  style={{
+                                    background: 'rgba(255,255,255,0.01)',
+                                    border: '1px dashed rgba(255,255,255,0.15)',
+                                    padding: '12px 10px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px',
+                                    transition: 'all 0.2s ease',
+                                    height: '78px',
+                                    boxSizing: 'border-box'
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.01)'; }}
+                                >
+                                  <div style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' }}>+</div>
+                                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>Add Profile</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="settings-section max-w-md">
                           <h3>Storage Location & Advanced Metrics</h3>
                           <p className="settings-section-desc">Configure where your data is stored and playback rating threshold parameters.</p>
@@ -4669,7 +5254,741 @@ function App() {
         .no-animations .sidebar-history-item:hover {
           transform: none !important;
         }
+
+        /* Toast Animations */
+        @keyframes slideIn {
+          from { transform: translateX(120%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes toastProgress {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+        /* Modal Animations */
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
       `}</style>
+
+      {/* Global Toast Container */}
+      <div style={{
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        pointerEvents: 'none'
+      }}>
+        {toasts.map(t => (
+          <div
+            key={t.id}
+            style={{
+              pointerEvents: 'auto',
+              background: 'rgba(20, 20, 20, 0.92)',
+              backdropFilter: 'blur(12px)',
+              borderLeft: `4px solid ${t.type === 'success' ? '#2ecc71' : '#ef4444'}`,
+              color: '#fff',
+              padding: '12px 16px',
+              borderRadius: '6px',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px',
+              minWidth: '280px',
+              maxWidth: '400px',
+              animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '1.1rem' }}>{t.type === 'success' ? '✅' : '⚠️'}</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 500 }}>{t.text}</span>
+            </div>
+            <button
+              onClick={() => setToasts(prev => prev.filter(item => item.id !== t.id))}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255,255,255,0.4)',
+                cursor: 'pointer',
+                fontSize: '1.1rem',
+                lineHeight: 1,
+                padding: 0
+              }}
+            >
+              ×
+            </button>
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              height: '3px',
+              background: t.type === 'success' ? '#2ecc71' : '#ef4444',
+              width: '100%',
+              animation: 'toastProgress 4s linear forwards'
+            }} />
+          </div>
+        ))}
+      </div>
+
+      {/* Global Auth Modal (Login / Signup) */}
+      {isAuthModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 9990,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '380px',
+            background: '#141414',
+            borderRadius: '16px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)',
+            overflow: 'hidden',
+            padding: '32px 24px 28px 24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+            animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            position: 'relative',
+            border: '1px solid rgba(255, 255, 255, 0.08)'
+          }}>
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setAuthName('');
+                setAuthUsername('');
+                setAuthPassword('');
+                setSelectedProfileForLogin(null);
+                setIsAuthModalOpen(false);
+                setAuthError('');
+              }}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.4)',
+                cursor: 'pointer',
+                fontSize: '1.25rem',
+                fontWeight: 'bold',
+                padding: 0,
+                lineHeight: 1
+              }}
+              title="Close"
+            >
+              ×
+            </button>
+
+            {/* Header Title */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'center' }}>
+              <h2 style={{ 
+                margin: 0, 
+                fontSize: '1.35rem', 
+                fontWeight: 700, 
+                color: '#ffffff', 
+                fontFamily: 'Outfit, sans-serif' 
+              }}>
+                Log in or create account
+              </h2>
+              {selectedProfileForLogin && (
+                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontFamily: 'Outfit, sans-serif' }}>
+                  Logging into profile <strong>{selectedProfileForLogin.name}</strong>
+                </span>
+              )}
+            </div>
+
+            {/* Tab Selection (Centered in the middle) */}
+            {!selectedProfileForLogin && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                gap: '24px', 
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)', 
+                paddingBottom: '8px' 
+              }}>
+                <button
+                  type="button"
+                  onClick={() => { setAuthModalTab('login'); setAuthError(''); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: authModalTab === 'login' ? '#ffffff' : 'rgba(255, 255, 255, 0.4)',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    paddingBottom: '6px',
+                    fontFamily: 'Outfit, sans-serif'
+                  }}
+                >
+                  Login
+                  {authModalTab === 'login' && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '-9px',
+                      left: 0,
+                      right: 0,
+                      height: '2px',
+                      background: '#ffffff'
+                    }} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthModalTab('signup'); setAuthError(''); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: authModalTab === 'signup' ? '#ffffff' : 'rgba(255, 255, 255, 0.4)',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    paddingBottom: '6px',
+                    fontFamily: 'Outfit, sans-serif'
+                  }}
+                >
+                  Sign Up
+                  {authModalTab === 'signup' && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '-9px',
+                      left: 0,
+                      right: 0,
+                      height: '2px',
+                      background: '#ffffff'
+                    }} />
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {authError && (
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                color: '#ef4444',
+                fontSize: '0.78rem',
+                padding: '10px',
+                borderRadius: '8px',
+                fontWeight: 500,
+                fontFamily: 'Outfit, sans-serif'
+              }}>
+                ⚠️ {authError}
+              </div>
+            )}
+
+            {/* Form Fields */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Username Input */}
+              {!selectedProfileForLogin && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter username..."
+                    value={authUsername}
+                    onChange={e => setAuthUsername(e.target.value)}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      fontSize: '0.88rem',
+                      color: '#ffffff',
+                      outline: 'none',
+                      fontFamily: 'Outfit, sans-serif'
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Password Input */}
+              {(selectedProfileForLogin || authModalTab === 'login' || authModalTab === 'signup') && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="••••••••••••"
+                    value={authPassword}
+                    onChange={e => setAuthPassword(e.target.value)}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      fontSize: '0.88rem',
+                      color: '#ffffff',
+                      outline: 'none',
+                      fontFamily: 'Outfit, sans-serif'
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        document.getElementById('auth-modal-submit-btn')?.click();
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Actions Submit Button */}
+            <button
+              id="auth-modal-submit-btn"
+              type="button"
+              onClick={async () => {
+                setAuthError('');
+                const isSignUp = authModalTab === 'signup' && !selectedProfileForLogin;
+                
+                if (isSignUp) {
+                  const profileName = authUsername.trim() || 'New User';
+                  const currentIsOnboarded = settings.isOnboarded;
+                  try {
+                    const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/migrate`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ 
+                        name: profileName, 
+                        username: authUsername.trim() || undefined,
+                        password: authPassword || undefined,
+                        settings: { ...settings, isOnboarded: currentIsOnboarded }, 
+                        history: videos 
+                      })
+                    });
+                    const resData = await res.json();
+                    if (resData.success) {
+                      localStorage.setItem('valor_active_user_id', resData.userId);
+                      setSettings(prev => ({
+                        ...prev,
+                        userId: resData.userId,
+                        storageMode: 'file',
+                        isOnboarded: currentIsOnboarded
+                      }));
+                      
+                      addToast(`Successfully created Server Profile: ${profileName}!`, 'success');
+                      addToast('Starting synchronization of watch history and settings...', 'success');
+                      
+                      const historyRes = await secureFetch(`${BACKEND_ORIGIN}/api/history?userId=${resData.userId}`);
+                      const serverHistory = await historyRes.json();
+                      if (Array.isArray(serverHistory)) {
+                        setVideos(serverHistory);
+                      }
+                      
+                      addToast('Synchronization complete! All settings and watch history synced.', 'success');
+                      
+                      if (onAuthSuccess) {
+                        onAuthSuccess(resData.userId);
+                      }
+                      
+                      setAuthName('');
+                      setAuthUsername('');
+                      setAuthPassword('');
+                      setIsAuthModalOpen(false);
+                      await fetchProfiles();
+                    } else {
+                      setAuthError(resData.error || 'Failed to create profile');
+                    }
+                  } catch (err: any) {
+                    setAuthError(err.message || 'Profile generation failed.');
+                  }
+                } else {
+                  try {
+                    const payload = selectedProfileForLogin 
+                      ? { userId: selectedProfileForLogin.userId, password: authPassword }
+                      : { username: authUsername.trim(), password: authPassword };
+                      
+                    const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload)
+                    });
+                    const resData = await res.json();
+                    if (resData.success) {
+                      const pId = resData.userId;
+                      localStorage.setItem('valor_active_user_id', pId);
+                      setSettings(prev => ({
+                        ...prev,
+                        userId: pId,
+                        storageMode: 'file'
+                      }));
+                      
+                      const profileRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${pId}`);
+                      const profileData = await profileRes.json();
+                      if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                        setSettings({
+                          ...defaultSettings,
+                          ...profileData.settings,
+                          userId: pId,
+                          storageMode: 'file'
+                        });
+                      }
+                      if (profileData && Array.isArray(profileData.history)) {
+                        setVideos(profileData.history.map((v: any) => ({
+                          ...v,
+                          audioTracks: v.audioTracks || [],
+                          subtitleTracks: v.subtitleTracks || []
+                        })));
+                      }
+                      
+                      addToast(`Logged in and switched to profile: ${resData.name}`, 'success');
+                      
+                      if (onAuthSuccess) {
+                        onAuthSuccess(pId);
+                      }
+                      
+                      setAuthUsername('');
+                      setAuthPassword('');
+                      setSelectedProfileForLogin(null);
+                      setIsAuthModalOpen(false);
+                      await fetchProfiles();
+                    } else {
+                      setAuthError(resData.error || 'Incorrect username or password');
+                    }
+                  } catch (e: any) {
+                    setAuthError(e.message || 'Login failed.');
+                  }
+                }
+              }}
+              style={{
+                width: '100%',
+                background: '#ffffff',
+                border: 'none',
+                color: '#000000',
+                padding: '14px',
+                fontSize: '0.9rem',
+                borderRadius: '999px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                marginTop: '10px',
+                transition: 'background-color 0.2s',
+                fontFamily: 'Outfit, sans-serif'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)'}
+              onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
+            >
+              {selectedProfileForLogin || authModalTab === 'login' ? 'Sign in' : 'Create account'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(12px)',
+          zIndex: 9990,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '380px',
+            background: 'rgba(22,22,22,0.95)',
+            border: '1px solid rgba(239,68,68,0.2)',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)',
+            overflow: 'hidden',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#ef4444' }}>
+                ⚠️ Permanent Deletion
+              </span>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>
+                Are you sure you want to permanently delete profile <strong>{deleteTargetProfile?.name}</strong>? All associated watch history, bookmarks, and settings will be permanently destroyed.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
+                Type <strong style={{ color: '#ef4444' }}>DELETE</strong> to confirm:
+              </label>
+              <input
+                type="text"
+                placeholder="Type DELETE..."
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+                style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  fontSize: '0.78rem',
+                  color: '#fff',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+              <button
+                type="button"
+                disabled={deleteConfirmText !== 'DELETE'}
+                onClick={async () => {
+                  if (deleteConfirmText !== 'DELETE' || !deleteTargetProfile) return;
+                  try {
+                    const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/delete`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: deleteTargetProfile.userId })
+                    });
+                    const resData = await res.json();
+                    if (resData.success) {
+                      addToast(`Successfully deleted profile: ${deleteTargetProfile.name}`, 'success');
+                      
+                      // If deleted profile was currently active, revert to local
+                      if (settings.userId === deleteTargetProfile.userId) {
+                        localStorage.setItem('valor_active_user_id', 'local');
+                        setSettings(prev => ({
+                          ...prev,
+                          userId: 'local',
+                          storageMode: 'localstorage'
+                        }));
+                        const savedVideos = localStorage.getItem('valor_videos');
+                        if (savedVideos) {
+                          try { setVideos(JSON.parse(savedVideos)); } catch {}
+                        }
+                      }
+                      
+                      setIsDeleteModalOpen(false);
+                      setDeleteTargetProfile(null);
+                      setDeleteConfirmText('');
+                      await fetchProfiles();
+                    } else {
+                      addToast(resData.error || 'Deletion failed', 'error');
+                    }
+                  } catch (e: any) {
+                    addToast(e.message || 'Deletion error', 'error');
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  background: deleteConfirmText === 'DELETE' ? '#ef4444' : 'rgba(239,68,68,0.2)',
+                  border: 'none',
+                  color: deleteConfirmText === 'DELETE' ? '#ffffff' : 'rgba(255,255,255,0.2)',
+                  padding: '10px 16px',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  cursor: deleteConfirmText === 'DELETE' ? 'pointer' : 'not-allowed',
+                  fontWeight: 600,
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                Delete Profile
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setDeleteTargetProfile(null);
+                  setDeleteConfirmText('');
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '10px 16px',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Confirmation Modal (Hides from switcher view on this device with verification) */}
+      {isRemoveModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(12px)',
+          zIndex: 9990,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '380px',
+            background: 'rgba(22,22,22,0.95)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)',
+            overflow: 'hidden',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
+                Remove Profile from Switcher
+              </span>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>
+                This will remove the profile <strong>{removeTargetProfile?.name}</strong> from this device's profile list. The profile data is NOT deleted and remains safe on the server.
+              </span>
+            </div>
+
+            {removeTargetProfile?.hasPassword ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
+                  Enter Password to Verify:
+                </label>
+                <input
+                  type="password"
+                  placeholder="Enter password..."
+                  value={removePasswordText}
+                  onChange={e => setRemovePasswordText(e.target.value)}
+                  style={{
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: '0.78rem',
+                    color: '#fff',
+                    outline: 'none'
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      document.getElementById('remove-confirm-btn')?.click();
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <span style={{ fontSize: '0.72rem', color: '#2ecc71', fontWeight: 500 }}>
+                ✓ No password required for this profile.
+              </span>
+            )}
+
+            {removeError && (
+              <div style={{ fontSize: '0.75rem', color: '#ef4444' }}>
+                ⚠️ {removeError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+              <button
+                id="remove-confirm-btn"
+                type="button"
+                onClick={async () => {
+                  if (!removeTargetProfile) return;
+                  setRemoveError('');
+                  
+                  if (removeTargetProfile.hasPassword) {
+                    try {
+                      const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: removeTargetProfile.userId, password: removePasswordText })
+                      });
+                      const resData = await res.json();
+                      if (!resData.success) {
+                        setRemoveError('Incorrect password. Access denied.');
+                        return;
+                      }
+                    } catch (e: any) {
+                      setRemoveError(e.message || 'Verification failed');
+                      return;
+                    }
+                  }
+
+                  const newHidden = [...hiddenProfileIds, removeTargetProfile.userId];
+                  setHiddenProfileIds(newHidden);
+                  localStorage.setItem('valor_hidden_profile_ids', JSON.stringify(newHidden));
+                  
+                  addToast(`Removed profile: ${removeTargetProfile.name} from switcher list`, 'success');
+                  
+                  setIsRemoveModalOpen(false);
+                  setRemoveTargetProfile(null);
+                  setRemovePasswordText('');
+                  setRemoveError('');
+                }}
+                style={{
+                  flex: 1,
+                  background: '#ef4444',
+                  border: 'none',
+                  color: '#ffffff',
+                  padding: '10px 16px',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Remove Profile
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRemoveModalOpen(false);
+                  setRemoveTargetProfile(null);
+                  setRemovePasswordText('');
+                  setRemoveError('');
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '10px 16px',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

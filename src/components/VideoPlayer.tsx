@@ -1946,16 +1946,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         triggerSwitchToast("Controls are Locked");
         return;
       }
-      if (videoRef.current) {
-        setNewBookmarkTime(videoRef.current.currentTime);
-        setNewBookmarkEndTime(videoRef.current.currentTime + 90);
-        setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
-        setIsIntro(false);
-        setIsOutro(false);
-        setSkipEnabled(false);
-        setBookmarkType('standard');
-        setTypeDropdownOpen(false);
-        setShowAddDialog(true);
+      if (showAddDialog) {
+        setShowAddDialog(false);
+      } else {
+        if (videoRef.current) {
+          setNewBookmarkTime(videoRef.current.currentTime);
+          setNewBookmarkEndTime(videoRef.current.currentTime + 90);
+          setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
+          setIsIntro(false);
+          setIsOutro(false);
+          setSkipEnabled(false);
+          setBookmarkType('standard');
+          setTypeDropdownOpen(false);
+          setShowAddDialog(true);
+        }
       }
       return;
     }
@@ -3470,19 +3474,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            paddingRight: '2rem'
+            paddingRight: '0'
           }}
         >
           <div 
             className="bookmark-dialog-box animate-slide-in-right" 
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: 'rgba(18, 18, 18, 0.95)',
+              background: 'rgba(18, 18, 18, 0.96)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '16px',
+              borderRight: 'none',
+              borderRadius: '16px 0 0 16px',
               padding: '1.5rem',
               width: '360px',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+              boxShadow: '-10px 0 30px rgba(0,0,0,0.6)',
               display: 'flex',
               flexDirection: 'column',
               gap: '1.25rem',

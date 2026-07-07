@@ -17,8 +17,17 @@ import {
 } from './ui/dropdown-menu';
 import { cn } from '../lib/utils';
 import { CustomSelect } from './CustomSelect';
+import { BACKEND_ORIGIN } from '../App';
 
 const initialSteps = [
+  {
+    id: 'profile',
+    title: 'Select User Profile',
+    description: 'Select an existing profile, create a server profile, or start with a local profile.',
+    completed: false,
+    actionLabel: 'Confirm Profile Selection',
+    actionHref: '#'
+  },
   {
     id: 'storage',
     title: 'Choose Storage Location',
@@ -33,14 +42,6 @@ const initialSteps = [
     description: 'Set your preferred default audio track and subtitle language.',
     completed: false,
     actionLabel: 'Save Preferences',
-    actionHref: '#'
-  },
-  {
-    id: 'keybinds',
-    title: 'Keyboard Controls Profile',
-    description: 'Review default keyboard hotkeys for player controls.',
-    completed: false,
-    actionLabel: 'Acknowledge Hotkeys',
     actionHref: '#'
   },
   {
@@ -68,6 +69,9 @@ interface Onboarding01Props {
   audioOptions: any[];
   subOptions: any[];
   onComplete: () => void;
+  onSelectProfile: (userId: string, storageMode: 'localstorage' | 'file') => void;
+  videos: any[];
+  openAuthModal: (tab: 'login' | 'signup', targetProfile?: any, onSuccess?: (userId: string) => void) => void;
 }
 
 function CircularProgress({
@@ -137,6 +141,9 @@ export function Onboarding01({
   audioOptions,
   subOptions,
   onComplete,
+  onSelectProfile,
+  videos,
+  openAuthModal
 }: Onboarding01Props) {
   const [currentSteps, setCurrentSteps] = useState<OnboardingStep[]>(initialSteps);
   const [openStepId, setOpenStepId] = useState<string | null>(() => {
@@ -144,6 +151,63 @@ export function Onboarding01({
     return firstIncomplete?.id ?? initialSteps[0]?.id ?? null;
   });
   const [dismissed, setDismissed] = useState(false);
+
+  // Profile-related states
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [onboardingError, setOnboardingError] = useState('');
+  const [hasConfiguredProfile, setHasConfiguredProfile] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [chosenMode, setChosenMode] = useState<'server' | 'local' | null>(null);
+  const [localProfileName, setLocalProfileName] = useState('');
+  const [serverUsername, setServerUsername] = useState('');
+  const [serverPassword, setServerPassword] = useState('');
+
+  const secureFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const ipBlockedUntil = localStorage.getItem('valor_ip_blocked_until');
+    const accountLockedUntil = localStorage.getItem('valor_account_locked_until');
+    const now = Date.now();
+    
+    if (ipBlockedUntil && new Date(ipBlockedUntil).getTime() > now) {
+      const msg = `IP blocked until ${new Date(ipBlockedUntil).toLocaleString()}`;
+      setOnboardingError(msg);
+      throw new Error(msg);
+    }
+    
+    if (accountLockedUntil && new Date(accountLockedUntil).getTime() > now) {
+      const msg = `Account locked until ${new Date(accountLockedUntil).toLocaleString()}`;
+      setOnboardingError(msg);
+      throw new Error(msg);
+    }
+    
+    const response = await fetch(input, init);
+    
+    if (response.status === 403) {
+      try {
+        const clone = response.clone();
+        const data = await clone.json();
+        if (data.blockedUntil) {
+          localStorage.setItem('valor_ip_blocked_until', data.blockedUntil);
+          setOnboardingError(`IP blocked until ${new Date(data.blockedUntil).toLocaleString()}`);
+        }
+        if (data.lockedUntil) {
+          localStorage.setItem('valor_account_locked_until', data.lockedUntil);
+          setOnboardingError(`Account locked until ${new Date(data.lockedUntil).toLocaleString()}`);
+        }
+      } catch (e) {}
+    }
+    
+    return response;
+  };
+
+  // Fetch server profiles on mount
+  React.useEffect(() => {
+    secureFetch(`${BACKEND_ORIGIN}/api/profiles`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setProfiles(data);
+      })
+      .catch(err => console.error('Failed to fetch server profiles:', err));
+  }, []);
 
   // Configuration tracking to prevent moving forward without configuring
   const [hasConfiguredStorage, setHasConfiguredStorage] = useState(false);
@@ -170,66 +234,523 @@ export function Onboarding01({
   };
 
   const isStepConfigured = (stepId: string) => {
+    if (stepId === 'profile') return hasConfiguredProfile;
     if (stepId === 'storage') return hasConfiguredStorage;
     if (stepId === 'languages') return hasConfiguredLanguages;
     return true; // Hotkeys and Ready steps require no special setup to proceed
   };
 
   const renderValorControls = (stepId: string) => {
-    if (stepId === 'storage') {
+    if (stepId === 'profile') {
+      const activeUserId = settings.userId;
+
+      const autoAdvance = () => {
+        const step = currentSteps.find(s => s.id === 'profile');
+        if (step) {
+          handleStepAction(step);
+        }
+      };
+
+      if (chosenMode === null) {
+        return (
+          <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <span style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>
+              Select where you want to keep your settings and watch history. Server profiles sync across your network, while Local profiles are kept in this browser.
+            </span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => { setChosenMode('server'); setOnboardingError(''); }}
+                style={{
+                  padding: '16px',
+                  background: 'rgba(59,130,246,0.06)',
+                  border: '1px solid rgba(59,130,246,0.2)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.12)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(59,130,246,0.06)'}
+              >
+                <span style={{ fontSize: '1.5rem' }}>🗄️</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Server File Save</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setChosenMode('local'); setOnboardingError(''); }}
+                style={{
+                  padding: '16px',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+              >
+                <span style={{ fontSize: '1.5rem' }}>💻</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Local Storage</span>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      if (chosenMode === 'local') {
+        return (
+          <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>Configure Local Profile Name:</span>
+            <input
+              type="text"
+              placeholder="e.g. My Local Profile"
+              value={localProfileName}
+              onChange={e => setLocalProfileName(e.target.value)}
+              style={{
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                fontSize: '0.8rem',
+                color: '#fff',
+                outline: 'none'
+              }}
+            />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+              <button
+                type="button"
+                disabled={!localProfileName.trim()}
+                onClick={() => {
+                  localStorage.setItem('valor_active_user_id', 'local');
+                  onSelectProfile('local', 'localstorage');
+                  // Set local settings profileName directly in localStorage
+                  try {
+                    const saved = localStorage.getItem('valor_settings');
+                    const parsed = saved ? JSON.parse(saved) : {};
+                    parsed.profileName = localProfileName.trim();
+                    localStorage.setItem('valor_settings', JSON.stringify(parsed));
+                  } catch {}
+                  
+                  setHasConfiguredProfile(true);
+                  autoAdvance();
+                }}
+                style={{
+                  background: '#3b82f6',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: localProfileName.trim() ? 'pointer' : 'not-allowed',
+                  opacity: localProfileName.trim() ? 1 : 0.6
+                }}
+              >
+                Save & Continue
+              </button>
+              <button
+                type="button"
+                onClick={() => { setChosenMode(null); setLocalProfileName(''); }}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        );
+      }
+
       return (
-        <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem', paddingTop: '6px' }}>
-            {/* Local Storage option with Default floating badge and star icon */}
-            <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.6rem', background: '#3b82f6', color: '#fff', padding: '1px 5px', borderRadius: '3px', position: 'absolute', top: '-9px', left: '10px', fontWeight: 600, zIndex: 1, display: 'flex', alignItems: 'center', gap: '3px', letterSpacing: '0.3px' }}>
-                <svg viewBox="0 0 24 24" width="8" height="8" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                DEFAULT
-              </span>
+        <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {onboardingError && (
+            <div style={{
+              background: 'rgba(239,68,68,0.12)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              color: '#ef4444',
+              fontSize: '0.72rem',
+              padding: '0.5rem',
+              borderRadius: '6px',
+              fontWeight: 500
+            }}>
+              ⚠️ {onboardingError}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>Username</label>
+            <input
+              type="text"
+              placeholder="Enter username..."
+              value={serverUsername}
+              onChange={e => setServerUsername(e.target.value)}
+              style={{
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                fontSize: '0.85rem',
+                color: '#fff',
+                outline: 'none',
+                fontFamily: 'Outfit, sans-serif',
+                transition: 'border-color 0.2s'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>Password</label>
+            <input
+              type="password"
+              placeholder="Enter password..."
+              value={serverPassword}
+              onChange={e => setServerPassword(e.target.value)}
+              style={{
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                fontSize: '0.85rem',
+                color: '#fff',
+                outline: 'none',
+                fontFamily: 'Outfit, sans-serif',
+                transition: 'border-color 0.2s'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+            <button
+              type="button"
+              disabled={!serverUsername.trim() || !serverPassword}
+              onClick={async () => {
+                setOnboardingError('');
+                const profileName = serverUsername.trim();
+                try {
+                  const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/migrate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                      name: profileName, 
+                      username: serverUsername.trim(),
+                      password: serverPassword,
+                      settings: { ...settings, isOnboarded: false },
+                      history: videos 
+                    })
+                  });
+                  const resData = await res.json();
+                  if (resData.success) {
+                    onSelectProfile(resData.userId, 'file');
+                    setHasConfiguredProfile(true);
+                    setServerUsername('');
+                    setServerPassword('');
+                    autoAdvance();
+                  } else {
+                    setOnboardingError(resData.error || 'Failed to create profile');
+                  }
+                } catch (err: any) {
+                  setOnboardingError(err.message || 'Creation failed.');
+                }
+              }}
+              style={{
+                background: '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: (serverUsername.trim() && serverPassword) ? 'pointer' : 'not-allowed',
+                opacity: (serverUsername.trim() && serverPassword) ? 1 : 0.6
+              }}
+            >
+              Create & Sync
+            </button>
+
+            <button
+              type="button"
+              disabled={!serverUsername.trim() || !serverPassword}
+              onClick={async () => {
+                setOnboardingError('');
+                try {
+                  const res = await secureFetch(`${BACKEND_ORIGIN}/api/profile/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: serverUsername.trim(), password: serverPassword })
+                  });
+                  const resData = await res.json();
+                  if (resData.success) {
+                    onSelectProfile(resData.userId, 'file');
+                    setHasConfiguredProfile(true);
+                    setServerUsername('');
+                    setServerPassword('');
+                    autoAdvance();
+                  } else {
+                    setOnboardingError(resData.error || 'Incorrect username or password');
+                  }
+                } catch (err: any) {
+                  setOnboardingError(err.message || 'Login failed.');
+                }
+              }}
+              style={{
+                background: '#2ecc71',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: (serverUsername.trim() && serverPassword) ? 'pointer' : 'not-allowed',
+                opacity: (serverUsername.trim() && serverPassword) ? 1 : 0.6
+              }}
+            >
+              Login & Sync
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setChosenMode(null); setServerUsername(''); setServerPassword(''); }}
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '0.78rem',
+                cursor: 'pointer'
+              }}
+            >
+              Back
+            </button>
+          </div>
+
+          {profiles.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>Or Select Existing Profile:</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', maxHeight: '150px', overflowY: 'auto', paddingRight: '4px' }}>
+                {profiles.map(p => {
+                  const isSelected = activeUserId === p.userId;
+                  return (
+                    <div
+                      key={p.userId}
+                      onClick={() => {
+                        setOnboardingError('');
+                        if (p.hasPassword) {
+                          openAuthModal('login', p, (userId) => {
+                            onSelectProfile(userId, 'file');
+                            setHasConfiguredProfile(true);
+                            autoAdvance();
+                          });
+                        } else {
+                          onSelectProfile(p.userId, 'file');
+                          setHasConfiguredProfile(true);
+                          autoAdvance();
+                        }
+                      }}
+                      style={{
+                        background: isSelected ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)',
+                        border: isSelected ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: '10px',
+                        padding: '14px 10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '10px',
+                        transition: 'all 0.2s ease',
+                        position: 'relative'
+                      }}
+                      onMouseEnter={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                        }
+                      }}
+                    >
+                      {/* Premium Profile Avatar Circle */}
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: isSelected ? '#3b82f6' : 'rgba(255,255,255,0.1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 'bold',
+                        fontSize: '1rem',
+                        color: '#fff',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+                        position: 'relative'
+                      }}>
+                        {(p.name?.[0] || 'U').toUpperCase()}
+                        
+                        {/* Lock Overlay */}
+                        {p.hasPassword && (
+                          <div style={{
+                            position: 'absolute',
+                            bottom: '-2px',
+                            right: '-2px',
+                            background: '#181818',
+                            borderRadius: '50%',
+                            width: '14px',
+                            height: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.6rem',
+                            border: '1px solid rgba(255,255,255,0.2)'
+                          }}>
+                            🔒
+                          </div>
+                        )}
+                      </div>
+
+                      <span style={{ 
+                        fontSize: '0.72rem', 
+                        fontWeight: isSelected ? 600 : 400, 
+                        color: '#fff', 
+                        textAlign: 'center', 
+                        maxWidth: '100%', 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        fontFamily: 'Outfit, sans-serif'
+                      }}>
+                        {p.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (stepId === 'storage') {
+      const isLocal = settings.userId === 'local';
+      
+      const handleMigrate = () => {
+        const name = prompt('Enter a name for your server profile:');
+        if (!name) return;
+        setIsMigrating(true);
+        fetch(`${BACKEND_ORIGIN}/api/profile/migrate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, settings, history: videos })
+        })
+          .then(res => res.json())
+          .then(resData => {
+            setIsMigrating(false);
+            if (resData.success) {
+              onSelectProfile(resData.userId, 'file');
+              setHasConfiguredStorage(true);
+              alert(`Profile successfully migrated! Server UserId: ${resData.userId}`);
+            }
+          })
+          .catch(err => {
+            setIsMigrating(false);
+            console.error('Failed to migrate:', err);
+          });
+      };
+
+      return (
+        <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {isLocal ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.04)', padding: '0.5rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontSize: '0.75rem', color: '#fff' }}>Local Browser Storage Active</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDefaultLangChange('storageMode', 'localstorage');
+                    setHasConfiguredStorage(true);
+                  }}
+                  style={{
+                    background: settings.storageMode === 'localstorage' && hasConfiguredStorage ? '#3b82f6' : 'rgba(255,255,255,0.08)',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '4px',
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Confirm Local Mode
+                </button>
+              </div>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>Want to sync to server instead?</span>
+                <button
+                  type="button"
+                  onClick={handleMigrate}
+                  disabled={isMigrating}
+                  style={{
+                    background: '#2ecc71',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '4px',
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  {isMigrating ? 'Migrating...' : 'Migrate to Server SQLite'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(59,130,246,0.08)', padding: '0.6rem', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.2)' }}>
+              <span style={{ fontSize: '0.75rem', color: '#fff', fontWeight: 600 }}>SQLite Server Storage Active</span>
+              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Profile ID: <code>{settings.userId}</code></span>
               <button
                 type="button"
                 onClick={() => {
-                  handleDefaultLangChange('storageMode', 'localstorage');
+                  handleDefaultLangChange('storageMode', 'file');
                   setHasConfiguredStorage(true);
                 }}
                 style={{
-                  width: '100%',
-                  padding: '0.45rem',
-                  border: settings.storageMode === 'localstorage' && hasConfiguredStorage ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                  background: settings.storageMode === 'localstorage' && hasConfiguredStorage ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)',
-                  borderRadius: '6px',
+                  background: '#3b82f6',
                   color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '0.8rem',
-                  fontWeight: 500
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '0.4rem',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  marginTop: '4px',
+                  cursor: 'pointer'
                 }}
               >
-                Local Storage
+                Confirm Server Storage
               </button>
             </div>
-            
-            <button
-              type="button"
-              onClick={() => {
-                handleDefaultLangChange('storageMode', 'file');
-                setHasConfiguredStorage(true);
-              }}
-              style={{
-                flex: 1,
-                padding: '0.45rem',
-                border: settings.storageMode === 'file' && hasConfiguredStorage ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                background: settings.storageMode === 'file' && hasConfiguredStorage ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.3)',
-                borderRadius: '6px',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 500,
-                alignSelf: 'flex-end'
-              }}
-            >
-              Server File
-            </button>
-          </div>
+          )}
         </div>
       );
     }
@@ -319,9 +840,38 @@ export function Onboarding01({
       <div className="w-full max-w-lg" style={{ width: '100%', maxWidth: '480px' }}>
         <div className="w-md rounded-lg border bg-card p-4 text-card-foreground shadow-xs" style={{ background: '#181818', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '1rem', color: '#fff', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
           <div className="mr-2 mb-4 flex flex-col justify-between sm:flex-row sm:items-center" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 className="ml-2 text-balance font-semibold text-foreground" style={{ margin: 0, marginLeft: '0.5rem', fontSize: '1.05rem', fontWeight: 600 }}>
-              Get started with Valor
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={onComplete}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: 'rgba(255,255,255,0.6)',
+                  padding: '4px 10px',
+                  fontSize: '0.72rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'all 0.2s',
+                  fontFamily: 'Outfit, sans-serif'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                  e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
+                }}
+                title="Skip onboarding"
+              >
+                Skip
+              </button>
+              <h3 className="ml-2 text-balance font-semibold text-foreground" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, fontFamily: 'Outfit, sans-serif' }}>
+                Get started with Valor
+              </h3>
+            </div>
             <div className="mt-2 flex items-center justify-end sm:mt-0" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
               <CircularProgress
                 completed={remainingCount}
@@ -337,36 +887,39 @@ export function Onboarding01({
                 </span>{' '}
                 completed
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button className="h-6 w-6" size="icon" variant="ghost" style={{ width: '24px', height: '24px', padding: 0 }}>
-                    <IconDots aria-hidden="true" className="h-4 w-4 shrink-0" style={{ width: '16px', height: '16px' }} />
-                    <span className="sr-only">Options</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem onClick={() => setDismissed(true)}>
-                    <IconArchive
-                      aria-hidden="true"
-                      className="mr-2 h-4 w-4 shrink-0"
-                      style={{ width: '14px', height: '14px', marginRight: '8px' }}
-                    />
-                    Dismiss
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() =>
-                      window.open('mailto:support@valor.com?subject=Feedback')
-                    }
-                  >
-                    <IconMail
-                      aria-hidden="true"
-                      className="mr-2 h-4 w-4 shrink-0"
-                      style={{ width: '14px', height: '14px', marginRight: '8px' }}
-                    />
-                    Give feedback
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <button
+                type="button"
+                onClick={() => {
+                  openAuthModal('login', null, (userId) => {
+                    onSelectProfile(userId, 'file');
+                    try {
+                      const saved = localStorage.getItem('valor_settings');
+                      const parsed = saved ? JSON.parse(saved) : {};
+                      parsed.isOnboarded = true;
+                      parsed.userId = userId;
+                      parsed.storageMode = 'file';
+                      localStorage.setItem('valor_settings', JSON.stringify(parsed));
+                    } catch {}
+                    onComplete();
+                  });
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  padding: '4px 10px',
+                  fontSize: '0.72rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'background 0.2s',
+                  marginLeft: '4px'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+              >
+                Login
+              </button>
             </div>
           </div>
 
