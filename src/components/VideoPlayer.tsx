@@ -2967,14 +2967,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Center Screen HUD Controls */}
       {!isLocked && !hideUIOverlays && (showPlayButton || uiConfig.allowUiSkipping || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') && (
         <div 
-          className={`center-controls-hud ${controlsVisible ? 'visible' : 'hidden'} ${getHighlightClass('showPlayButton')}`} 
+          className={`center-controls-hud ${((controlsVisible && !isPlaying) || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') ? 'visible' : 'hidden'} ${getHighlightClass('showPlayButton')}`} 
           onClick={(e) => {
             e.stopPropagation();
             if (showPlayButtonMode === 'enable') togglePlay();
           }}
           style={{
             opacity: showPlayButtonMode === 'enable' ? 1 : 0.5,
-            pointerEvents: showPlayButtonMode === 'enable' ? 'auto' : 'none'
+            pointerEvents: ((controlsVisible && !isPlaying) || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') ? 'auto' : 'none'
           }}
         >
           {(uiConfig.allowUiSkipping || hoveredSetting === 'allowUiSkipping') && (
