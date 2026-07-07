@@ -3035,6 +3035,46 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Bookmark Timeline Dots */}
                   {bookmarks.map((bm) => {
                     const percent = (bm.time / (duration || 1)) * 100;
+                    const hasRange = bm.endTime !== undefined && bm.endTime !== null && bm.endTime > bm.time;
+                    const endPercent = hasRange ? (bm.endTime / (duration || 1)) * 100 : percent;
+                    const widthPercent = endPercent - percent;
+                    
+                    if (hasRange) {
+                      return (
+                        <div 
+                          key={bm.id}
+                          className={`timeline-bookmark-range ${bm.isIntro ? 'intro-range' : bm.isOutro ? 'outro-range' : ''}`}
+                          style={{ 
+                            left: `${percent}%`,
+                            width: `${widthPercent}%`,
+                            position: 'absolute',
+                            height: '6px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: bm.isIntro ? 'rgba(59, 130, 246, 0.45)' : bm.isOutro ? 'rgba(168, 85, 247, 0.45)' : 'rgba(234, 179, 8, 0.45)',
+                            borderLeft: bm.isIntro ? '1px solid #3b82f6' : bm.isOutro ? '1px solid #a855f7' : '1px solid #eab308',
+                            borderRight: bm.isIntro ? '1px solid #3b82f6' : bm.isOutro ? '1px solid #a855f7' : '1px solid #eab308',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            zIndex: 3
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (uiConfig.blockSeekingCompletely) return;
+                            if (videoRef.current) {
+                              videoRef.current.currentTime = bm.time;
+                              setCurrentTime(bm.time);
+                            }
+                          }}
+                        >
+                          <div className="timeline-bookmark-tooltip">
+                            <span className="tooltip-label">{bm.label} (Range)</span>
+                            <span className="tooltip-time">{formatTime(bm.time)} - {formatTime(bm.endTime)}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
                     return (
                       <div 
                         key={bm.id}
@@ -5550,8 +5590,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         .volume-control-group-premium {
           display: flex;
           align-items: center;
-          background: rgba(18, 18, 18, 0.95);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: transparent !important;
+          border: none !important;
           border-radius: 8px;
           padding: 2px;
           height: 38px;
@@ -5607,7 +5647,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           width: 130px;
           height: 3px;
           -webkit-appearance: none;
-          background: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.15);
           border-radius: 2px;
           outline: none;
           cursor: pointer;
@@ -5621,29 +5661,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           -webkit-appearance: none;
           width: 12px;
           height: 12px;
-          border-radius: 50%;
-          background: #007aff;
+          border-radius: 9999px !important;
+          background: #ffffff !important;
           margin-top: -4.5px; /* centers thumb on 3px track */
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
           transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s;
-          border: none;
+          border: none !important;
         }
         .volume-slider-premium:hover::-webkit-slider-thumb {
           transform: scale(1.2);
-          background-color: #0084ff;
+          background-color: #ffffff !important;
         }
         .volume-slider-premium::-moz-range-thumb {
           width: 12px;
           height: 12px;
-          border: none;
-          border-radius: 50%;
-          background: #007aff;
+          border: none !important;
+          border-radius: 9999px !important;
+          background: #ffffff !important;
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
           transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s;
         }
         .volume-slider-premium:hover::-moz-range-thumb {
           transform: scale(1.2);
-          background-color: #0084ff;
+          background-color: #ffffff !important;
         }
         .volume-percent-text-premium {
           color: #ffffff;

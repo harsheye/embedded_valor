@@ -441,6 +441,216 @@ const backendServer = http.createServer((req, res) => {
     return;
   }
 
+  // GraphQL API
+  if (pathname === '/api/graphql' && req.method === 'POST') {
+    getJsonBody(req).then(body => {
+      const query = body.query || '';
+      const variables = body.variables || {};
+      
+      // GetProfiles query
+      if (query.includes('profiles') || query.includes('GetProfiles')) {
+        try {
+          const rows = db.prepare("SELECT userId, name, username, (password IS NOT NULL AND password != '') AS hasPassword, createdAt FROM profiles").all();
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ data: { profiles: rows } }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ errors: [{ message: e.message }] }));
+        }
+        return;
+      }
+      
+      // GetProfileData query
+      if (query.includes('profile') || query.includes('GetProfileData')) {
+        let userId = variables.userId;
+        if (!userId) {
+          const match = query.match(/profile\s*\(\s*userId\s*:\s*"([^"]+)"\)/);
+          if (match) userId = match[1];
+        }
+        
+        if (!userId) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ errors: [{ message: 'Missing userId variable or argument' }] }));
+          return;
+        }
+        
+        try {
+          // Fetch settings
+          const settingsQuery = db.prepare('SELECT settingsJson FROM settings WHERE userId = ?');
+          const settingsRow = settingsQuery.get(userId);
+          const settings = settingsRow ? JSON.parse(settingsRow.settingsJson) : {};
+
+          // Fetch history
+          const historyQuery = db.prepare('SELECT * FROM history WHERE userId = ?');
+          const historyRows = historyQuery.all(userId);
+
+          // Fetch bookmarks
+          const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ?');
+          const bookmarksRows = bookmarksQuery.all(userId);
+
+          // Combine history and bookmarks
+          const videos = historyRows.map(row => {
+            const videoBookmarks = bookmarksRows
+              .filter(bm => bm.videoId === row.videoId)
+              .map(bm => ({
+                id: bm.id,
+                time: bm.time,
+                endTime: bm.endTime !== null ? bm.endTime : undefined,
+                label: bm.label,
+                isIntro: bm.isIntro === 1,
+                isOutro: bm.isOutro === 1,
+                skipEnabled: bm.skipEnabled === 1
+              }));
+            
+            return {
+              id: row.videoId,
+              title: row.title,
+              url: row.url || '',
+              type: row.type || 'local',
+              fileName: row.fileName || '',
+              duration: row.duration,
+              currentTime: row.currentTime,
+              lastPlayedDate: row.lastPlayedDate,
+              totalTimeWatched: row.totalTimeWatched,
+              rating: row.rating,
+              timeToFinish: row.timeToFinish,
+              sessions: row.sessions ? JSON.parse(row.sessions) : [],
+              localFilePath: row.localFilePath,
+              playedDates: row.playedDates ? JSON.parse(row.playedDates) : [],
+              format: row.format || null,
+              streams: row.streams ? JSON.parse(row.streams) : [],
+              audioTracks: row.audioTracks ? JSON.parse(row.audioTracks) : [],
+              subtitleTracks: row.subtitleTracks ? JSON.parse(row.subtitleTracks) : [],
+              bookmarks: videoBookmarks
+            };
+          });
+
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ data: { profile: { settings, history: videos } } }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ errors: [{ message: e.message }] }));
+        }
+        return;
+      }
+      
+      // SaveSettings mutation
+      if (query.includes('SaveSettings') || query.includes('saveSettings')) {
+        const userId = variables.userId;
+        const settingsData = variables.settings;
+        if (userId && userId !== 'local' && !userId.startsWith('local_')) {
+          try {
+            const insert = db.prepare('INSERT OR REPLACE INTO settings (userId, settingsJson) VALUES (?, ?)');
+            insert.run(userId, JSON.stringify(settingsData));
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ data: { saveSettings: { success: true } } }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ errors: [{ message: e.message }] }));
+          }
+        } else {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ data: { saveSettings: { success: true } } }));
+        }
+        return;
+      }
+      
+      // SaveHistory mutation
+      if (query.includes('SaveHistory') || query.includes('saveHistory')) {
+        const userId = variables.userId;
+        const historyData = variables.history;
+        if (userId && userId !== 'local' && !userId.startsWith('local_')) {
+          try {
+            // Delete existing history & bookmarks first to match full sync behavior
+            const deleteHistory = db.prepare('DELETE FROM history WHERE userId = ?');
+            deleteHistory.run(userId);
+            const deleteBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ?');
+            deleteBookmarks.run(userId);
+
+            const insertHistory = db.prepare(`
+              INSERT OR REPLACE INTO history 
+              (userId, videoId, title, url, type, fileName, duration, currentTime, lastPlayedDate, totalTimeWatched, rating, timeToFinish, sessions, localFilePath, playedDates, format, streams, audioTracks, subtitleTracks)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            const insertBookmark = db.prepare(`
+              INSERT OR REPLACE INTO bookmarks
+              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            if (Array.isArray(historyData)) {
+              for (const video of historyData) {
+                insertHistory.run(
+                  userId,
+                  video.id,
+                  video.title || 'Untitled Video',
+                  video.url || '',
+                  video.type || 'local',
+                  video.fileName || '',
+                  video.duration || null,
+                  video.currentTime || null,
+                  video.lastPlayedDate || null,
+                  video.totalTimeWatched || null,
+                  video.rating || null,
+                  video.timeToFinish || null,
+                  video.sessions ? JSON.stringify(video.sessions) : null,
+                  video.localFilePath || null,
+                  video.playedDates ? JSON.stringify(video.playedDates) : null,
+                  video.format || null,
+                  video.streams ? JSON.stringify(video.streams) : null,
+                  video.audioTracks ? JSON.stringify(video.audioTracks) : null,
+                  video.subtitleTracks ? JSON.stringify(video.subtitleTracks) : null
+                );
+
+                if (video.bookmarks && Array.isArray(video.bookmarks)) {
+                  for (const bm of video.bookmarks) {
+                    insertBookmark.run(
+                      userId,
+                      video.id,
+                      bm.id,
+                      bm.time,
+                      bm.endTime !== undefined ? bm.endTime : null,
+                      bm.label || '',
+                      bm.isIntro ? 1 : 0,
+                      bm.isOutro ? 1 : 0,
+                      bm.skipEnabled ? 1 : 0
+                    );
+                  }
+                }
+              }
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ data: { saveHistory: { success: true } } }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ errors: [{ message: e.message }] }));
+          }
+        } else {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ data: { saveHistory: { success: true } } }));
+        }
+        return;
+      }
+      
+      // Unknown query
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ errors: [{ message: 'Unsupported GraphQL operation' }] }));
+    });
+    return;
+  }
+
   // Get Profile Data API (Combined Settings & History)
   if (pathname === '/api/profile/data' && req.method === 'GET') {
     const userId = parsedUrl.searchParams.get('userId');

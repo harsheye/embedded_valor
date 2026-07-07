@@ -331,14 +331,36 @@ export function Onboarding01({
                 type="button"
                 disabled={!localProfileName.trim()}
                 onClick={() => {
-                  localStorage.setItem('valor_active_user_id', 'local');
-                  onSelectProfile('local', 'localstorage');
-                  // Set local settings profileName directly in localStorage
+                  const newUserId = 'local_' + Math.random().toString(36).substring(2, 11);
+                  localStorage.setItem('valor_active_user_id', newUserId);
+                  
+                  let localProfiles = [];
                   try {
-                    const saved = localStorage.getItem('valor_settings');
-                    const parsed = saved ? JSON.parse(saved) : {};
+                    const localSaved = localStorage.getItem('valor_local_profiles');
+                    if (localSaved) {
+                      localProfiles = JSON.parse(localSaved);
+                    }
+                  } catch {}
+                  
+                  const newProfile = {
+                    userId: newUserId,
+                    name: localProfileName.trim(),
+                    storageMode: 'localstorage',
+                    hasPassword: false
+                  };
+                  localProfiles.push(newProfile);
+                  localStorage.setItem('valor_local_profiles', JSON.stringify(localProfiles));
+                  
+                  onSelectProfile(newUserId, 'localstorage');
+                  
+                  try {
+                    const settingsKey = `valor_settings_${newUserId}`;
+                    const saved = localStorage.getItem(settingsKey) || '{}';
+                    const parsed = JSON.parse(saved);
                     parsed.profileName = localProfileName.trim();
-                    localStorage.setItem('valor_settings', JSON.stringify(parsed));
+                    parsed.userId = newUserId;
+                    parsed.storageMode = 'localstorage';
+                    localStorage.setItem(settingsKey, JSON.stringify(parsed));
                   } catch {}
                   
                   setHasConfiguredProfile(true);
