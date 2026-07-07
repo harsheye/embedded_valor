@@ -586,6 +586,7 @@ function App() {
     saveVolume: true,
     saveSettings: true,
     userId: 'local',
+    profileName: 'Local Profile',
     storageMode: 'localstorage' as 'localstorage' | 'file',
     ratingThreshold: 3 as number,
     calendarStyle: 'grid' as 'grid' | 'list',
@@ -659,7 +660,6 @@ function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [selectedProfileForLogin, setSelectedProfileForLogin] = useState<any | null>(null);
-  const [loginPassword, setLoginPassword] = useState('');
   const [onAuthSuccess, setOnAuthSuccess] = useState<((userId: string) => void) | null>(null);
 
   // Delete profile modal state
@@ -690,7 +690,6 @@ function App() {
   const openAuthModal = (tab: 'login' | 'signup', targetProfile?: any, onSuccess?: (userId: string) => void) => {
     setAuthModalTab(tab);
     setSelectedProfileForLogin(targetProfile || null);
-    setLoginPassword('');
     setAuthError('');
     setOnAuthSuccess(() => onSuccess || null);
     setIsAuthModalOpen(true);
@@ -798,7 +797,7 @@ function App() {
             `, { userId: singleProfile.userId });
             const profileData = pData.profile || {};
             
-            setSettings(prev => {
+            setSettings(() => {
               const updated = {
                 ...defaultSettings,
                 ...(profileData.settings || {}),
@@ -1059,7 +1058,6 @@ function App() {
 
   useEffect(() => {
     const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
-    const settingsKey = settings.userId === 'local' || !settings.userId ? 'valor_settings' : `valor_settings_${settings.userId}`;
 
     if (!settings.saveHistory) {
       localStorage.removeItem(videosKey);

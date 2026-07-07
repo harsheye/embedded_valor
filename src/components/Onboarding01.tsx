@@ -1,20 +1,11 @@
 import {
-  IconArchive,
   IconChevronRight,
   IconCircleCheckFilled,
   IconCircleDashed,
-  IconDots,
-  IconMail,
 } from '@tabler/icons-react';
 import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Collapsible, CollapsibleContent } from './ui/collapsible';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
 import { cn } from '../lib/utils';
 import { CustomSelect } from './CustomSelect';
 import { BACKEND_ORIGIN } from '../App';
