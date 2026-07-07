@@ -145,6 +145,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [skipEnabled, setSkipEnabled] = useState(false);
   const [bookmarkType, setBookmarkType] = useState<'standard' | 'intro' | 'outro'>('standard');
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
+  const [startTimeStr, setStartTimeStr] = useState('');
+  const [endTimeStr, setEndTimeStr] = useState('');
 
   const [hoveredSetting, setHoveredSetting] = useState<string | null>(null);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
@@ -409,11 +411,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [video.id]);
 
   const handleSaveBookmark = () => {
+    const finalTime = Math.round(newBookmarkTime);
+    const finalEndTime = (isIntro || isOutro) ? Math.round(newBookmarkEndTime) : undefined;
     const newBookmark = {
       id: `bm-${Date.now()}`,
-      time: newBookmarkTime,
-      endTime: (isIntro || isOutro) ? newBookmarkEndTime : undefined,
-      label: newBookmarkLabel || `${isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark'} @ ${formatTime(newBookmarkTime)}`,
+      time: finalTime,
+      endTime: finalEndTime,
+      label: newBookmarkLabel || `${isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark'} @ ${formatTime(finalTime)}`,
       isIntro,
       isOutro,
       skipEnabled
@@ -798,7 +802,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const audioStreams = streams.filter(s => s.type === 'audio');
   const subtitleStreams = streams.filter(s => 
     s.type === 'subtitle' && 
-    !/dvd_subtitle|dvdsub|pgs|hdmv_pgs|xsub/i.test(s.codec || '')
+    !/dvd_subtitle|dvdsub|pgs|hdmv_pgs|xsub|vobsub/i.test(s.codec || '')
   );
 
   // Clear hover timeouts and reset FFmpeg on unmount or when changing videos
@@ -1251,8 +1255,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           t.type === 'subtitle' && 
           !/dvd_subtitle|dvdsub|pgs|hdmv_pgs|xsub|vobsub/i.test(t.codec || '')
         );
-        const subStreamIdx = subtitleStreams.findIndex(s => s.index === streamIndex);
-        const targetTrack = mkvSubTracks[subStreamIdx !== -1 ? subStreamIdx : 0];
+        const streamLang = subStream?.language?.toLowerCase().trim();
+        let targetTrack = mkvSubTracks.find(t => {
+          const trackLang = t.language?.toLowerCase().trim();
+          return trackLang && streamLang && (trackLang === streamLang || trackLang.startsWith(streamLang) || streamLang.startsWith(trackLang));
+        });
+        if (!targetTrack) {
+          const subStreamIdx = subtitleStreams.findIndex(s => s.index === streamIndex);
+          targetTrack = mkvSubTracks[subStreamIdx !== -1 ? subStreamIdx : 0];
+        }
         
         if (targetTrack) {
           const trackNumber = targetTrack.number;
@@ -1891,6 +1902,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleKeyDownRef = useRef<((e: KeyboardEvent) => void) | undefined>(undefined);
   handleKeyDownRef.current = (e: KeyboardEvent) => {
+    const pressedKey = e.key.toLowerCase();
+    
+    // If add bookmark dialog or settings panel is open, ignore player hotkeys
+    // (Except Escape to close the dialog/panel)
+    if (showAddDialog || showSettingsPanel) {
+      if (pressedKey === 'escape') {
+        e.preventDefault();
+        setShowAddDialog(false);
+        setShowSettingsPanel(false);
+        setIsSettingsExpanded(false);
+      }
+      return;
+    }
+
     // Ignore key events if the user is typing in a text field
     if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
       return;
@@ -1920,7 +1945,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ...(parsed.keybinds || {})
     };
 
-    const pressedKey = e.key.toLowerCase();
     const lockControlsKey = (keybinds.lockControls || 'w').toLowerCase();
     const openSettingsKey = (keybinds.openSettings || 'delete').toLowerCase();
     const addBookmarkKey = (keybinds.addBookmark || 't').toLowerCase();
@@ -1955,14 +1979,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setShowAddDialog(false);
       } else {
         if (videoRef.current) {
-          setNewBookmarkTime(videoRef.current.currentTime);
-          setNewBookmarkEndTime(videoRef.current.currentTime + 90);
-          setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
+          const curTimeSecs = Math.round(videoRef.current.currentTime);
+          setNewBookmarkTime(curTimeSecs);
+          setNewBookmarkEndTime(curTimeSecs + 90);
+          setNewBookmarkLabel(`Bookmark @ ${formatTime(curTimeSecs)}`);
           setIsIntro(false);
           setIsOutro(false);
           setSkipEnabled(false);
           setBookmarkType('standard');
           setTypeDropdownOpen(false);
+          setStartTimeStr(formatTime(curTimeSecs));
+          setEndTimeStr(formatTime(curTimeSecs + 90));
           setShowAddDialog(true);
         }
       }
@@ -2458,6 +2485,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return `${h}:${mStr}:${sStr}`;
     }
     return `${m}:${sStr}`;
+  };
+
+  const parseTimeStringToSeconds = (val: string): number => {
+    const clean = val.replace(/[^0-9:]/g, '');
+    const parts = clean.split(':').map(Number);
+    if (parts.length === 2) {
+      return (parts[0] * 60) + parts[1];
+    }
+    if (parts.length === 3) {
+      return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+    }
+    const parsed = parseInt(clean, 10);
+    return isNaN(parsed) ? 0 : parsed;
   };
 
   // Progress Bar Hover Indicator
@@ -3307,14 +3347,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           style={{ padding: '2px 8px', fontSize: '0.7rem' }}
                           onClick={() => {
                             if (videoRef.current) {
-                              setNewBookmarkTime(videoRef.current.currentTime);
-                              setNewBookmarkEndTime(videoRef.current.currentTime + 90);
-                              setNewBookmarkLabel(`Bookmark @ ${formatTime(videoRef.current.currentTime)}`);
+                              const curTimeSecs = Math.round(videoRef.current.currentTime);
+                              setNewBookmarkTime(curTimeSecs);
+                              setNewBookmarkEndTime(curTimeSecs + 90);
+                              setNewBookmarkLabel(`Bookmark @ ${formatTime(curTimeSecs)}`);
                               setIsIntro(false);
                               setIsOutro(false);
                               setSkipEnabled(false);
                               setBookmarkType('standard');
                               setTypeDropdownOpen(false);
+                              setStartTimeStr(formatTime(curTimeSecs));
+                              setEndTimeStr(formatTime(curTimeSecs + 90));
                               setShowAddDialog(true);
                               setShowBookmarksPopover(false);
                             }
@@ -3516,7 +3559,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Add Bookmark Dialog Overlay */}
       {showAddDialog && (
         <div 
-          className="bookmark-dialog-overlay animate-overlay-fade-in" 
+          className="bookmark-dialog-overlay" 
           onClick={() => setShowAddDialog(false)}
           style={{
             position: 'absolute',
@@ -3535,7 +3578,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }}
         >
           <div 
-            className="bookmark-dialog-box animate-slide-in-right" 
+            className="bookmark-dialog-box" 
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'rgba(18, 18, 18, 0.96)',
@@ -3682,127 +3725,59 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
               <div className="dialog-field" style={{ flex: 1 }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
-                  Start Time ({formatTime(newBookmarkTime)})
+                  Start Time
                 </label>
-                <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <input 
-                      type="number" 
-                      min="0"
-                      placeholder="Min"
-                      value={Math.floor(newBookmarkTime / 60) || 0}
-                      onChange={(e) => {
-                        const minVal = parseInt(e.target.value) || 0;
-                        const secVal = newBookmarkTime % 60;
-                        setNewBookmarkTime(minVal * 60 + secVal);
-                      }}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.06)',
-                        border: '1px solid rgba(255, 255, 255, 0.12)',
-                        borderRadius: '6px',
-                        color: '#fff',
-                        padding: '0.6rem 0.5rem',
-                        fontSize: '0.9rem',
-                        textAlign: 'center',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        outline: 'none'
-                      }}
-                    />
-                    <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Min</span>
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <input 
-                      type="number" 
-                      min="0"
-                      max="59"
-                      step="0.1"
-                      placeholder="Sec"
-                      value={Math.round((newBookmarkTime % 60) * 10) / 10 || 0}
-                      onChange={(e) => {
-                        const minVal = Math.floor(newBookmarkTime / 60);
-                        const secVal = parseFloat(e.target.value) || 0;
-                        setNewBookmarkTime(minVal * 60 + secVal);
-                      }}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.06)',
-                        border: '1px solid rgba(255, 255, 255, 0.12)',
-                        borderRadius: '6px',
-                        color: '#fff',
-                        padding: '0.6rem 0.5rem',
-                        fontSize: '0.9rem',
-                        textAlign: 'center',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        outline: 'none'
-                      }}
-                    />
-                    <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Sec</span>
-                  </div>
-                </div>
+                <input 
+                  type="text" 
+                  value={startTimeStr} 
+                  placeholder="e.g. 1:20"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setStartTimeStr(val);
+                    const parsed = parseTimeStringToSeconds(val);
+                    setNewBookmarkTime(parsed);
+                  }}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    padding: '0.6rem 0.85rem',
+                    fontSize: '0.9rem',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    outline: 'none'
+                  }}
+                />
               </div>
               
               {(bookmarkType === 'intro' || bookmarkType === 'outro' || isIntro || isOutro) && (
                 <div className="dialog-field" style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
-                    End Time ({formatTime(newBookmarkEndTime)})
+                    End Time
                   </label>
-                  <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <input 
-                        type="number" 
-                        min="0"
-                        placeholder="Min"
-                        value={Math.floor(newBookmarkEndTime / 60) || 0}
-                        onChange={(e) => {
-                          const minVal = parseInt(e.target.value) || 0;
-                          const secVal = newBookmarkEndTime % 60;
-                          setNewBookmarkEndTime(minVal * 60 + secVal);
-                        }}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.06)',
-                          border: '1px solid rgba(255, 255, 255, 0.12)',
-                          borderRadius: '6px',
-                          color: '#fff',
-                          padding: '0.6rem 0.5rem',
-                          fontSize: '0.9rem',
-                          textAlign: 'center',
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          outline: 'none'
-                        }}
-                      />
-                      <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Min</span>
-                    </div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <input 
-                        type="number" 
-                        min="0"
-                        max="59"
-                        step="0.1"
-                        placeholder="Sec"
-                        value={Math.round((newBookmarkEndTime % 60) * 10) / 10 || 0}
-                        onChange={(e) => {
-                          const minVal = Math.floor(newBookmarkEndTime / 60);
-                          const secVal = parseFloat(e.target.value) || 0;
-                          setNewBookmarkEndTime(minVal * 60 + secVal);
-                        }}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.06)',
-                          border: '1px solid rgba(255, 255, 255, 0.12)',
-                          borderRadius: '6px',
-                          color: '#fff',
-                          padding: '0.6rem 0.5rem',
-                          fontSize: '0.9rem',
-                          textAlign: 'center',
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          outline: 'none'
-                        }}
-                      />
-                      <span style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '2px' }}>Sec</span>
-                    </div>
-                  </div>
+                  <input 
+                    type="text" 
+                    value={endTimeStr} 
+                    placeholder="e.g. 2:50"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEndTimeStr(val);
+                      const parsed = parseTimeStringToSeconds(val);
+                      setNewBookmarkEndTime(parsed);
+                    }}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      padding: '0.6rem 0.85rem',
+                      fontSize: '0.9rem',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      outline: 'none'
+                    }}
+                  />
                 </div>
               )}
             </div>
