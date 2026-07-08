@@ -689,6 +689,7 @@ function App() {
     profileName: 'Local Profile',
     storageMode: 'localstorage' as 'localstorage' | 'file',
     ratingThreshold: 3 as number,
+    theIntroDbApiKey: '' as string,
     calendarStyle: 'grid' as 'grid' | 'list',
     isOnboarded: false as boolean,
     subSettings: {
@@ -2732,6 +2733,30 @@ function App() {
                                   value={settings.calendarStyle} 
                                   onChange={(val) => handleDefaultLangChange('calendarStyle', val)}
                                   options={calendarStyleOptions}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="settings-section">
+                              <h3>TheIntroDB Integration</h3>
+                              <p className="settings-section-desc">API key from theintrodb.org to fetch and prioritize skip segments (Intros, Recaps, Outros).</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.6rem' }}>
+                                <input 
+                                  type="text" 
+                                  value={settings.theIntroDbApiKey || ''}
+                                  placeholder="theintrodb:user_xxxx:xxxx"
+                                  onChange={(e) => handleDefaultLangChange('theIntroDbApiKey', e.target.value)}
+                                  style={{
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    borderRadius: '6px',
+                                    color: '#fff',
+                                    padding: '0.5rem 0.75rem',
+                                    fontSize: '0.85rem',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                    outline: 'none'
+                                  }}
                                 />
                               </div>
                             </div>

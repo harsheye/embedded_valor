@@ -1078,7 +1078,9 @@ const backendServer = http.createServer((req, res) => {
             `);
 
             if (Array.isArray(data)) {
+              const deleteVideoBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ? AND videoId = ?');
               for (const video of data) {
+                deleteVideoBookmarks.run(userId, video.id);
                 insertHistory.run(
                   userId,
                   video.id,

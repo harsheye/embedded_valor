@@ -20,6 +20,7 @@ import { classifyVideoTitle } from '../utils/libraryClassifier';
 interface VideoPlayerProps {
   video: VideoItem;
   userId?: string;
+  videos?: VideoItem[];
   onBack: () => void;
   onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean, targetVideoId?: string) => void;
   hideUIOverlays?: boolean;
@@ -103,7 +104,7 @@ const OdometerClock: React.FC<{ date: Date }> = ({ date }) => {
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video, 
-  userId,
+  videos,
   onBack, 
   onUpdateVideo, 
   hideUIOverlays: propHideUIOverlays = false,
@@ -356,11 +357,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Series Bookmarks Preset Syncing
   useEffect(() => {
-    const videosKey = userId === 'local' || !userId ? 'valor_videos' : `valor_videos_${userId}`;
-    const savedVideos = localStorage.getItem(videosKey);
-    if (!savedVideos) return;
+    if (!videos) return;
     try {
-      const allVideos = JSON.parse(savedVideos) as VideoItem[];
       const seriesInfo = classifyVideoTitle(video.title);
       if (seriesInfo.type === 'series' && seriesInfo.seriesTitle) {
         const currentBookmarks = video.bookmarks || [];
@@ -368,17 +366,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const hasOutro = currentBookmarks.some((b: any) => b.isOutro);
 
         if (!hasIntro || !hasOutro) {
-          const otherEpisodes = allVideos.filter(
+          const otherEpisodes = videos.filter(
             v => v.id !== video.id && v.title && classifyVideoTitle(v.title).type === 'series' && classifyVideoTitle(v.title).seriesTitle === seriesInfo.seriesTitle
           );
           
           let introToCopy: any = null;
           let outroToCopy: any = null;
+          let outroSourceEp: any = null;
 
           for (const ep of otherEpisodes) {
             const epBms = ep.bookmarks || [];
             if (!introToCopy) introToCopy = epBms.find((b: any) => b.isIntro);
-            if (!outroToCopy) outroToCopy = epBms.find((b: any) => b.isOutro);
+            if (!outroToCopy) {
+              outroToCopy = epBms.find((b: any) => b.isOutro);
+              if (outroToCopy) outroSourceEp = ep;
+            }
             if (introToCopy && outroToCopy) break;
           }
 
@@ -390,7 +392,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             updated = true;
           }
           if (outroToCopy && !hasOutro) {
-            newBms.push({ ...outroToCopy, id: `bm-outro-${video.id}` });
+            const outroOffset = outroSourceEp?.duration ? (outroSourceEp.duration - outroToCopy.time) : null;
+            const newOutroTime = (outroOffset !== null && duration) 
+              ? Math.max(0, Math.round(duration - outroOffset)) 
+              : outroToCopy.time;
+            newBms.push({ ...outroToCopy, time: newOutroTime, id: `bm-outro-${video.id}` });
             updated = true;
           }
 
@@ -408,11 +414,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } catch (err) {
       console.error('Error loading series presets:', err);
     }
-  }, [video.id]);
+  }, [video.id, video.title, videos]);
 
   const handleSaveBookmark = () => {
     const finalTime = Math.round(newBookmarkTime);
-    const finalEndTime = (isIntro || isOutro) ? Math.round(newBookmarkEndTime) : undefined;
+    const finalEndTime = isIntro ? Math.round(newBookmarkEndTime) : undefined;
     const newBookmark = {
       id: `bm-${Date.now()}`,
       time: finalTime,
@@ -459,6 +465,142 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showRatingPrompt, setShowRatingPrompt] = useState(false);
   const [userRating, setUserRating] = useState<number | null>((video as any).rating || null);
   const ratingPromptedRef = useRef<boolean>(!!(video as any).rating);
+
+  // TheIntroDB Bookmarks Fetching
+  useEffect(() => {
+    if (duration <= 0) return;
+
+    const fetchIntroDb = async () => {
+      try {
+        const seriesInfo = classifyVideoTitle(video.title);
+        const isTV = seriesInfo.type === 'series';
+        
+        // 1. Search TMDB
+        const tmdbToken = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
+        let searchUrl = "";
+        if (isTV && seriesInfo.seriesTitle) {
+          searchUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(seriesInfo.seriesTitle)}&include_adult=false`;
+        } else {
+          searchUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(seriesInfo.displayTitle)}&include_adult=false`;
+        }
+
+        const searchRes = await fetch(searchUrl, {
+          headers: {
+            'Authorization': `Bearer ${tmdbToken}`,
+            'accept': 'application/json'
+          }
+        });
+
+        if (!searchRes.ok) throw new Error('TMDB search failed');
+        const searchData = await searchRes.json();
+        if (!searchData.results || searchData.results.length === 0) {
+          logger.player('No TMDB search results found for title: ' + video.title);
+          return;
+        }
+
+        const tmdbId = searchData.results[0].id;
+
+        // 2. Fetch from theintrodb.org
+        const durationMs = Math.round(duration * 1000);
+        let introDbUrl = `https://api.theintrodb.org/v3/media?tmdb_id=${tmdbId}`;
+        if (isTV) {
+          introDbUrl += `&season=${seriesInfo.season || 1}&episode=${seriesInfo.episode || 1}`;
+        }
+        introDbUrl += `&duration_ms=${durationMs}`;
+
+        // Read API key
+        const savedSettings = localStorage.getItem('valor_settings');
+        let apiKey = "";
+        if (savedSettings) {
+          try {
+            const parsed = JSON.parse(savedSettings);
+            apiKey = parsed.theIntroDbApiKey || "";
+          } catch {}
+        }
+
+        const introDbHeaders: Record<string, string> = {
+          'accept': 'application/json'
+        };
+        let finalUrl = introDbUrl;
+        if (apiKey) {
+          introDbHeaders['Authorization'] = `Bearer ${apiKey}`;
+          introDbHeaders['X-API-Key'] = apiKey;
+          introDbHeaders['api_key'] = apiKey;
+          introDbHeaders['apikey'] = apiKey;
+          finalUrl += `&api_key=${encodeURIComponent(apiKey)}`;
+        }
+
+        const introDbRes = await fetch(finalUrl, { headers: introDbHeaders });
+        if (!introDbRes.ok) throw new Error('TheIntroDB request failed');
+        const introDbData = await introDbRes.json();
+
+        // 3. Map to bookmarks
+        const apiBms: any[] = [];
+        const msToSec = (ms: number | null | undefined): number | undefined => {
+          if (ms === null || ms === undefined) return undefined;
+          return Math.round(ms / 1000);
+        };
+
+        if (introDbData.intro && Array.isArray(introDbData.intro)) {
+          introDbData.intro.forEach((item: any, idx: number) => {
+            apiBms.push({
+              id: `api-intro-${idx}`,
+              time: msToSec(item.start_ms) || 0,
+              endTime: msToSec(item.end_ms),
+              label: 'Intro',
+              isIntro: true,
+              isOutro: false,
+              skipEnabled: true
+            });
+          });
+        }
+
+        if (introDbData.recap && Array.isArray(introDbData.recap)) {
+          introDbData.recap.forEach((item: any, idx: number) => {
+            apiBms.push({
+              id: `api-recap-${idx}`,
+              time: msToSec(item.start_ms) || 0,
+              endTime: msToSec(item.end_ms),
+              label: 'Recap',
+              isIntro: true,
+              isOutro: false,
+              skipEnabled: true
+            });
+          });
+        }
+
+        if (introDbData.credits && Array.isArray(introDbData.credits)) {
+          introDbData.credits.forEach((item: any, idx: number) => {
+            apiBms.push({
+              id: `api-credits-${idx}`,
+              time: msToSec(item.start_ms) || 0,
+              endTime: msToSec(item.end_ms),
+              label: 'Credits/Outro',
+              isIntro: false,
+              isOutro: true,
+              skipEnabled: true
+            });
+          });
+        }
+
+        if (apiBms.length > 0) {
+          const sorted = apiBms.sort((a, b) => a.time - b.time);
+          setBookmarks(sorted);
+          onUpdateVideo((prev: any) => ({
+            ...prev,
+            bookmarks: sorted
+          }));
+          logger.player(`Loaded ${sorted.length} bookmarks from TheIntroDB`);
+        } else {
+          logger.player('TheIntroDB returned 0 segments for: ' + video.title);
+        }
+      } catch (err) {
+        logger.player('Failed to fetch from TheIntroDB: ' + err);
+      }
+    };
+
+    fetchIntroDb();
+  }, [duration, video.id, video.title]);
 
   const [volume, setVolume] = useState<number>(() => {
     try {
@@ -2837,12 +2979,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   
               // Auto-Skip Intros & Outros
               if (uiConfig.autoSkipIntroOutro && !isScrubbing) {
-                const activeSkip = bookmarks.find(
-                  bm => bm.skipEnabled && bm.endTime && time >= bm.time && time < bm.endTime
-                );
+                const activeSkip = bookmarks.find(bm => {
+                  if (!bm.skipEnabled) return false;
+                  if (bm.isOutro) {
+                    return time >= bm.time && time < (duration - 1);
+                  }
+                  return bm.endTime && time >= bm.time && time < bm.endTime;
+                });
                 if (activeSkip) {
-                  videoRef.current.currentTime = activeSkip.endTime;
-                  setCurrentTime(activeSkip.endTime);
+                  const targetTime = activeSkip.isOutro ? duration : activeSkip.endTime!;
+                  videoRef.current.currentTime = targetTime;
+                  setCurrentTime(targetTime);
                   triggerSwitchToast(`Auto-Skipped ${activeSkip.isIntro ? 'Intro' : 'Outro'}`);
                 }
               }
@@ -3142,9 +3289,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Bookmark Timeline Dots */}
                   {bookmarks.map((bm) => {
                     const percent = (bm.time / (duration || 1)) * 100;
-                    const hasRange = bm.endTime !== undefined && bm.endTime !== null && bm.endTime > bm.time;
-                    const endPercent = hasRange ? (bm.endTime / (duration || 1)) * 100 : percent;
-                    const widthPercent = endPercent - percent;
+                    const isOutroWithoutEnd = bm.isOutro && (bm.endTime === undefined || bm.endTime === null);
+                    const effectiveEndTime = isOutroWithoutEnd ? duration : bm.endTime;
+                    const hasRange = (effectiveEndTime !== undefined && effectiveEndTime !== null && effectiveEndTime > bm.time) || bm.isOutro;
+                    const endPercent = hasRange ? ((effectiveEndTime || duration) / (duration || 1)) * 100 : percent;
+                    const widthPercent = Math.max(0, endPercent - percent);
                     
                     if (hasRange) {
                       return (
@@ -3175,8 +3324,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           }}
                         >
                           <div className="timeline-bookmark-tooltip">
-                            <span className="tooltip-label">{bm.label} (Range)</span>
-                            <span className="tooltip-time">{formatTime(bm.time)} - {formatTime(bm.endTime)}</span>
+                            <span className="tooltip-label">{bm.label} {bm.isOutro ? '(Outro)' : '(Range)'}</span>
+                            <span className="tooltip-time">{formatTime(bm.time)} - {isOutroWithoutEnd ? 'End' : formatTime(effectiveEndTime!)}</span>
                           </div>
                         </div>
                       );
@@ -3436,7 +3585,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                   {bm.isIntro ? 'Intro' : bm.isOutro ? 'Outro' : 'Mark'}
                                 </span>
                                 <span className="bookmark-item-label" title={bm.label} style={{ fontSize: '0.8rem' }}>{bm.label}</span>
-                                <span className="bookmark-item-time" style={{ fontSize: '0.75rem' }}>{formatTime(bm.time)}</span>
+                                <span className="bookmark-item-time" style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                                  {bm.isIntro && bm.endTime 
+                                    ? `${formatTime(bm.time)} - ${formatTime(bm.endTime)}` 
+                                    : bm.isOutro 
+                                      ? `${formatTime(bm.time)} - End` 
+                                      : formatTime(bm.time)}
+                                </span>
                               </div>
                               <button 
                                 className="bookmark-delete-btn"
@@ -3801,7 +3956,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 />
               </div>
               
-              {(bookmarkType === 'intro' || bookmarkType === 'outro' || isIntro || isOutro) && (
+              {(bookmarkType === 'intro' || isIntro) && (
                 <div className="dialog-field" style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
                     End Time
@@ -4069,8 +4224,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         .timeline-bookmark-dot:hover {
           transform: translate(-50%, -50%) scale(1.5);
-          background-color: #e50914 !important;
           z-index: 30;
+        }
+        .timeline-bookmark-dot:not(.intro-dot):not(.outro-dot):hover {
+          background-color: #e50914 !important;
         }
         .timeline-bookmark-dot.intro-dot {
           background-color: #3b82f6;
