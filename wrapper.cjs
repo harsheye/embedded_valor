@@ -1009,7 +1009,10 @@ const backendServer = http.createServer((req, res) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(bodyData)
+          'Content-Length': Buffer.byteLength(bodyData),
+          'User-Agent': 'Valor/1.0.0',
+          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+          'trakt-api-version': '2'
         }
       }, (traktRes) => {
         let responseString = '';
