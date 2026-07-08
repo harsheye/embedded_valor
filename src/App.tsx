@@ -279,17 +279,13 @@ function App() {
     if (traktCode) {
       const exchangeTraktCode = async () => {
         try {
-          const res = await fetch('https://api.trakt.tv/oauth/token', {
+          const res = await fetch(`${BACKEND_ORIGIN}/api/trakt/exchange`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              code: traktCode,
-              client_id: 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
-              client_secret: '2863090375d796f593e2f9ec37d61d44fa971c5bb11fdf0614d816d0e48c0c6d',
-              redirect_uri: 'https://localhost:50000',
-              grant_type: 'authorization_code'
+              code: traktCode
             })
           });
 

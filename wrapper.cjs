@@ -982,6 +982,61 @@ const backendServer = http.createServer((req, res) => {
     return;
   }
 
+  // Trakt Token Exchange API (to bypass CORS)
+  if (pathname === '/api/trakt/exchange' && req.method === 'POST') {
+    res.setHeader('Content-Type', 'application/json');
+    getJsonBody(req).then(data => {
+      const code = data.code;
+      if (!code) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing code parameter' }));
+        return;
+      }
+
+      const bodyData = JSON.stringify({
+        code: code,
+        client_id: 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+        client_secret: '2863090375d796f593e2f9ec37d61d44fa971c5bb11fdf0614d816d0e48c0c6d',
+        redirect_uri: 'https://localhost:50000',
+        grant_type: 'authorization_code'
+      });
+
+      const https = require('https');
+      const traktReq = https.request({
+        hostname: 'api.trakt.tv',
+        port: 443,
+        path: '/oauth/token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(bodyData)
+        }
+      }, (traktRes) => {
+        let responseString = '';
+        traktRes.on('data', (chunk) => {
+          responseString += chunk;
+        });
+        traktRes.on('end', () => {
+          res.statusCode = traktRes.statusCode;
+          res.end(responseString);
+        });
+      });
+
+      traktReq.on('error', (err) => {
+        console.error('[Trakt Exchange Error]', err);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
+      });
+
+      traktReq.write(bodyData);
+      traktReq.end();
+    }).catch(err => {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
   // Settings API
   if (pathname === '/api/settings') {
     res.statusCode = 200;
