@@ -2187,8 +2187,58 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => handleKeyDownRef.current?.(e);
+    
+    const handleMouseDown = (e: MouseEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+      
+      const target = e.target as HTMLElement;
+      if (!container.contains(target)) return;
+
+      if (
+        target.closest('button') || 
+        target.closest('input') || 
+        target.closest('.seekbar-row') || 
+        target.closest('.volume-control-group-premium') ||
+        target.closest('.popover-wrapper') ||
+        target.closest('.audio-sub-popover') ||
+        target.closest('.floating-rating-prompt') ||
+        target.closest('.settings-panel')
+      ) {
+        return;
+      }
+
+      let pressedKey = '';
+      if (e.button === 0) pressedKey = 'leftclick';
+      else if (e.button === 1) pressedKey = 'middleclick';
+      else if (e.button === 2) pressedKey = 'rightclick';
+
+      if (pressedKey) {
+        // Only intercept if the clicked mouse button is bound to a hotkey
+        const saved = localStorage.getItem('valor_settings');
+        const parsed = saved ? JSON.parse(saved) : {};
+        const keybinds = parsed.keybinds || {};
+        const isBound = Object.values(keybinds).some(v => (v as string).toLowerCase() === pressedKey);
+        
+        if (isBound) {
+          e.preventDefault();
+          e.stopPropagation();
+          const fakeEvent = {
+            key: pressedKey,
+            preventDefault: () => {},
+            stopPropagation: () => {}
+          } as KeyboardEvent;
+          handleKeyDownRef.current?.(fakeEvent);
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('mousedown', handleMouseDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('mousedown', handleMouseDown, true);
+    };
   }, []);
 
   // Reset seek state when video url changes

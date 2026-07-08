@@ -147,7 +147,9 @@ const ratingThresholdOptions = [
 function App() {
   const [videos, setVideos] = useState<VideoItem[]>(() => {
     try {
-      const saved = localStorage.getItem('valor_videos');
+      const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+      const videosKey = activeUserId === 'local' ? 'valor_videos' : `valor_videos_${activeUserId}`;
+      const saved = localStorage.getItem(videosKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
@@ -637,6 +639,7 @@ function App() {
   const isPickerOpenRef = useRef(false);
   const lastHistorySyncTimeRef = useRef<number>(0);
   const historySyncTimeoutRef = useRef<any>(null);
+  const loadedVideosUserIdRef = useRef<string | null>(localStorage.getItem('valor_active_user_id') || 'local');
 
   const defaultSettings = {
     keybinds: {
@@ -1082,8 +1085,43 @@ function App() {
       setListeningKeyFor(null);
     };
 
+    const handleMouseBind = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      let pressedKey = '';
+      if (e.button === 0) pressedKey = 'leftclick';
+      else if (e.button === 1) pressedKey = 'middleclick';
+      else if (e.button === 2) pressedKey = 'rightclick';
+      else return;
+
+      setSettings((prev: typeof defaultSettings) => {
+        if (!listeningKeyFor) return prev;
+        const updated = {
+          ...prev,
+          keybinds: {
+            ...prev.keybinds,
+            [listeningKeyFor]: pressedKey
+          }
+        };
+        saveSettingsToStorage(updated);
+        return updated;
+      });
+      setListeningKeyFor(null);
+    };
+
+    const handleContextMenu = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
     window.addEventListener('keydown', handleKeyBind);
-    return () => window.removeEventListener('keydown', handleKeyBind);
+    window.addEventListener('mousedown', handleMouseBind);
+    window.addEventListener('contextmenu', handleContextMenu);
+    return () => {
+      window.removeEventListener('keydown', handleKeyBind);
+      window.removeEventListener('mousedown', handleMouseBind);
+      window.removeEventListener('contextmenu', handleContextMenu);
+    };
   }, [listeningKeyFor]);
 
   const handleResetSettings = () => {
@@ -1166,7 +1204,11 @@ function App() {
   const saveVideosToStorage = async (videoList: VideoItem[], forceSync = false) => {
     try {
       const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
-      console.log('[VALOR HISTORY SAVE] saveVideosToStorage called. videosKey:', videosKey, 'videosLength:', videoList.length, 'saveHistorySetting:', settings.saveHistory);
+      console.log('[VALOR HISTORY SAVE] saveVideosToStorage called. videosKey:', videosKey, 'videosLength:', videoList.length, 'saveHistorySetting:', settings.saveHistory, 'loadedVideosUserId:', loadedVideosUserIdRef.current, 'activeSettingsUserId:', settings.userId);
+      if (loadedVideosUserIdRef.current !== settings.userId) {
+        console.log('[VALOR HISTORY SAVE] Aborting save. loadedVideosUserIdRef:', loadedVideosUserIdRef.current, 'does not match active settings.userId:', settings.userId);
+        return;
+      }
       if (!settings.saveHistory) {
         localStorage.removeItem(videosKey);
         localStorage.removeItem('valor_last_playing_id');
@@ -1285,7 +1327,12 @@ function App() {
 
   useEffect(() => {
     saveVideosToStorage(videos, false);
-  }, [videos, settings.historyLimit, settings.userId]);
+  }, [videos, settings.historyLimit]);
+
+  useEffect(() => {
+    // Sync the loaded history user ID reference when the videos list changes
+    loadedVideosUserIdRef.current = settings.userId;
+  }, [videos]);
 
 
 

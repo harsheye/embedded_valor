@@ -1188,38 +1188,6 @@ const backendServer = http.createServer((req, res) => {
     return;
   }
 
-            return {
-              id: row.videoId,
-              title: row.title,
-              duration: row.duration,
-              currentTime: row.currentTime,
-              lastPlayedDate: row.lastPlayedDate,
-              totalTimeWatched: row.totalTimeWatched,
-              rating: row.rating,
-              timeToFinish: row.timeToFinish,
-              sessions: row.sessions ? JSON.parse(row.sessions) : [],
-              localFilePath: row.localFilePath,
-              playedDates: row.playedDates ? JSON.parse(row.playedDates) : [],
-              bookmarks: videoBookmarks
-            };
-          });
-          res.end(JSON.stringify(videos));
-        } catch (e) {
-          console.error('[SQLite history GET error]', e.message);
-          res.end(JSON.stringify([]));
-        }
-      } else {
-        const historyFile = path.join(dataDir, 'history.json');
-        if (fs.existsSync(historyFile)) {
-          res.end(fs.readFileSync(historyFile));
-        } else {
-          res.end(JSON.stringify([]));
-        }
-      }
-    }
-    return;
-  }
-
   // Video streaming endpoint with range request support
   if (pathname === '/local-video-stream') {
     const videoPath = parsedUrl.searchParams.get('path');
