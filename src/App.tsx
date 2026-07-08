@@ -282,11 +282,13 @@ function App() {
       let historyLoaded = false;
 
       const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+      console.log('[VALOR INITIALIZATION] Starting setup. activeUserId in localStorage:', activeUserId);
 
       // 0. If using local browser profile, load it immediately and do not let server override it
       if (activeUserId === 'local' || activeUserId.startsWith('local_')) {
         const settingsKey = activeUserId === 'local' ? 'valor_settings' : `valor_settings_${activeUserId}`;
         const saved = localStorage.getItem(settingsKey);
+        console.log('[VALOR INITIALIZATION] Loading local profile settings. settingsKey:', settingsKey, 'savedContentLength:', saved ? saved.length : 0);
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
@@ -319,6 +321,7 @@ function App() {
         
         const videosKey = activeUserId === 'local' ? 'valor_videos' : `valor_videos_${activeUserId}`;
         const savedVideos = localStorage.getItem(videosKey);
+        console.log('[VALOR INITIALIZATION] Loading local profile videos. videosKey:', videosKey, 'savedVideosContentLength:', savedVideos ? savedVideos.length : 0);
         if (savedVideos) {
           try {
             const parsed = JSON.parse(savedVideos);
@@ -1163,6 +1166,7 @@ function App() {
   const saveVideosToStorage = async (videoList: VideoItem[], forceSync = false) => {
     try {
       const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
+      console.log('[VALOR HISTORY SAVE] saveVideosToStorage called. videosKey:', videosKey, 'videosLength:', videoList.length, 'saveHistorySetting:', settings.saveHistory);
       if (!settings.saveHistory) {
         localStorage.removeItem(videosKey);
         localStorage.removeItem('valor_last_playing_id');
