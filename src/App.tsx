@@ -168,7 +168,7 @@ function App() {
   });
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings'>('home');
-  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api'>('general');
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [hoveredHotkey, setHoveredHotkey] = useState<string | null>(null);
@@ -2748,6 +2748,12 @@ function App() {
                     >
                       Storage & Saves
                     </button>
+                    <button 
+                      className={`settings-nav-btn ${settingsTab === 'api' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('api')}
+                    >
+                      API Settings
+                    </button>
                   </div>
 
                   <div className="settings-page-content-wrapper">
@@ -2793,162 +2799,7 @@ function App() {
                               </div>
                             </div>
 
-                            <div className="settings-section">
-                              <h3>TheIntroDB Integration</h3>
-                              <p className="settings-section-desc">API key from theintrodb.org to fetch and prioritize skip segments (Intros, Recaps, Outros).</p>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.6rem' }}>
-                                <input 
-                                  type="text" 
-                                  value={settings.theIntroDbApiKey || ''}
-                                  placeholder="theintrodb:user_xxxx:xxxx"
-                                  onChange={(e) => handleDefaultLangChange('theIntroDbApiKey', e.target.value)}
-                                  style={{
-                                    background: 'rgba(255, 255, 255, 0.05)',
-                                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                                    borderRadius: '6px',
-                                    color: '#fff',
-                                    padding: '0.5rem 0.75rem',
-                                    fontSize: '0.85rem',
-                                    width: '100%',
-                                    boxSizing: 'border-box',
-                                    outline: 'none'
-                                  }}
-                                />
-                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: '0.2rem 0 0 0', fontStyle: 'italic' }}>
-                                  🔒 Note: Your API key is stored securely in your browser's local cache.
-                                </p>
-                              </div>
-                            </div>
 
-                            <div className="settings-section">
-                              <h3>Trakt.tv Integration</h3>
-                              <p className="settings-section-desc">Connect with Trakt.tv to automatically sync your watched history and favorites.</p>
-                              
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.6rem' }}>
-                                {/* Redirect URI Input */}
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
-                                    Trakt Redirect URI
-                                  </label>
-                                  <input 
-                                    type="text" 
-                                    value={settings.traktRedirectUri || ''}
-                                    placeholder="e.g. http://localhost:50000"
-                                    onChange={(e) => handleDefaultLangChange('traktRedirectUri', e.target.value)}
-                                    style={{
-                                      background: 'rgba(255, 255, 255, 0.05)',
-                                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                                      borderRadius: '6px',
-                                      color: '#fff',
-                                      padding: '0.5rem 0.75rem',
-                                      fontSize: '0.85rem',
-                                      width: '100%',
-                                      boxSizing: 'border-box',
-                                      outline: 'none'
-                                    }}
-                                  />
-                                </div>
-
-                                {/* Access Token Input */}
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
-                                    Trakt Access Token
-                                  </label>
-                                  <input 
-                                    type="text" 
-                                    value={settings.traktAccessToken || ''}
-                                    placeholder="Paste Trakt Access Token"
-                                    onChange={(e) => handleDefaultLangChange('traktAccessToken', e.target.value)}
-                                    style={{
-                                      background: 'rgba(255, 255, 255, 0.05)',
-                                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                                      borderRadius: '6px',
-                                      color: '#fff',
-                                      padding: '0.5rem 0.75rem',
-                                      fontSize: '0.85rem',
-                                      width: '100%',
-                                      boxSizing: 'border-box',
-                                      outline: 'none'
-                                    }}
-                                  />
-                                </div>
-
-                                {/* Auth Buttons */}
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                  <button
-                                    onClick={() => {
-                                      const redirectUri = settings.traktRedirectUri || 'http://localhost:50000';
-                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=${encodeURIComponent(redirectUri)}`;
-                                      window.location.href = authUrl;
-                                    }}
-                                    style={{
-                                      flex: 1,
-                                      background: '#ed1c24',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      color: '#fff',
-                                      padding: '0.5rem 1rem',
-                                      fontSize: '0.85rem',
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                      textAlign: 'center',
-                                      transition: 'background 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#d11219'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#ed1c24'}
-                                  >
-                                    Connect Trakt Account
-                                  </button>
-                                  {settings.traktAccessToken && (
-                                    <button
-                                      onClick={() => {
-                                        handleDefaultLangChange('traktAccessToken', '');
-                                        addToast('Disconnected from Trakt.tv', 'warning');
-                                      }}
-                                      style={{
-                                        background: 'rgba(255, 255, 255, 0.08)',
-                                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                                        borderRadius: '6px',
-                                        color: '#fff',
-                                        padding: '0.5rem 1rem',
-                                        fontSize: '0.85rem',
-                                        fontWeight: 600,
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      Disconnect
-                                    </button>
-                                  )}
-                                </div>
-
-                                {/* Sync Preferences */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.6rem' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Watched History</span>
-                                    <input 
-                                      type="checkbox"
-                                      checked={settings.traktSyncHistory}
-                                      onChange={(e) => handleDefaultLangChange('traktSyncHistory', e.target.checked)}
-                                      style={{ cursor: 'pointer' }}
-                                    />
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Favorites (Bookmarks)</span>
-                                    <input 
-                                      type="checkbox"
-                                      checked={settings.traktSyncFavorites}
-                                      onChange={(e) => handleDefaultLangChange('traktSyncFavorites', e.target.checked)}
-                                      style={{ cursor: 'pointer' }}
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Disclaimer Note */}
-                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: 0, fontStyle: 'italic' }}>
-                                  🔒 Note: Your access token is stored securely in your browser's local cache.
-                                </p>
-                              </div>
-                            </div>
 
                             <div className="settings-section">
                               <h3>History & Toast Preferences</h3>
@@ -4088,6 +3939,229 @@ function App() {
                               onChange={(checked) => handleDefaultLangChange('saveSettings', checked)}
                             />
                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* API Settings Section */}
+                    {settingsTab === 'api' && (
+                      <div className="settings-tab-content animate-fade-in" style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', width: '100%' }}>
+                          
+                          {/* Left Column: TheIntroDB & Developer API */}
+                          <div style={{ flex: '1 1 350px' }}>
+                            <div className="settings-section" style={{ marginBottom: '1.5rem' }}>
+                              <h3>TheIntroDB Integration</h3>
+                              <p className="settings-section-desc">API key from theintrodb.org to fetch and prioritize skip segments (Intros, Recaps, Outros).</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.6rem' }}>
+                                <input 
+                                  type="text" 
+                                  value={settings.theIntroDbApiKey || ''}
+                                  placeholder="theintrodb:user_xxxx:xxxx"
+                                  onChange={(e) => handleDefaultLangChange('theIntroDbApiKey', e.target.value)}
+                                  style={{
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    borderRadius: '6px',
+                                    color: '#fff',
+                                    padding: '0.5rem 0.75rem',
+                                    fontSize: '0.85rem',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                    outline: 'none'
+                                  }}
+                                />
+                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: '0.2rem 0 0 0', fontStyle: 'italic' }}>
+                                  🔒 Note: Your API key is stored securely in your browser's local cache.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="settings-section">
+                              <h3>Backend Developer API</h3>
+                              <p className="settings-section-desc">View and download the OpenAPI 3.0 specification file for the Valor Backend API endpoints.</p>
+                              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
+                                <a
+                                  href="/openapi.yaml"
+                                  target="_blank"
+                                  style={{
+                                    flex: 1,
+                                    background: 'rgba(255, 255, 255, 0.08)',
+                                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '6px',
+                                    color: '#fff',
+                                    padding: '0.5rem 1rem',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'background 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                                >
+                                  View Spec
+                                </a>
+                                <a
+                                  href="/openapi.yaml"
+                                  download="openapi.yaml"
+                                  style={{
+                                    flex: 1,
+                                    background: '#0070f3',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    color: '#fff',
+                                    padding: '0.5rem 1rem',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'background 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = '#0051b3'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = '#0070f3'}
+                                >
+                                  Download Spec
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right Column: Trakt.tv Integration */}
+                          <div style={{ flex: '1 1 350px' }}>
+                            <div className="settings-section">
+                              <h3>Trakt.tv Integration</h3>
+                              <p className="settings-section-desc">Connect with Trakt.tv to automatically sync your watched history and favorites.</p>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.6rem' }}>
+                                {/* Redirect URI Input */}
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
+                                    Trakt Redirect URI
+                                  </label>
+                                  <input 
+                                    type="text" 
+                                    value={settings.traktRedirectUri || ''}
+                                    placeholder="e.g. http://localhost:50000"
+                                    onChange={(e) => handleDefaultLangChange('traktRedirectUri', e.target.value)}
+                                    style={{
+                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                                      borderRadius: '6px',
+                                      color: '#fff',
+                                      padding: '0.5rem 0.75rem',
+                                      fontSize: '0.85rem',
+                                      width: '100%',
+                                      boxSizing: 'border-box',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Access Token Input */}
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
+                                    Trakt Access Token
+                                  </label>
+                                  <input 
+                                    type="text" 
+                                    value={settings.traktAccessToken || ''}
+                                    placeholder="Paste Trakt Access Token"
+                                    onChange={(e) => handleDefaultLangChange('traktAccessToken', e.target.value)}
+                                    style={{
+                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                                      borderRadius: '6px',
+                                      color: '#fff',
+                                      padding: '0.5rem 0.75rem',
+                                      fontSize: '0.85rem',
+                                      width: '100%',
+                                      boxSizing: 'border-box',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Auth Buttons */}
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                  <button
+                                    onClick={() => {
+                                      const redirectUri = settings.traktRedirectUri || 'http://localhost:50000';
+                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=${encodeURIComponent(redirectUri)}`;
+                                      window.location.href = authUrl;
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      background: '#ed1c24',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      color: '#fff',
+                                      padding: '0.5rem 1rem',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      textAlign: 'center',
+                                      transition: 'background 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#d11219'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = '#ed1c24'}
+                                  >
+                                    Connect Trakt Account
+                                  </button>
+                                  {settings.traktAccessToken && (
+                                    <button
+                                      onClick={() => {
+                                        handleDefaultLangChange('traktAccessToken', '');
+                                        addToast('Disconnected from Trakt.tv', 'warning');
+                                      }}
+                                      style={{
+                                        background: 'rgba(255, 255, 255, 0.08)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        borderRadius: '6px',
+                                        color: '#fff',
+                                        padding: '0.5rem 1rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Disconnect
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Sync Preferences */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.6rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Watched History</span>
+                                    <input 
+                                      type="checkbox"
+                                      checked={settings.traktSyncHistory}
+                                      onChange={(e) => handleDefaultLangChange('traktSyncHistory', e.target.checked)}
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Favorites (Bookmarks)</span>
+                                    <input 
+                                      type="checkbox"
+                                      checked={settings.traktSyncFavorites}
+                                      onChange={(e) => handleDefaultLangChange('traktSyncFavorites', e.target.checked)}
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Disclaimer Note */}
+                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: 0, fontStyle: 'italic' }}>
+                                  🔒 Note: Your access token is stored securely in your browser's local cache.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
                         </div>
                       </div>
                     )}

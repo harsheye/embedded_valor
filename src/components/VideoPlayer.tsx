@@ -625,12 +625,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       if (res.ok) {
         logger.player('Successfully scrobbled to Trakt.tv watch history!');
+        try {
+          const resData = await res.json();
+          triggerSwitchToast(`Trakt Scrobble Success: Added ${resData.added?.movies || resData.added?.episodes || 1} item`);
+        } catch {
+          triggerSwitchToast(`Trakt Scrobble Success (Status: ${res.status})`);
+        }
         onUpdateVideoRef.current((prev: any) => ({
           ...prev,
           hasScrobbledTrakt: true
         }), false, video.id);
       } else {
         logger.player(`Trakt.tv scrobble failed with status: ${res.status}`);
+        try {
+          const errText = await res.text();
+          triggerSwitchToast(`Trakt Scrobble Failed: ${res.status} - ${errText.substring(0, 40)}`);
+        } catch {
+          triggerSwitchToast(`Trakt Scrobble Failed (Status: ${res.status})`);
+        }
       }
     } catch (err) {
       console.error('Error scrobbling to Trakt.tv:', err);
@@ -677,8 +689,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       if (res.ok) {
         logger.player(`Successfully synced favorites to Trakt.tv!`);
+        try {
+          const resData = await res.json();
+          triggerSwitchToast(`Trakt Favorite Sync: ${isAdd ? 'Added' : 'Removed'} ${resData.added?.movies || resData.added?.shows || resData.deleted?.movies || resData.deleted?.shows || 1} item`);
+        } catch {
+          triggerSwitchToast(`Trakt Sync Success (Status: ${res.status})`);
+        }
       } else {
         logger.player(`Trakt.tv favorites sync failed: ${res.status}`);
+        try {
+          const errText = await res.text();
+          triggerSwitchToast(`Trakt Sync Failed: ${res.status} - ${errText.substring(0, 40)}`);
+        } catch {
+          triggerSwitchToast(`Trakt Sync Failed (Status: ${res.status})`);
+        }
       }
     } catch (err) {
       console.error('Error syncing favorites to Trakt.tv:', err);
