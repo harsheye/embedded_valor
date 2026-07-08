@@ -2838,7 +2838,7 @@ function App() {
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                   <button
                                     onClick={() => {
-                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=https://localhost:50000`;
+                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=http://localhost:50000`;
                                       window.location.href = authUrl;
                                     }}
                                     style={{
