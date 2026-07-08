@@ -1056,19 +1056,19 @@ function App() {
     }
   }, [videos, settings.historyLimit]);
 
-  useEffect(() => {
-    const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
-
-    if (!settings.saveHistory) {
-      localStorage.removeItem(videosKey);
-      localStorage.removeItem('valor_last_playing_id');
-      return;
-    }
+  const saveVideosToStorage = async (videoList: VideoItem[], forceSync = false) => {
     try {
+      const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
+      if (!settings.saveHistory) {
+        localStorage.removeItem(videosKey);
+        localStorage.removeItem('valor_last_playing_id');
+        return;
+      }
+
       const limit = settings.historyLimit;
-      let targetVideos = videos;
+      let targetVideos = videoList;
       if (limit !== 'Infinite' && typeof limit === 'number') {
-        targetVideos = videos.slice(0, limit);
+        targetVideos = videoList.slice(0, limit);
       }
       const serialized = targetVideos.map(v => ({
         id: v.id,
@@ -1108,9 +1108,8 @@ function App() {
         bookmarks: v.bookmarks || []
       }));
 
-      // Sync to backend file if storageMode is file (debounced to once every 10 seconds)
+      // Sync to backend file if storageMode is file
       if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
-        const now = Date.now();
         const saveHistoryMut = `
           mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
             saveHistory(userId: $userId, history: $history) {
@@ -1119,18 +1118,26 @@ function App() {
           }
         `;
 
-        if (now - lastHistorySyncTimeRef.current > 10000) {
-          lastHistorySyncTimeRef.current = now;
+        if (forceSync) {
           if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
+          lastHistorySyncTimeRef.current = Date.now();
           gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-            .catch(err => console.error('Failed to sync history via GraphQL:', err));
+            .catch(err => console.error('Failed to force sync history via GraphQL:', err));
         } else {
-          if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-          historySyncTimeoutRef.current = setTimeout(() => {
-            lastHistorySyncTimeRef.current = Date.now();
+          const now = Date.now();
+          if (now - lastHistorySyncTimeRef.current > 10000) {
+            lastHistorySyncTimeRef.current = now;
+            if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
             gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
               .catch(err => console.error('Failed to sync history via GraphQL:', err));
-          }, 10000);
+          } else {
+            if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
+            historySyncTimeoutRef.current = setTimeout(() => {
+              lastHistorySyncTimeRef.current = Date.now();
+              gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
+                .catch(err => console.error('Failed to sync history via GraphQL:', err));
+            }, 10000);
+          }
         }
       }
 
@@ -1154,7 +1161,6 @@ function App() {
                 `;
                 gqlFetch(saveHistoryMut, { userId: settings.userId, history: currentList }).catch(() => {});
               }
-              console.log('Successfully saved reduced video history list of size', currentList.length);
               break;
             } catch (retryErr) {
               // keep popping
@@ -1167,18 +1173,22 @@ function App() {
     } catch (err) {
       console.error('Failed to serialize videos for localStorage:', err);
     }
+  };
+
+  useEffect(() => {
+    saveVideosToStorage(videos, false);
   }, [videos, settings.historyLimit, settings.userId]);
 
 
 
 
-  const handleUpdateVideo = (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting = false) => {
+  const handleUpdateVideo = (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting = false, targetVideoId?: string) => {
     setVideos((prev) => {
       let targetVideo: VideoItem | null = null;
       if (typeof updatedVideoOrUpdater !== 'function') {
         targetVideo = updatedVideoOrUpdater;
       } else {
-        const activePlaying = playingVideo;
+        const activePlaying = targetVideoId ? { id: targetVideoId } : playingVideo;
         if (activePlaying) {
           const current = prev.find(v => v.id === activePlaying.id);
           if (current) {
@@ -1187,10 +1197,11 @@ function App() {
         }
       }
 
+      let nextVideos: VideoItem[];
       if (!targetVideo) {
-        return prev.map((v) => {
+        nextVideos = prev.map((v) => {
           const isTarget = typeof updatedVideoOrUpdater === 'function'
-            ? (playingVideo && v.id === playingVideo.id)
+            ? ((targetVideoId ? v.id === targetVideoId : playingVideo && v.id === playingVideo.id))
             : v.id === updatedVideoOrUpdater.id;
           if (isTarget) {
             const updatedItem = typeof updatedVideoOrUpdater === 'function' ? (updatedVideoOrUpdater as Function)(v) : updatedVideoOrUpdater;
@@ -1201,60 +1212,65 @@ function App() {
           }
           return v;
         });
-      }
+      } else {
+        const seriesInfo = targetVideo.title ? classifyVideoTitle(targetVideo.title) : null;
+        const isSeries = seriesInfo && seriesInfo.type === 'series';
+        const seriesTitle = isSeries ? seriesInfo.seriesTitle : undefined;
+        const targetBookmarks = targetVideo.bookmarks || [];
 
-      const seriesInfo = targetVideo.title ? classifyVideoTitle(targetVideo.title) : null;
-      const isSeries = seriesInfo && seriesInfo.type === 'series';
-      const seriesTitle = isSeries ? seriesInfo.seriesTitle : undefined;
-      const targetBookmarks = targetVideo.bookmarks || [];
+        const introBm = targetBookmarks.find((b) => b.isIntro);
+        const outroBm = targetBookmarks.find((b) => b.isOutro);
 
-      const introBm = targetBookmarks.find((b) => b.isIntro);
-      const outroBm = targetBookmarks.find((b) => b.isOutro);
-
-      return prev.map((v) => {
-        const isTarget = v.id === targetVideo!.id;
-        if (isTarget) {
-          return {
-            ...targetVideo!,
-            lastPlayedDate: new Date().toISOString()
-          };
-        }
-
-        if (seriesTitle && v.title) {
-          const otherSeriesInfo = classifyVideoTitle(v.title);
-          if (otherSeriesInfo.type === 'series' && otherSeriesInfo.seriesTitle === seriesTitle) {
-            const otherBookmarks = v.bookmarks || [];
-            let updatedOtherBookmarks = [...otherBookmarks];
-
-            if (introBm) {
-              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
-              updatedOtherBookmarks.push({
-                ...introBm,
-                id: `bm-intro-${v.id}`
-              });
-            } else {
-              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
-            }
-
-            if (outroBm) {
-              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
-              updatedOtherBookmarks.push({
-                ...outroBm,
-                id: `bm-outro-${v.id}`
-              });
-            } else {
-              updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
-            }
-
+        nextVideos = prev.map((v) => {
+          const isTarget = v.id === targetVideo!.id;
+          if (isTarget) {
             return {
-              ...v,
-              bookmarks: updatedOtherBookmarks.sort((a, b) => a.time - b.time)
+              ...targetVideo!,
+              lastPlayedDate: new Date().toISOString()
             };
           }
-        }
 
-        return v;
-      });
+          if (seriesTitle && v.title) {
+            const otherSeriesInfo = classifyVideoTitle(v.title);
+            if (otherSeriesInfo.type === 'series' && otherSeriesInfo.seriesTitle === seriesTitle) {
+              const otherBookmarks = v.bookmarks || [];
+              let updatedOtherBookmarks = [...otherBookmarks];
+
+              if (introBm) {
+                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
+                updatedOtherBookmarks.push({
+                  ...introBm,
+                  id: `bm-intro-${v.id}`
+                });
+              } else {
+                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
+              }
+
+              if (outroBm) {
+                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
+                updatedOtherBookmarks.push({
+                  ...outroBm,
+                  id: `bm-outro-${v.id}`
+                });
+              } else {
+                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
+              }
+
+              return {
+                ...v,
+                bookmarks: updatedOtherBookmarks.sort((a, b) => a.time - b.time)
+              };
+            }
+          }
+
+          return v;
+        });
+      }
+
+      if (isExiting) {
+        saveVideosToStorage(nextVideos, true);
+      }
+      return nextVideos;
     });
     if (!isExiting) {
       setPlayingVideo((prevPlaying) => {

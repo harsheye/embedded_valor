@@ -21,7 +21,7 @@ interface VideoPlayerProps {
   video: VideoItem;
   userId?: string;
   onBack: () => void;
-  onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean) => void;
+  onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean, targetVideoId?: string) => void;
   hideUIOverlays?: boolean;
   hideVideoName?: boolean;
   toastDuration?: number;
@@ -2337,7 +2337,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         sessions: updatedSessions,
         timeToFinish: timeToFinish ? Math.round(timeToFinish) : prev.timeToFinish,
         firstPlayTimestamp: prev.firstPlayTimestamp || mountTimeRef.current
-      }), true);
+      }), true, video.id);
     };
   }, []);
 
@@ -2369,7 +2369,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           sessions: updatedSessions,
           timeToFinish: timeToFinish ? Math.round(timeToFinish) : prev.timeToFinish,
           firstPlayTimestamp: prev.firstPlayTimestamp || mountTimeRef.current
-        }));
+        }), false, video.id);
       }
     }, intervalMs);
     return () => clearInterval(interval);
