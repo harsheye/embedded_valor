@@ -3,7 +3,7 @@ import {
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
   Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash,
-  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft, Eye
+  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft, Eye, Settings
 } from 'lucide-react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -3763,6 +3763,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
 
               <div className="bottom-controls-right-group">
+                <button 
+                  className="control-btn-settings" 
+                  onClick={() => setShowSettingsPanel(prev => !prev)} 
+                  title="Player Settings"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '8px',
+                    opacity: 0.8,
+                    transition: 'opacity 0.2s',
+                    outline: 'none'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+                >
+                  <Settings size={22} />
+                </button>
+
                 {(showFullscreen || hoveredSetting === 'showFullscreen') && (
                   <button 
                     className={`control-btn-fullscreen ${getHighlightClass('showFullscreen')}`} 
@@ -5332,6 +5355,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         .audio-sub-popover-center.has-transcript .popover-cols {
           grid-template-columns: 1fr 1fr 1.3fr 1.1fr;
+        }
+        @media (max-width: 1024px) {
+          .popover-transcript-col,
+          .popover-style-col {
+            display: none !important;
+          }
+          .audio-sub-popover-center.has-transcript .popover-cols {
+            grid-template-columns: 1fr 1fr !important;
+          }
         }
         .popover-transcript-col {
           border-left: 1px solid rgba(255, 255, 255, 0.08);
