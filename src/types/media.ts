@@ -50,6 +50,7 @@ export interface VideoItem {
   totalTimeWatched?: number;
   timeToFinish?: number;
   bookmarks?: Bookmark[];
+  tmdbId?: number;
 }
 
 export interface Bookmark {

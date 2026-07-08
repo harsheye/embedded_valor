@@ -631,11 +631,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         if (!searchRes.ok) {
           logger.player(`[TheIntroDB Sync] TMDB search failed with HTTP status: ${searchRes.status}`);
+          triggerSwitchToast("No data on TIDB");
           throw new Error('TMDB search failed');
         }
         const searchData = await searchRes.json();
         if (!searchData.results || searchData.results.length === 0) {
           logger.player('[TheIntroDB Sync] No matching TMDB results found for title: ' + video.title);
+          triggerSwitchToast("No data on TIDB");
           return;
         }
 
@@ -644,6 +646,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const tmdbTitle = matchedItem.name || matchedItem.title;
         logger.player(`[TheIntroDB Sync] TMDB match resolved. ID: ${tmdbId}, Title: "${tmdbTitle}"`);
         tmdbIdRef.current = tmdbId;
+
+        // Save tmdbId in the video metadata
+        onUpdateVideo((prev: any) => ({
+          ...prev,
+          tmdbId: tmdbId
+        }));
 
         // 2. Fetch from theintrodb.org
         const durationMs = Math.round(duration * 1000);
@@ -679,6 +687,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const introDbRes = await fetch(finalUrl, { headers: introDbHeaders });
         if (!introDbRes.ok) {
           logger.player(`[TheIntroDB Sync] TheIntroDB API query failed. HTTP Status: ${introDbRes.status}`);
+          triggerSwitchToast("No data on TIDB");
           throw new Error('TheIntroDB request failed');
         }
         const introDbData = await introDbRes.json();
@@ -738,14 +747,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setBookmarks(sorted);
           onUpdateVideo((prev: any) => ({
             ...prev,
-            bookmarks: sorted
+            bookmarks: sorted,
+            tmdbId: tmdbId
           }));
           logger.player(`[TheIntroDB Sync] Loaded ${sorted.length} bookmarks from TheIntroDB`);
         } else {
           logger.player('[TheIntroDB Sync] TheIntroDB returned 0 segments for: ' + video.title);
+          triggerSwitchToast("No data on TIDB");
         }
       } catch (err) {
         logger.player('[TheIntroDB Sync] Failed to fetch from TheIntroDB: ' + err);
+        triggerSwitchToast("No data on TIDB");
       }
     };
 
