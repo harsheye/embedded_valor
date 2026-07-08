@@ -283,6 +283,42 @@ function App() {
 
       const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
 
+      // 0. If using local browser profile, load it immediately and do not let server override it
+      if (activeUserId === 'local' || activeUserId.startsWith('local_')) {
+        const settingsKey = activeUserId === 'local' ? 'valor_settings' : `valor_settings_${activeUserId}`;
+        const saved = localStorage.getItem(settingsKey);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            loadedSettings = {
+              ...defaultSettings,
+              ...parsed,
+              keybinds: { ...defaultSettings.keybinds, ...(parsed.keybinds || {}) },
+              subSettings: { ...defaultSettings.subSettings, ...(parsed.subSettings || {}) }
+            };
+            setSettings(loadedSettings);
+            settingsLoaded = true;
+          } catch {}
+        }
+        
+        const videosKey = activeUserId === 'local' ? 'valor_videos' : `valor_videos_${activeUserId}`;
+        const savedVideos = localStorage.getItem(videosKey);
+        if (savedVideos) {
+          try {
+            const parsed = JSON.parse(savedVideos);
+            if (Array.isArray(parsed)) {
+              loadedVideos = parsed.map((v: any) => ({
+                ...v,
+                audioTracks: v.audioTracks || [],
+                subtitleTracks: v.subtitleTracks || []
+              }));
+              setVideos(loadedVideos);
+              historyLoaded = true;
+            }
+          } catch {}
+        }
+      }
+
       // 1. If we have a saved active SQLite profile ID, try to load it first
       if (activeUserId && activeUserId !== 'local' && !activeUserId.startsWith('local_')) {
         try {
@@ -6043,12 +6079,14 @@ function App() {
                       const oldUserId = settings.userId;
                       localStorage.setItem('valor_active_user_id', resData.userId);
                       localStorage.setItem('valor_logged_in_username', authUsername.trim());
-                      setSettings(prev => ({
-                        ...prev,
-                        userId: resData.userId,
-                        storageMode: 'file',
-                        isOnboarded: currentIsOnboarded
-                      }));
+                      const updated = {
+                         ...settings,
+                         userId: resData.userId,
+                         storageMode: 'file' as const,
+                         isOnboarded: currentIsOnboarded
+                       };
+                       setSettings(updated);
+                       saveSettingsToStorage(updated);
                       
                       // Remove local profile from localStorage
                       if (oldUserId && (oldUserId === 'local' || oldUserId.startsWith('local_'))) {
@@ -6130,12 +6168,14 @@ function App() {
                         localStorage.setItem('valor_active_user_id', pId);
                         localStorage.setItem('valor_logged_in_username', authUsername.trim());
                         
-                        setSettings(prev => ({
-                          ...prev,
+                        const updated = {
+                          ...settings,
                           userId: pId,
-                          storageMode: 'file',
+                          storageMode: 'file' as const,
                           isOnboarded: true
-                        }));
+                        };
+                        setSettings(updated);
+                        saveSettingsToStorage(updated);
                         
                         // Remove local profile from localStorage
                         if (oldUserId && (oldUserId === 'local' || oldUserId.startsWith('local_'))) {
@@ -6195,21 +6235,25 @@ function App() {
                         if (finalUsername) {
                           localStorage.setItem('valor_logged_in_username', finalUsername);
                         }
-                        setSettings(prev => ({
-                          ...prev,
+                        const initialLoaded = {
+                          ...settings,
                           userId: pId,
-                          storageMode: 'file'
-                        }));
+                          storageMode: 'file' as const
+                        };
+                        setSettings(initialLoaded);
+                        saveSettingsToStorage(initialLoaded);
                         
                         const profileRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${pId}`);
                         const profileData = await profileRes.json();
                         if (profileData && profileData.settings) {
-                          setSettings({
+                          const loaded = {
                             ...defaultSettings,
                             ...profileData.settings,
                             userId: pId,
-                            storageMode: 'file'
-                          });
+                            storageMode: 'file' as const
+                          };
+                          setSettings(loaded);
+                          saveSettingsToStorage(loaded);
                         }
                         if (profileData && Array.isArray(profileData.history)) {
                           setVideos(profileData.history.map((v: any) => ({
