@@ -1435,6 +1435,44 @@ function App() {
     const fingerprint = `local-${file.name}_${file.size}_${file.lastModified}`;
     const targetId = fingerprint;
 
+    let finalCustomId = customId;
+    if (customId) {
+      const targetHistVideo = videos.find(v => v.id === customId);
+      if (targetHistVideo) {
+        const histName = (targetHistVideo.fileName || '').toLowerCase();
+        const histTitle = (targetHistVideo.title || '').toLowerCase();
+        const currentName = file.name.toLowerCase();
+        const currentTitle = title.toLowerCase();
+        const matchesName = histName === currentName || histTitle === currentTitle;
+        if (!matchesName) {
+          // File name mismatch! Check if there's a matching history entry for the selected file name/title
+          const betterMatch = videos.find(v => 
+            v.type === 'local' && (
+              (v.fileName && v.fileName.toLowerCase() === currentName) ||
+              (v.title && v.title.toLowerCase() === currentTitle)
+            )
+          );
+          if (betterMatch) {
+            finalCustomId = betterMatch.id;
+          } else {
+            finalCustomId = undefined;
+          }
+        }
+      }
+    } else {
+      // No customId provided (e.g. they dropped a file or used open-file directly),
+      // we check if there's a historical entry for this file name/title to resume it!
+      const betterMatch = videos.find(v => 
+        v.type === 'local' && (
+          (v.fileName && v.fileName.toLowerCase() === file.name.toLowerCase()) ||
+          (v.title && v.title.toLowerCase() === title.toLowerCase())
+        )
+      );
+      if (betterMatch) {
+        finalCustomId = betterMatch.id;
+      }
+    }
+
     let maxCurrentTime = 0;
     const mergedAudioTracks: CustomAudioTrack[] = [];
     const mergedSubtitleTracks: CustomSubtitleTrack[] = [];
@@ -1445,7 +1483,7 @@ function App() {
     // Find all matching items in history (legacy or fingerprint style) using current state
     const matches = videos.filter(v => 
       v.id === targetId || 
-      (customId && v.id === customId) ||
+      (finalCustomId && v.id === finalCustomId) ||
       (v.type === 'local' && (
         (v.fileName && v.fileName.toLowerCase() === file.name.toLowerCase()) ||
         (v.title && v.title.toLowerCase() === title.toLowerCase()) ||
