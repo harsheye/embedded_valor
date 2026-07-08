@@ -610,6 +610,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       try {
         const seriesInfo = classifyVideoTitle(video.title);
         const isTV = seriesInfo.type === 'series';
+        logger.player(`[TheIntroDB Sync] Title: "${video.title}" parsed as type: "${seriesInfo.type}" (Series: "${seriesInfo.seriesTitle}", Season: ${seriesInfo.season}, Episode: ${seriesInfo.episode}, Movie Display Title: "${seriesInfo.displayTitle}")`);
         
         // 1. Search TMDB
         const tmdbToken = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
@@ -620,6 +621,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           searchUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(seriesInfo.displayTitle)}&include_adult=false`;
         }
 
+        logger.player(`[TheIntroDB Sync] Requesting TMDB search: "${searchUrl}"`);
         const searchRes = await fetch(searchUrl, {
           headers: {
             'Authorization': `Bearer ${tmdbToken}`,
@@ -627,14 +629,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         });
 
-        if (!searchRes.ok) throw new Error('TMDB search failed');
+        if (!searchRes.ok) {
+          logger.player(`[TheIntroDB Sync] TMDB search failed with HTTP status: ${searchRes.status}`);
+          throw new Error('TMDB search failed');
+        }
         const searchData = await searchRes.json();
         if (!searchData.results || searchData.results.length === 0) {
-          logger.player('No TMDB search results found for title: ' + video.title);
+          logger.player('[TheIntroDB Sync] No matching TMDB results found for title: ' + video.title);
           return;
         }
 
-        const tmdbId = searchData.results[0].id;
+        const matchedItem = searchData.results[0];
+        const tmdbId = matchedItem.id;
+        const tmdbTitle = matchedItem.name || matchedItem.title;
+        logger.player(`[TheIntroDB Sync] TMDB match resolved. ID: ${tmdbId}, Title: "${tmdbTitle}"`);
         tmdbIdRef.current = tmdbId;
 
         // 2. Fetch from theintrodb.org
@@ -667,9 +675,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           finalUrl += `&api_key=${encodeURIComponent(apiKey)}`;
         }
 
+        logger.player(`[TheIntroDB Sync] Querying TheIntroDB API. URL: "${finalUrl}" (Headers: ${JSON.stringify(Object.keys(introDbHeaders))})`);
         const introDbRes = await fetch(finalUrl, { headers: introDbHeaders });
-        if (!introDbRes.ok) throw new Error('TheIntroDB request failed');
+        if (!introDbRes.ok) {
+          logger.player(`[TheIntroDB Sync] TheIntroDB API query failed. HTTP Status: ${introDbRes.status}`);
+          throw new Error('TheIntroDB request failed');
+        }
         const introDbData = await introDbRes.json();
+        logger.player(`[TheIntroDB Sync] TheIntroDB API successful response: ${JSON.stringify(introDbData)}`);
 
         // 3. Map to bookmarks
         const apiBms: any[] = [];
@@ -727,12 +740,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             ...prev,
             bookmarks: sorted
           }));
-          logger.player(`Loaded ${sorted.length} bookmarks from TheIntroDB`);
+          logger.player(`[TheIntroDB Sync] Loaded ${sorted.length} bookmarks from TheIntroDB`);
         } else {
-          logger.player('TheIntroDB returned 0 segments for: ' + video.title);
+          logger.player('[TheIntroDB Sync] TheIntroDB returned 0 segments for: ' + video.title);
         }
       } catch (err) {
-        logger.player('Failed to fetch from TheIntroDB: ' + err);
+        logger.player('[TheIntroDB Sync] Failed to fetch from TheIntroDB: ' + err);
       }
     };
 
