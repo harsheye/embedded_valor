@@ -293,13 +293,29 @@ function App() {
             loadedSettings = {
               ...defaultSettings,
               ...parsed,
+              userId: activeUserId,
+              storageMode: 'localstorage',
               keybinds: { ...defaultSettings.keybinds, ...(parsed.keybinds || {}) },
               subSettings: { ...defaultSettings.subSettings, ...(parsed.subSettings || {}) }
             };
             setSettings(loadedSettings);
-            settingsLoaded = true;
-          } catch {}
+          } catch {
+            loadedSettings = {
+              ...defaultSettings,
+              userId: activeUserId,
+              storageMode: 'localstorage'
+            };
+            setSettings(loadedSettings);
+          }
+        } else {
+          loadedSettings = {
+            ...defaultSettings,
+            userId: activeUserId,
+            storageMode: 'localstorage'
+          };
+          setSettings(loadedSettings);
         }
+        settingsLoaded = true;
         
         const videosKey = activeUserId === 'local' ? 'valor_videos' : `valor_videos_${activeUserId}`;
         const savedVideos = localStorage.getItem(videosKey);
@@ -928,11 +944,21 @@ function App() {
       const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
       const settingsKey = activeUserId === 'local' ? 'valor_settings' : `valor_settings_${activeUserId}`;
       const saved = localStorage.getItem(settingsKey);
+      
+      const isLocal = activeUserId === 'local' || activeUserId.startsWith('local_');
+      const baseSettings = {
+        ...defaultSettings,
+        userId: activeUserId,
+        storageMode: isLocal ? ('localstorage' as const) : ('file' as const)
+      };
+
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
-          ...defaultSettings,
+          ...baseSettings,
           ...parsed,
+          userId: activeUserId,
+          storageMode: isLocal ? ('localstorage' as const) : ('file' as const),
           keybinds: {
             ...defaultSettings.keybinds,
             ...(parsed.keybinds || {})
@@ -943,7 +969,7 @@ function App() {
           }
         };
       }
-      return defaultSettings;
+      return baseSettings;
     } catch (err) {
       return defaultSettings;
     }
