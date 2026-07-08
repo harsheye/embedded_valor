@@ -994,12 +994,37 @@ const backendServer = http.createServer((req, res) => {
           try {
             const insert = db.prepare('INSERT OR REPLACE INTO settings (userId, settingsJson) VALUES (?, ?)');
             insert.run(userId, JSON.stringify(data));
+
+            // Cache/store the active user ID and username in the global settings.json file
+            const settingsFile = path.join(dataDir, 'settings.json');
+            let globalSettings = {};
+            if (fs.existsSync(settingsFile)) {
+              try { globalSettings = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); } catch {}
+            }
+            let activeUsername = '';
+            try {
+              const uRow = db.prepare('SELECT username FROM profiles WHERE userId = ?').get(userId);
+              if (uRow) activeUsername = uRow.username || '';
+            } catch {}
+            
+            globalSettings = {
+              ...globalSettings,
+              activeUserId: userId,
+              activeUsername: activeUsername,
+              storageMode: 'file'
+            };
+            fs.writeFileSync(settingsFile, JSON.stringify(globalSettings, null, 2));
           } catch (e) {
             console.error('[SQLite settings POST error]', e.message);
           }
         } else {
           const settingsFile = path.join(dataDir, 'settings.json');
-          fs.writeFileSync(settingsFile, JSON.stringify(data, null, 2));
+          let globalSettings = data;
+          if (data && data.userId === 'local') {
+            globalSettings.activeUserId = 'local';
+            globalSettings.activeUsername = '';
+          }
+          fs.writeFileSync(settingsFile, JSON.stringify(globalSettings, null, 2));
         }
         res.end(JSON.stringify({ success: true }));
       });

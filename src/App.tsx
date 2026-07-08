@@ -295,7 +295,7 @@ function App() {
             }
           `, { userId: activeUserId });
           const profileData = pData.profile || {};
-          if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+          if (profileData && profileData.settings) {
             loadedSettings = {
               ...defaultSettings,
               ...profileData.settings,
@@ -328,62 +328,77 @@ function App() {
           const serverSettings = await res.json();
           
           if (serverSettings && Object.keys(serverSettings).length > 0) {
-            const storageMode = serverSettings.storageMode || 'localstorage';
-            const userId = serverSettings.userId;
+            const serverActiveUserId = serverSettings.activeUserId;
+            const serverActiveUsername = serverSettings.activeUsername;
 
-            if (storageMode === 'file') {
-              if (userId && userId !== 'local' && !userId.startsWith('local_')) {
-                // This is a SQLite user! Fetch their profile data.
-                localStorage.setItem('valor_active_user_id', userId);
-                const pData = await gqlFetch(`
-                  query GetProfileData($userId: String!) {
-                    profile(userId: $userId) {
-                      settings
-                      history
-                    }
+            if (serverActiveUserId && serverActiveUserId !== 'local') {
+              localStorage.setItem('valor_active_user_id', serverActiveUserId);
+              if (serverActiveUsername) {
+                localStorage.setItem('valor_logged_in_username', serverActiveUsername);
+              }
+
+              // Now fetch the profile data for this serverActiveUserId!
+              const pData = await gqlFetch(`
+                query GetProfileData($userId: String!) {
+                  profile(userId: $userId) {
+                    settings
+                    history
                   }
-                `, { userId });
-                const profileData = pData.profile || {};
-                if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
-                  loadedSettings = {
-                    ...defaultSettings,
-                    ...profileData.settings,
-                    userId: userId,
-                    storageMode: 'file',
-                    keybinds: { ...defaultSettings.keybinds, ...(profileData.settings.keybinds || {}) },
-                    subSettings: { ...defaultSettings.subSettings, ...(profileData.settings.subSettings || {}) }
-                  };
-                  setSettings(loadedSettings);
-                  settingsLoaded = true;
                 }
-                if (profileData && Array.isArray(profileData.history)) {
-                  loadedVideos = profileData.history.map((v: any) => ({
-                    ...v,
-                    audioTracks: v.audioTracks || [],
-                    subtitleTracks: v.subtitleTracks || []
-                  }));
-                  setVideos(loadedVideos);
-                  historyLoaded = true;
-                }
-              } else {
-                // Legacy "Server File" user without a SQLite profile.
-                // Load the server file settings and history directly.
+              `, { userId: serverActiveUserId });
+              const profileData = pData.profile || {};
+              if (profileData && profileData.settings) {
                 loadedSettings = {
                   ...defaultSettings,
-                  ...serverSettings,
-                  userId: 'local',
+                  ...profileData.settings,
+                  userId: serverActiveUserId,
                   storageMode: 'file',
-                  keybinds: { ...defaultSettings.keybinds, ...(serverSettings.keybinds || {}) },
-                  subSettings: { ...defaultSettings.subSettings, ...(serverSettings.subSettings || {}) }
+                  keybinds: { ...defaultSettings.keybinds, ...(profileData.settings.keybinds || {}) },
+                  subSettings: { ...defaultSettings.subSettings, ...(profileData.settings.subSettings || {}) }
                 };
                 setSettings(loadedSettings);
                 settingsLoaded = true;
+              }
+              if (profileData && Array.isArray(profileData.history)) {
+                loadedVideos = profileData.history.map((v: any) => ({
+                  ...v,
+                  audioTracks: v.audioTracks || [],
+                  subtitleTracks: v.subtitleTracks || []
+                }));
+                setVideos(loadedVideos);
+                historyLoaded = true;
+              }
+            } else {
+              const storageMode = serverSettings.storageMode || 'localstorage';
+              const userId = serverSettings.userId;
 
-                try {
-                  const historyRes = await secureFetch(`${BACKEND_ORIGIN}/api/history`);
-                  const fileHistory = await historyRes.json();
-                  if (Array.isArray(fileHistory)) {
-                    loadedVideos = fileHistory.map((v: any) => ({
+              if (storageMode === 'file') {
+                if (userId && userId !== 'local' && !userId.startsWith('local_')) {
+                  // This is a SQLite user! Fetch their profile data.
+                  localStorage.setItem('valor_active_user_id', userId);
+                  const pData = await gqlFetch(`
+                    query GetProfileData($userId: String!) {
+                      profile(userId: $userId) {
+                        settings
+                        history
+                      }
+                    }
+                  `, { userId });
+                  const profileData = pData.profile || {};
+                  if (profileData && profileData.settings) {
+                    loadedSettings = {
+                      ...defaultSettings,
+                      ...profileData.settings,
+                      userId: userId,
+                      storageMode: 'file',
+                      keybinds: { ...defaultSettings.keybinds, ...(profileData.settings.keybinds || {}) },
+                      subSettings: { ...defaultSettings.subSettings, ...(profileData.settings.subSettings || {}) }
+                    };
+                    setSettings(loadedSettings);
+                    settingsLoaded = true;
+                  }
+                  if (profileData && Array.isArray(profileData.history)) {
+                    loadedVideos = profileData.history.map((v: any) => ({
                       ...v,
                       audioTracks: v.audioTracks || [],
                       subtitleTracks: v.subtitleTracks || []
@@ -391,8 +406,35 @@ function App() {
                     setVideos(loadedVideos);
                     historyLoaded = true;
                   }
-                } catch (e) {
-                  console.warn('Failed to load history from legacy server file');
+                } else {
+                  // Legacy "Server File" user without a SQLite profile.
+                  // Load the server file settings and history directly.
+                  loadedSettings = {
+                    ...defaultSettings,
+                    ...serverSettings,
+                    userId: 'local',
+                    storageMode: 'file',
+                    keybinds: { ...defaultSettings.keybinds, ...(serverSettings.keybinds || {}) },
+                    subSettings: { ...defaultSettings.subSettings, ...(serverSettings.subSettings || {}) }
+                  };
+                  setSettings(loadedSettings);
+                  settingsLoaded = true;
+
+                  try {
+                    const historyRes = await secureFetch(`${BACKEND_ORIGIN}/api/history`);
+                    const fileHistory = await historyRes.json();
+                    if (Array.isArray(fileHistory)) {
+                      loadedVideos = fileHistory.map((v: any) => ({
+                        ...v,
+                        audioTracks: v.audioTracks || [],
+                        subtitleTracks: v.subtitleTracks || []
+                      }));
+                      setVideos(loadedVideos);
+                      historyLoaded = true;
+                    }
+                  } catch (e) {
+                    console.warn('Failed to load history from legacy server file');
+                  }
                 }
               }
             }
@@ -1960,13 +2002,8 @@ function App() {
           setSettings(updated);
           saveSettingsToStorage(updated);
         }}
-        onSelectProfile={async (userId, storageMode) => {
+        onSelectProfile={async (userId, _storageMode) => {
           localStorage.setItem('valor_active_user_id', userId);
-          setSettings(prev => ({
-            ...prev,
-            userId: userId,
-            storageMode: storageMode
-          }));
           
           if (userId !== 'local' && !userId.startsWith('local_')) {
             try {
@@ -1979,14 +2016,14 @@ function App() {
                 }
               `, { userId });
               const profileData = pData.profile || {};
-              if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
-                setSettings({
-                  ...defaultSettings,
-                  ...profileData.settings,
-                  userId: userId,
-                  storageMode: 'file'
-                });
-              }
+              const loaded = {
+                ...defaultSettings,
+                ...(profileData.settings || {}),
+                userId: userId,
+                storageMode: 'file'
+              };
+              setSettings(loaded);
+              saveSettingsToStorage(loaded);
               if (profileData && Array.isArray(profileData.history)) {
                 setVideos(profileData.history.map((v: any) => ({
                   ...v,
@@ -2002,15 +2039,18 @@ function App() {
             const videosKey = userId === 'local' ? 'valor_videos' : `valor_videos_${userId}`;
             
             const saved = localStorage.getItem(settingsKey);
+            let loaded;
             if (saved) {
               try {
-                setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: userId, storageMode: 'localstorage' });
-              } catch {}
+                loaded = { ...defaultSettings, ...JSON.parse(saved), userId: userId, storageMode: 'localstorage' };
+              } catch {
+                loaded = { ...defaultSettings, userId: userId, storageMode: 'localstorage' };
+              }
             } else {
-              const localProfiles = JSON.parse(localStorage.getItem('valor_local_profiles') || '[]');
-              const pInfo = localProfiles.find((p: any) => p.userId === userId);
-              setSettings({ ...defaultSettings, userId: userId, storageMode: 'localstorage', profileName: pInfo?.name || 'Local Profile' });
+              loaded = { ...defaultSettings, userId: userId, storageMode: 'localstorage' };
             }
+            setSettings(loaded);
+            saveSettingsToStorage(loaded);
             const savedVideos = localStorage.getItem(videosKey);
             if (savedVideos) {
               try {
@@ -3449,11 +3489,6 @@ function App() {
                                         
                                         localStorage.setItem('valor_active_user_id', p.userId);
                                         const isLocalSelect = p.userId === 'local' || p.userId.startsWith('local_');
-                                        setSettings(prev => ({
-                                          ...prev,
-                                          userId: p.userId,
-                                          storageMode: isLocalSelect ? 'localstorage' : 'file'
-                                        }));
 
                                         if (!isLocalSelect) {
                                           try {
@@ -3466,14 +3501,14 @@ function App() {
                                               }
                                             `, { userId: p.userId });
                                             const profileData = pData.profile || {};
-                                            if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
-                                              setSettings({
-                                                ...defaultSettings,
-                                                ...profileData.settings,
-                                                userId: p.userId,
-                                                storageMode: 'file'
-                                              });
-                                            }
+                                            const loaded = {
+                                              ...defaultSettings,
+                                              ...(profileData.settings || {}),
+                                              userId: p.userId,
+                                              storageMode: 'file'
+                                            };
+                                            setSettings(loaded);
+                                            saveSettingsToStorage(loaded);
                                             if (profileData && Array.isArray(profileData.history)) {
                                               setVideos(profileData.history.map((v: any) => ({
                                                 ...v,
@@ -3491,13 +3526,18 @@ function App() {
                                           const videosKey = p.userId === 'local' ? 'valor_videos' : `valor_videos_${p.userId}`;
                                           
                                           const saved = localStorage.getItem(settingsKey);
+                                          let loaded;
                                           if (saved) {
                                             try {
-                                              setSettings({ ...defaultSettings, ...JSON.parse(saved), userId: p.userId, storageMode: 'localstorage' });
-                                            } catch {}
+                                              loaded = { ...defaultSettings, ...JSON.parse(saved), userId: p.userId, storageMode: 'localstorage' };
+                                            } catch {
+                                              loaded = { ...defaultSettings, userId: p.userId, storageMode: 'localstorage' };
+                                            }
                                           } else {
-                                            setSettings({ ...defaultSettings, userId: p.userId, storageMode: 'localstorage', profileName: p.name });
+                                            loaded = { ...defaultSettings, userId: p.userId, storageMode: 'localstorage', profileName: p.name };
                                           }
+                                          setSettings(loaded);
+                                          saveSettingsToStorage(loaded);
                                           const savedVideos = localStorage.getItem(videosKey);
                                           if (savedVideos) {
                                             try {
@@ -6125,7 +6165,7 @@ function App() {
                         
                         const profileRes = await secureFetch(`${BACKEND_ORIGIN}/api/profile/data?userId=${pId}`);
                         const profileData = await profileRes.json();
-                        if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                        if (profileData && profileData.settings) {
                           setSettings({
                             ...defaultSettings,
                             ...profileData.settings,
@@ -6556,7 +6596,7 @@ function App() {
                                 }
                               `, { userId: nextProfile.userId });
                               const profileData = pData.profile || {};
-                              if (profileData && profileData.settings && Object.keys(profileData.settings).length > 0) {
+                              if (profileData && profileData.settings) {
                                 setSettings({
                                   ...defaultSettings,
                                   ...profileData.settings,
