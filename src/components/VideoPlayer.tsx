@@ -5365,6 +5365,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             grid-template-columns: 1fr 1fr !important;
           }
         }
+        @media (min-width: 1025px) {
+          .control-btn-settings {
+            display: none !important;
+          }
+        }
         .popover-transcript-col {
           border-left: 1px solid rgba(255, 255, 255, 0.08);
           padding-left: 1.25rem;
