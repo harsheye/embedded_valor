@@ -437,6 +437,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       bookmarks: updatedBookmarks
     }));
 
+    syncFavoriteToTrakt(true);
+
     setShowAddDialog(false);
     if (videoRef.current && isPlaying) {
       videoRef.current.play().catch(console.error);
@@ -451,6 +453,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ...prev,
       bookmarks: updatedBookmarks
     }));
+
+    if (updatedBookmarks.length === 0) {
+      syncFavoriteToTrakt(false);
+    }
   };
   const [currentTime, setCurrentTime] = useState(video.currentTime || 0);
   const latestTimeRef = useRef<number>(video.currentTime || 0);
@@ -465,6 +471,136 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showRatingPrompt, setShowRatingPrompt] = useState(false);
   const [userRating, setUserRating] = useState<number | null>((video as any).rating || null);
   const ratingPromptedRef = useRef<boolean>(!!(video as any).rating);
+
+  const tmdbIdRef = useRef<number | null>(null);
+  const hasScrobbledTraktRef = useRef<boolean>(!!(video as any).hasScrobbledTrakt);
+
+  const scrobbleToTrakt = async () => {
+    const savedSettings = localStorage.getItem('valor_settings');
+    if (!savedSettings) return;
+    try {
+      const parsed = JSON.parse(savedSettings);
+      const token = parsed.traktAccessToken;
+      const syncHistory = parsed.traktSyncHistory;
+      if (!token || !syncHistory) return;
+
+      if (hasScrobbledTraktRef.current) return;
+      hasScrobbledTraktRef.current = true;
+
+      const seriesInfo = classifyVideoTitle(video.title);
+      const isTV = seriesInfo.type === 'series';
+      const tmdbId = tmdbIdRef.current;
+      const nowIso = new Date().toISOString();
+
+      const body: any = {};
+      if (isTV) {
+        if (!tmdbId) {
+          logger.player('Skipping Trakt.tv scrobble: no TMDB ID resolved for series.');
+          return;
+        }
+        body.shows = [
+          {
+            ids: { tmdb: tmdbId },
+            seasons: [
+              {
+                number: seriesInfo.season || 1,
+                episodes: [
+                  {
+                    number: seriesInfo.episode || 1,
+                    watched_at: nowIso
+                  }
+                ]
+              }
+            ]
+          }
+        ];
+      } else {
+        body.movies = [
+          {
+            title: seriesInfo.displayTitle,
+            watched_at: nowIso,
+            ids: tmdbId ? { tmdb: tmdbId } : undefined
+          }
+        ];
+        if (!tmdbId && !seriesInfo.displayTitle) {
+          logger.player('Skipping Trakt.tv scrobble: no TMDB ID or movie title.');
+          return;
+        }
+      }
+
+      logger.player(`Scrobbling watch history to Trakt.tv...`);
+      const res = await fetch('https://api.trakt.tv/sync/history', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+          'trakt-api-version': '2'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        logger.player('Successfully scrobbled to Trakt.tv watch history!');
+        onUpdateVideoRef.current((prev: any) => ({
+          ...prev,
+          hasScrobbledTrakt: true
+        }), false, video.id);
+      } else {
+        logger.player(`Trakt.tv scrobble failed with status: ${res.status}`);
+      }
+    } catch (err) {
+      console.error('Error scrobbling to Trakt.tv:', err);
+    }
+  };
+
+  const syncFavoriteToTrakt = async (isAdd: boolean) => {
+    const savedSettings = localStorage.getItem('valor_settings');
+    if (!savedSettings) return;
+    try {
+      const parsed = JSON.parse(savedSettings);
+      const token = parsed.traktAccessToken;
+      const syncFavoritesSetting = parsed.traktSyncFavorites;
+      if (!token || !syncFavoritesSetting) return;
+
+      const seriesInfo = classifyVideoTitle(video.title);
+      const isTV = seriesInfo.type === 'series';
+      const tmdbId = tmdbIdRef.current;
+      if (!tmdbId) {
+        logger.player('Skipping Trakt.tv favorites sync: no TMDB ID resolved.');
+        return;
+      }
+
+      const body: any = {};
+      if (isTV) {
+        body.shows = [{ ids: { tmdb: tmdbId } }];
+      } else {
+        body.movies = [{ ids: { tmdb: tmdbId } }];
+      }
+
+      const endpoint = isAdd ? 'favorites' : 'favorites/remove';
+      logger.player(`Syncing Trakt.tv favorites (${isAdd ? 'add' : 'remove'})...`);
+
+      const res = await fetch(`https://api.trakt.tv/sync/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+          'trakt-api-version': '2'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        logger.player(`Successfully synced favorites to Trakt.tv!`);
+      } else {
+        logger.player(`Trakt.tv favorites sync failed: ${res.status}`);
+      }
+    } catch (err) {
+      console.error('Error syncing favorites to Trakt.tv:', err);
+    }
+  };
 
   // TheIntroDB Bookmarks Fetching
   useEffect(() => {
@@ -499,6 +635,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
 
         const tmdbId = searchData.results[0].id;
+        tmdbIdRef.current = tmdbId;
 
         // 2. Fetch from theintrodb.org
         const durationMs = Math.round(duration * 1000);
@@ -2520,6 +2657,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (!timeToFinish && currentDuration > 0 && (latestTimeRef.current / currentDuration) >= 0.95) {
         const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
         timeToFinish = (exitTime - firstPlay) / 1000;
+        scrobbleToTrakt();
       }
 
       onUpdateVideoRef.current((prev: any) => ({
@@ -2552,6 +2690,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (!timeToFinish && currentDuration > 0 && (latestTimeRef.current / currentDuration) >= 0.95) {
           const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
           timeToFinish = (exitTime - firstPlay) / 1000;
+          scrobbleToTrakt();
         }
 
         onUpdateVideoRef.current((prev: any) => ({
@@ -3002,6 +3141,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onSeeked={handleVideoSeeked}
           onSeeking={() => setIsBuffering(true)}
           onError={handleVideoError}
+          onEnded={scrobbleToTrakt}
           playsInline
         />
       </div>

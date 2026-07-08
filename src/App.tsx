@@ -274,6 +274,48 @@ function App() {
       const localStreamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(fileParam)}`;
       processRemoteUrl(localStreamUrl, true);
     }
+
+    const traktCode = params.get('code');
+    if (traktCode) {
+      const exchangeTraktCode = async () => {
+        try {
+          const res = await fetch('https://api.trakt.tv/oauth/token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              code: traktCode,
+              client_id: 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+              client_secret: '2863090375d796f593e2f9ec37d61d44fa971c5bb11fdf0614d816d0e48c0c6d',
+              redirect_uri: 'https://localhost:50000',
+              grant_type: 'authorization_code'
+            })
+          });
+
+          if (!res.ok) throw new Error('Failed to exchange code');
+          const data = await res.json();
+          if (data.access_token) {
+            setSettings(prev => {
+              const updated = {
+                ...prev,
+                traktAccessToken: data.access_token
+              };
+              saveSettingsToStorage(updated);
+              return updated;
+            });
+            addToast('Successfully connected to Trakt.tv!', 'success');
+          }
+        } catch (err) {
+          console.error('Error exchanging Trakt auth code:', err);
+          addToast('Failed to connect to Trakt.tv.', 'error');
+        } finally {
+          const cleanUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+      };
+      exchangeTraktCode();
+    }
   }, []);
 
   useEffect(() => {
@@ -690,6 +732,9 @@ function App() {
     storageMode: 'localstorage' as 'localstorage' | 'file',
     ratingThreshold: 3 as number,
     theIntroDbApiKey: '' as string,
+    traktAccessToken: '' as string,
+    traktSyncHistory: true as boolean,
+    traktSyncFavorites: true as boolean,
     calendarStyle: 'grid' as 'grid' | 'list',
     isOnboarded: false as boolean,
     subSettings: {
@@ -2758,6 +2803,114 @@ function App() {
                                     outline: 'none'
                                   }}
                                 />
+                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: '0.2rem 0 0 0', fontStyle: 'italic' }}>
+                                  🔒 Note: Your API key is stored securely in your browser's local cache.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="settings-section">
+                              <h3>Trakt.tv Integration</h3>
+                              <p className="settings-section-desc">Connect with Trakt.tv to automatically sync your watched history and favorites.</p>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.6rem' }}>
+                                {/* Access Token Input */}
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
+                                    Trakt Access Token
+                                  </label>
+                                  <input 
+                                    type="text" 
+                                    value={settings.traktAccessToken || ''}
+                                    placeholder="Paste Trakt Access Token"
+                                    onChange={(e) => handleDefaultLangChange('traktAccessToken', e.target.value)}
+                                    style={{
+                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                                      borderRadius: '6px',
+                                      color: '#fff',
+                                      padding: '0.5rem 0.75rem',
+                                      fontSize: '0.85rem',
+                                      width: '100%',
+                                      boxSizing: 'border-box',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Auth Buttons */}
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                  <button
+                                    onClick={() => {
+                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=https://localhost:50000`;
+                                      window.location.href = authUrl;
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      background: '#ed1c24',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      color: '#fff',
+                                      padding: '0.5rem 1rem',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      textAlign: 'center',
+                                      transition: 'background 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#d11219'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = '#ed1c24'}
+                                  >
+                                    Connect Trakt Account
+                                  </button>
+                                  {settings.traktAccessToken && (
+                                    <button
+                                      onClick={() => {
+                                        handleDefaultLangChange('traktAccessToken', '');
+                                        addToast('Disconnected from Trakt.tv', 'warning');
+                                      }}
+                                      style={{
+                                        background: 'rgba(255, 255, 255, 0.08)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        borderRadius: '6px',
+                                        color: '#fff',
+                                        padding: '0.5rem 1rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Disconnect
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Sync Preferences */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.6rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Watched History</span>
+                                    <input 
+                                      type="checkbox"
+                                      checked={settings.traktSyncHistory}
+                                      onChange={(e) => handleDefaultLangChange('traktSyncHistory', e.target.checked)}
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Favorites (Bookmarks)</span>
+                                    <input 
+                                      type="checkbox"
+                                      checked={settings.traktSyncFavorites}
+                                      onChange={(e) => handleDefaultLangChange('traktSyncFavorites', e.target.checked)}
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Disclaimer Note */}
+                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: 0, fontStyle: 'italic' }}>
+                                  🔒 Note: Your access token is stored securely in your browser's local cache.
+                                </p>
                               </div>
                             </div>
 
