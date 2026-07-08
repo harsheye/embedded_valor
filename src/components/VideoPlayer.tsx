@@ -416,6 +416,87 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [video.id, video.title, videos]);
 
+  const submitToTheIntroDb = async (bookmark: any) => {
+    if (hadTidbDataRef.current) {
+      logger.player('[TheIntroDB Submit] Skipping submission: TIDB already has data for this video.');
+      return;
+    }
+
+    const tmdbId = tmdbIdRef.current;
+    if (!tmdbId) {
+      logger.player('[TheIntroDB Submit] Skipping submission: No TMDB ID resolved.');
+      return;
+    }
+
+    const savedSettings = localStorage.getItem('valor_settings');
+    let apiKey = "";
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings);
+        apiKey = parsed.theIntroDbApiKey || "";
+      } catch {}
+    }
+    if (!apiKey) {
+      logger.player('[TheIntroDB Submit] Skipping submission: No API key found in settings.');
+      return;
+    }
+
+    const seriesInfo = classifyVideoTitle(video.title);
+    const isTV = seriesInfo.type === 'series';
+
+    let segment = "intro";
+    if (bookmark.isOutro) {
+      segment = "credits";
+    } else if (bookmark.isIntro) {
+      const labelLower = (bookmark.label || "").toLowerCase();
+      if (labelLower.includes("recap")) {
+        segment = "recap";
+      }
+    } else {
+      return;
+    }
+
+    const payload: any = {
+      tmdb_id: tmdbId,
+      type: isTV ? "tv" : "movie",
+      segment: segment,
+      start_sec: Number(bookmark.time),
+      end_sec: bookmark.endTime !== undefined && bookmark.endTime !== null ? Number(bookmark.endTime) : null,
+      video_duration_ms: Math.round(duration * 1000)
+    };
+
+    if (isTV) {
+      payload.season = String(seriesInfo.season || 1);
+      payload.episode = String(seriesInfo.episode || 1);
+    }
+
+    logger.player('[TheIntroDB Submit] Submitting segment to TIDB: ' + JSON.stringify(payload));
+    try {
+      const res = await fetch('https://api.theintrodb.org/v3/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        logger.player('[TheIntroDB Submit] Submission failed. HTTP Status: ' + res.status);
+        const errText = await res.text();
+        logger.player('[TheIntroDB Submit] Error detail: ' + errText);
+        triggerSwitchToast("Failed to submit to TIDB");
+      } else {
+        const resData = await res.json();
+        logger.player('[TheIntroDB Submit] Submission success: ' + JSON.stringify(resData));
+        triggerSwitchToast("Submitted to TIDB successfully");
+      }
+    } catch (err) {
+      logger.player('[TheIntroDB Submit] Network/Fetch error: ' + err);
+      triggerSwitchToast("Failed to submit to TIDB");
+    }
+  };
+
   const handleSaveBookmark = () => {
     const finalTime = Math.round(newBookmarkTime);
     const finalEndTime = isIntro ? Math.round(newBookmarkEndTime) : undefined;
@@ -438,6 +519,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }));
 
     syncFavoriteToTrakt(true);
+    submitToTheIntroDb(newBookmark);
 
     setShowAddDialog(false);
     if (videoRef.current && isPlaying) {
@@ -473,6 +555,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const ratingPromptedRef = useRef<boolean>(!!(video as any).rating);
 
   const tmdbIdRef = useRef<number | null>(null);
+  const hadTidbDataRef = useRef<boolean>(false);
   const hasScrobbledTraktRef = useRef<boolean>(!!(video as any).hasScrobbledTrakt);
 
   const scrobbleToTrakt = async () => {
@@ -607,6 +690,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (duration <= 0) return;
 
     const fetchIntroDb = async () => {
+      hadTidbDataRef.current = false;
       try {
         const seriesInfo = classifyVideoTitle(video.title);
         const isTV = seriesInfo.type === 'series';
@@ -743,6 +827,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
 
         if (apiBms.length > 0) {
+          hadTidbDataRef.current = true;
           const sorted = apiBms.sort((a, b) => a.time - b.time);
           setBookmarks(sorted);
           onUpdateVideo((prev: any) => ({
