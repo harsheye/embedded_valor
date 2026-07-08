@@ -993,11 +993,12 @@ const backendServer = http.createServer((req, res) => {
         return;
       }
 
+      const redirectUri = data.redirect_uri || 'http://localhost:50000';
       const bodyData = JSON.stringify({
         code: code,
         client_id: 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
         client_secret: '2863090375d796f593e2f9ec37d61d44fa971c5bb11fdf0614d816d0e48c0c6d',
-        redirect_uri: 'http://localhost:50000',
+        redirect_uri: redirectUri,
         grant_type: 'authorization_code'
       });
 

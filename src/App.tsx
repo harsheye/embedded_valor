@@ -279,13 +279,27 @@ function App() {
     if (traktCode) {
       const exchangeTraktCode = async () => {
         try {
+          let redirectUri = 'http://localhost:50000';
+          try {
+            const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+            const settingsKey = activeUserId === 'local' ? 'valor_settings' : `valor_settings_${activeUserId}`;
+            const savedSettings = localStorage.getItem(settingsKey);
+            if (savedSettings) {
+              const parsed = JSON.parse(savedSettings);
+              if (parsed.traktRedirectUri) {
+                redirectUri = parsed.traktRedirectUri;
+              }
+            }
+          } catch {}
+
           const res = await fetch(`${BACKEND_ORIGIN}/api/trakt/exchange`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              code: traktCode
+              code: traktCode,
+              redirect_uri: redirectUri
             })
           });
 
@@ -729,6 +743,7 @@ function App() {
     ratingThreshold: 3 as number,
     theIntroDbApiKey: '' as string,
     traktAccessToken: '' as string,
+    traktRedirectUri: 'http://localhost:50000' as string,
     traktSyncHistory: true as boolean,
     traktSyncFavorites: true as boolean,
     calendarStyle: 'grid' as 'grid' | 'list',
@@ -2810,6 +2825,30 @@ function App() {
                               <p className="settings-section-desc">Connect with Trakt.tv to automatically sync your watched history and favorites.</p>
                               
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.6rem' }}>
+                                {/* Redirect URI Input */}
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
+                                    Trakt Redirect URI
+                                  </label>
+                                  <input 
+                                    type="text" 
+                                    value={settings.traktRedirectUri || ''}
+                                    placeholder="e.g. http://localhost:50000"
+                                    onChange={(e) => handleDefaultLangChange('traktRedirectUri', e.target.value)}
+                                    style={{
+                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                                      borderRadius: '6px',
+                                      color: '#fff',
+                                      padding: '0.5rem 0.75rem',
+                                      fontSize: '0.85rem',
+                                      width: '100%',
+                                      boxSizing: 'border-box',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                </div>
+
                                 {/* Access Token Input */}
                                 <div>
                                   <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
@@ -2838,7 +2877,8 @@ function App() {
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                   <button
                                     onClick={() => {
-                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=http://localhost:50000`;
+                                      const redirectUri = settings.traktRedirectUri || 'http://localhost:50000';
+                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=${encodeURIComponent(redirectUri)}`;
                                       window.location.href = authUrl;
                                     }}
                                     style={{
