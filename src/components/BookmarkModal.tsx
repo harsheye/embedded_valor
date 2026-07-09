@@ -281,7 +281,7 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
             />
           </div>
           
-          {(bookmarkType === 'intro' || bookmarkType === 'outro') && (
+          {bookmarkType === 'intro' && (
             <div className="dialog-field" style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
                 End Time

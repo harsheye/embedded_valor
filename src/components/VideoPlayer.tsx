@@ -1829,22 +1829,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [isPlaying, showAudioSubMenu, showSettingsPanel, showBookmarksPopover, showAddDialog]);
 
-  const wasPlayingBeforeModalRef = useRef(false);
-  useEffect(() => {
-    if (showAddDialog) {
-      wasPlayingBeforeModalRef.current = isPlaying;
-      if (isPlaying && videoRef.current) {
-        videoRef.current.pause();
-        setIsPlaying(false);
-      }
-    } else {
-      if (wasPlayingBeforeModalRef.current && videoRef.current) {
-        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-        wasPlayingBeforeModalRef.current = false;
-      }
-    }
-  }, [showAddDialog]);
-
   const parseDurationToSeconds = (dur: any): number => {
     if (!dur) return 0;
     if (typeof dur === 'number') return dur;
@@ -4137,7 +4121,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className="skip-btn"
           style={{
             position: 'absolute',
-            bottom: controlsVisible ? '120px' : '40px',
+            bottom: controlsVisible ? '160px' : '40px',
             right: '40px',
             zIndex: 90,
             background: 'rgba(0,0,0,0.7)',
@@ -4214,7 +4198,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             left: `${percent}%`,
                             width: `${widthPercent}%`,
                             position: 'absolute',
-                            height: '100%',
+                            height: '4px',
                             background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : bm.category === 'Outro' ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
                             borderRadius: '2px',
                             cursor: 'pointer',
@@ -5665,8 +5649,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         .scrub-container-premium:hover .scrub-track-bg,
         .scrub-container-premium:hover .scrub-track-buffered,
         .scrub-container-premium:hover .scrub-track-progress,
-        .scrub-container-premium:hover .timeline-bookmark-range,
-        .scrub-container-premium:hover .timeline-bookmark-dot {
+        .scrub-container-premium:hover .scrub-track-progress,
+        .scrub-container-premium:hover .timeline-bookmark-range {
           height: 6px !important;
         }
 
