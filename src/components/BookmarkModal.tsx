@@ -112,7 +112,7 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
       }}
     >
       <div 
-        className="bookmark-dialog-box animate-slide-left" 
+        className="bookmark-dialog-box animate-slide-in-right" 
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'rgba(18, 18, 18, 0.96)',
