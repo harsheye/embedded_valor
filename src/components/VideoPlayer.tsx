@@ -1829,6 +1829,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [isPlaying, showAudioSubMenu, showSettingsPanel, showBookmarksPopover, showAddDialog]);
 
+  const wasPlayingBeforeModalRef = useRef(false);
+  useEffect(() => {
+    if (showAddDialog) {
+      wasPlayingBeforeModalRef.current = isPlaying;
+      if (isPlaying && videoRef.current) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    } else {
+      if (wasPlayingBeforeModalRef.current && videoRef.current) {
+        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        wasPlayingBeforeModalRef.current = false;
+      }
+    }
+  }, [showAddDialog]);
+
   const parseDurationToSeconds = (dur: any): number => {
     if (!dur) return 0;
     if (typeof dur === 'number') return dur;
