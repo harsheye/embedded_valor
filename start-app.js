@@ -174,6 +174,19 @@ db.exec(`
   );
 `);
 
+// Try to alter bookmarks table for missing columns
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN title TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN description TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN category TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN startTime REAL;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN thumbnail TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN favorite INTEGER DEFAULT 0;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN createdAt TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN updatedAt TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN episode INTEGER;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN season INTEGER;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN color TEXT;`); } catch(e){}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS login_attempts (
     username TEXT PRIMARY KEY,
@@ -716,6 +729,74 @@ const backendServer = http.createServer((req, res) => {
         return;
       }
       
+      // SaveBookmarks mutation — dedicated bookmark sync for a single video
+      if (query.includes('SaveBookmarks') || query.includes('saveBookmarks')) {
+        const userId = variables.userId;
+        const videoId = variables.videoId;
+        const bookmarksData = variables.bookmarks;
+        
+        if (!userId || !videoId) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ errors: [{ message: 'Missing userId or videoId' }] }));
+          return;
+        }
+        
+        if (userId !== 'local' && !userId.startsWith('local_')) {
+          try {
+            // Delete existing bookmarks for this video
+            const deleteBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ? AND videoId = ?');
+            deleteBookmarks.run(userId, videoId);
+            
+            // Insert new bookmarks
+            if (Array.isArray(bookmarksData) && bookmarksData.length > 0) {
+              const insertBookmark = db.prepare(`
+                INSERT OR REPLACE INTO bookmarks
+                (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?)
+              `);
+              
+              for (const bm of bookmarksData) {
+                insertBookmark.run(
+                  userId,
+                  videoId,
+                  bm.id,
+                  bm.time,
+                  bm.endTime !== undefined && bm.endTime !== null ? bm.endTime : null,
+                  bm.label || '',
+                  bm.isIntro ? 1 : 0,
+                  bm.isOutro ? 1 : 0,
+                  bm.skipEnabled ? 1 : 0,
+                  bm.title || null,
+                  bm.description || null,
+                  bm.category || null,
+                  bm.startTime || null,
+                  bm.thumbnail || null,
+                  bm.favorite ? 1 : 0,
+                  bm.episode || null,
+                  bm.season || null,
+                  bm.color || null
+                );
+              }
+            }
+            
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ data: { saveBookmarks: { success: true, count: (bookmarksData || []).length } } }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ errors: [{ message: e.message }] }));
+          }
+        } else {
+          // Local profiles — no server save needed
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ data: { saveBookmarks: { success: true, count: 0 } } }));
+        }
+        return;
+      }
+      
       // Unknown query
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json');
@@ -1027,8 +1108,8 @@ const backendServer = http.createServer((req, res) => {
             `);
             const insertBookmark = db.prepare(`
               INSERT OR REPLACE INTO bookmarks
-              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?)
             `);
 
             if (Array.isArray(data)) {
@@ -1066,7 +1147,16 @@ const backendServer = http.createServer((req, res) => {
                       bm.label || '',
                       bm.isIntro ? 1 : 0,
                       bm.isOutro ? 1 : 0,
-                      bm.skipEnabled ? 1 : 0
+                      bm.skipEnabled ? 1 : 0,
+                      bm.title || null,
+                      bm.description || null,
+                      bm.category || null,
+                      bm.startTime || null,
+                      bm.thumbnail || null,
+                      bm.favorite ? 1 : 0,
+                      bm.episode || null,
+                      bm.season || null,
+                      bm.color || null
                     );
                   }
                 }
@@ -1100,7 +1190,18 @@ const backendServer = http.createServer((req, res) => {
                 label: bm.label,
                 isIntro: bm.isIntro === 1,
                 isOutro: bm.isOutro === 1,
-                skipEnabled: bm.skipEnabled === 1
+                skipEnabled: bm.skipEnabled === 1,
+                title: bm.title,
+                description: bm.description,
+                category: bm.category,
+                startTime: bm.startTime,
+                thumbnail: bm.thumbnail,
+                favorite: bm.favorite === 1,
+                createdAt: bm.createdAt,
+                updatedAt: bm.updatedAt,
+                episode: bm.episode,
+                season: bm.season,
+                color: bm.color
               }));
 
             return {
@@ -1139,6 +1240,93 @@ const backendServer = http.createServer((req, res) => {
         }
       }
     }
+    return;
+  }
+
+  // Bookmark REST API endpoints
+  if (pathname.startsWith('/api/bookmark')) {
+    if (req.method === 'GET' && pathname.match(/^\/api\/bookmark\/media\/([^/]+)$/)) {
+      try {
+        const mediaIdMatch = pathname.match(/^\/api\/bookmark\/media\/([^/]+)$/);
+        const mediaId = mediaIdMatch[1];
+        const userId = parsedUrl.searchParams.get('userId');
+        
+        const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ? AND videoId = ?');
+        const rows = bookmarksQuery.all(userId, mediaId);
+        
+        const mapped = rows.map(bm => ({
+          id: bm.id, time: bm.time, endTime: bm.endTime, label: bm.label,
+          isIntro: bm.isIntro === 1, isOutro: bm.isOutro === 1, skipEnabled: bm.skipEnabled === 1,
+          title: bm.title, description: bm.description, category: bm.category,
+          startTime: bm.startTime, thumbnail: bm.thumbnail, favorite: bm.favorite === 1,
+          createdAt: bm.createdAt, updatedAt: bm.updatedAt, episode: bm.episode, season: bm.season, color: bm.color
+        }));
+        
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(mapped));
+      } catch (err) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => body += chunk.toString());
+    req.on('end', () => {
+      try {
+        if (req.method === 'POST' && pathname === '/api/bookmark') {
+          const data = JSON.parse(body);
+          const { userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, episode, season, color } = data;
+          
+          const insertBookmark = db.prepare(`
+            INSERT OR REPLACE INTO bookmarks
+            (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?)
+          `);
+          insertBookmark.run(userId, videoId, id, time, endTime, label || '', isIntro ? 1 : 0, isOutro ? 1 : 0, skipEnabled ? 1 : 0, title || null, description || null, category || null, startTime || null, thumbnail || null, favorite ? 1 : 0, episode || null, season || null, color || null);
+          
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true }));
+        } else if (req.method === 'PUT' && pathname.match(/^\/api\/bookmark\/([^/]+)$/)) {
+          const idMatch = pathname.match(/^\/api\/bookmark\/([^/]+)$/);
+          const bmId = idMatch[1];
+          const data = JSON.parse(body);
+          const { userId, videoId, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, episode, season, color } = data;
+          
+          const updateBookmark = db.prepare(`
+            UPDATE bookmarks SET time = ?, endTime = ?, label = ?, isIntro = ?, isOutro = ?, skipEnabled = ?, title = ?, description = ?, category = ?, startTime = ?, thumbnail = ?, favorite = ?, updatedAt = datetime('now'), episode = ?, season = ?, color = ?
+            WHERE userId = ? AND videoId = ? AND id = ?
+          `);
+          updateBookmark.run(time, endTime, label || '', isIntro ? 1 : 0, isOutro ? 1 : 0, skipEnabled ? 1 : 0, title || null, description || null, category || null, startTime || null, thumbnail || null, favorite ? 1 : 0, episode || null, season || null, color || null, userId, videoId, bmId);
+          
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true }));
+        } else if (req.method === 'DELETE' && pathname.match(/^\/api\/bookmark\/([^/]+)$/)) {
+          const idMatch = pathname.match(/^\/api\/bookmark\/([^/]+)$/);
+          const bmId = idMatch[1];
+          const data = JSON.parse(body);
+          const { userId, videoId } = data;
+          
+          const deleteBookmark = db.prepare('DELETE FROM bookmarks WHERE userId = ? AND videoId = ? AND id = ?');
+          deleteBookmark.run(userId, videoId, bmId);
+          
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true }));
+        } else {
+          res.statusCode = 404;
+          res.end('Not Found');
+        }
+      } catch (err) {
+        console.error('[Bookmark API Error]', err.message);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
     return;
   }
 

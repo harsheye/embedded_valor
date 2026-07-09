@@ -61,4 +61,15 @@ export interface Bookmark {
   isIntro?: boolean;
   isOutro?: boolean;
   skipEnabled?: boolean;
+  title?: string;
+  description?: string;
+  category?: string;
+  startTime?: number;
+  thumbnail?: string;
+  favorite?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  episode?: number;
+  season?: number;
+  color?: string;
 }

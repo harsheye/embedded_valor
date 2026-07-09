@@ -45,6 +45,10 @@ export interface AudioSubPopoverProps {
   onUpdateSubSettings: (settings: any) => void;
   audioBoost: number;
   setAudioBoost: (boost: number) => void;
+
+  openSubtitles?: any[];
+  isOpenSubLoading?: boolean;
+  onDownloadOpenSubtitle?: (fileId: number, fileName: string, language: string) => Promise<void>;
 }
 
 export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
@@ -73,28 +77,56 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
   subSettings,
   onUpdateSubSettings,
   audioBoost,
-  setAudioBoost
+  setAudioBoost,
+  openSubtitles = [],
+  isOpenSubLoading = false,
+  onDownloadOpenSubtitle
 }) => {
   const [subSearchQuery, setSubSearchQuery] = useState('');
+  
+  // Use subSettings for persistence, defaulting to false
+  const showStyleColumn = subSettings?.showStyleColumn ?? false;
+  const showViewColumn = subSettings?.showViewColumn ?? false;
+  
+  void setActiveAudioStreamIndex; // consumed by parent; kept in props for potential future use
+
+  // Dynamic layout calculations based on active columns
+  let popoverWidth = 460;
+  let gridCols = "1fr 1fr";
+  if (selectedSubTrack) {
+    if (showViewColumn && showStyleColumn) {
+      popoverWidth = 960;
+      gridCols = "1fr 1fr 1.3fr 1.1fr";
+    } else if (showViewColumn) {
+      popoverWidth = 740;
+      gridCols = "1fr 1fr 1.3fr";
+    } else if (showStyleColumn) {
+      popoverWidth = 700;
+      gridCols = "1fr 1fr 1.1fr";
+    }
+  }
 
   return (
     <div 
-      className={`audio-sub-popover-center animate-fade-in ${selectedSubTrack ? 'has-transcript' : ''}`}
+      className="audio-sub-popover-center animate-fade-in"
+      style={{ width: `${popoverWidth}px` }}
       onMouseEnter={() => {
         if (audioSubTimeoutRef.current) clearTimeout(audioSubTimeoutRef.current);
       }}
     >
-      <div className="popover-cols">
+      <div className="popover-cols" style={{ gridTemplateColumns: gridCols }}>
         {/* Audio Column */}
         <div className="popover-col">
           <h4>Audio</h4>
           <div className="popover-options">
-            {/* Default Original Audio if streams are available, or default selector */}
-            <label className={`popover-option ${selectedAudioTrack === null ? 'active' : ''}`} onClick={() => { setSelectedAudioTrack(null); setActiveAudioStreamIndex(null); setShowAudioSubMenu(false); }}>
-              <input type="radio" name="audio-lang" checked={selectedAudioTrack === null} readOnly />
-              <span>Original</span>
-              {selectedAudioTrack === null && <Check size={14} className="check-icon" />}
-            </label>
+            {/* When no embedded streams are found yet, show a disabled Original placeholder */}
+            {audioStreams.length === 0 && (
+              <label className={`popover-option ${selectedAudioTrack === null ? 'active' : ''}`}>
+                <input type="radio" name="audio-lang" checked={selectedAudioTrack === null} readOnly />
+                <span>Default</span>
+                {selectedAudioTrack === null && <Check size={14} className="check-icon" />}
+              </label>
+            )}
 
             {/* Scanned/Probed Embedded Tracks */}
             {audioStreams.map((s) => {
@@ -152,7 +184,51 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
 
         {/* Subtitles Column */}
         <div className="popover-col">
-          <h4>Subtitles</h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '0.35rem', marginBottom: '0.6rem' }}>
+            <h4 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>Sub</h4>
+            {selectedSubTrack && (
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    onUpdateSubSettings({ ...subSettings, showViewColumn: !showViewColumn }); 
+                  }}
+                  style={{
+                    background: showViewColumn ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                    border: `1px solid ${showViewColumn ? 'rgba(59, 130, 246, 0.3)' : 'rgba(255, 255, 255, 0.12)'}`,
+                    color: showViewColumn ? '#3b82f6' : 'rgba(255, 255, 255, 0.7)',
+                    borderRadius: '4px',
+                    padding: '0.15rem 0.4rem',
+                    fontSize: '0.7rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  VIEW
+                </button>
+                <button 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    onUpdateSubSettings({ ...subSettings, showStyleColumn: !showStyleColumn }); 
+                  }}
+                  style={{
+                    background: showStyleColumn ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                    border: `1px solid ${showStyleColumn ? 'rgba(59, 130, 246, 0.3)' : 'rgba(255, 255, 255, 0.12)'}`,
+                    color: showStyleColumn ? '#3b82f6' : 'rgba(255, 255, 255, 0.7)',
+                    borderRadius: '4px',
+                    padding: '0.15rem 0.4rem',
+                    fontSize: '0.7rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  STYLE
+                </button>
+              </div>
+            )}
+          </div>
           <div className="popover-options">
             {/* Off */}
             <label className={`popover-option ${selectedSubTrack === null ? 'active' : ''}`} onClick={() => { setSelectedSubTrack(null); setActiveSubStreamIndex(null); setShowAudioSubMenu(false); }}>
@@ -186,6 +262,40 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
               );
             })}
 
+            {/* OpenSubtitles section — inline inside popover-options */}
+            {(isOpenSubLoading || (openSubtitles && openSubtitles.length > 0)) && (
+              <>
+                <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', margin: '0.3rem 0', opacity: 0.6 }}></div>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(255, 255, 255, 0.35)', letterSpacing: '0.05em', paddingLeft: '0.4rem' }}>
+                  OpenSubtitles {isOpenSubLoading && '...'}
+                </div>
+                {isOpenSubLoading && (!openSubtitles || openSubtitles.length === 0) && (
+                  <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.4)', paddingLeft: '0.4rem' }}>
+                    Searching...
+                  </div>
+                )}
+                {openSubtitles && openSubtitles.length > 0 && openSubtitles.map((sub) => {
+                  const isSelected = selectedSubTrack?.id === `opensub-${sub.fileId}`;
+                  return (
+                    <label 
+                      key={sub.id} 
+                      className={`popover-option ${isSelected ? 'active' : ''}`} 
+                      onClick={() => {
+                        if (onDownloadOpenSubtitle) {
+                          onDownloadOpenSubtitle(sub.fileId, sub.fileName, sub.language);
+                        }
+                      }}
+                      title={sub.fileName}
+                    >
+                      <input type="radio" name="sub-lang" checked={isSelected} readOnly />
+                      <span>{sub.language.toUpperCase()}</span>
+                      {isSelected && <Check size={12} className="check-icon" />}
+                    </label>
+                  );
+                })}
+              </>
+            )}
+
             {/* Custom Add Trigger */}
             <label className="popover-option add-custom-btn" onClick={() => { customSubInputRef.current?.click(); setShowAudioSubMenu(false); }}>
               <span>+ Add Custom File</span>
@@ -194,7 +304,7 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
         </div>
 
         {/* Subtitle Cue Transcript Column */}
-        {selectedSubTrack && (
+        {selectedSubTrack && showViewColumn && (
           <div className="popover-col popover-transcript-col">
             <h4>Subtitle View</h4>
             <div className="transcript-search-box">
@@ -236,7 +346,7 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
         )}
         
         {/* Subtitle Style Customization Column */}
-        {selectedSubTrack && (
+        {selectedSubTrack && showStyleColumn && (
           <div className="popover-col popover-style-col">
             <div className="style-header-row">
               <h4>Subtitle Style</h4>

@@ -12,6 +12,8 @@ interface CustomSelectProps {
   options: Option[];
   placeholder?: string;
   className?: string;
+  hideSearch?: boolean;
+  width?: string;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({ 
@@ -19,7 +21,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   onChange, 
   options, 
   placeholder = "Select option...",
-  className = '' 
+  className = '',
+  hideSearch = false,
+  width
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -53,7 +57,11 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   );
 
   return (
-    <div className={`custom-select-container ${className}`} ref={containerRef}>
+    <div 
+      className={`custom-select-container ${className}`} 
+      ref={containerRef}
+      style={width ? { width } : undefined}
+    >
       <button 
         type="button"
         className="custom-select-trigger" 
@@ -70,6 +78,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       
       {isOpen && (
         <div className="custom-select-dropdown">
+          {!hideSearch && (
           <div className="custom-select-search-wrapper" onClick={(e) => e.stopPropagation()}>
             <input
               ref={searchInputRef}
@@ -80,6 +89,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          )}
           <div className="custom-select-options-list">
             {filteredOptions.length === 0 ? (
               <div className="custom-select-empty">No options found.</div>

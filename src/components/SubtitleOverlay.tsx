@@ -10,6 +10,8 @@ export interface SubtitleSettings {
   customTextColor?: string;
   customBgColor?: string;
   customSize?: number;
+  showViewColumn?: boolean;
+  showStyleColumn?: boolean;
 }
 
 interface SubtitleOverlayProps {

@@ -6,6 +6,7 @@ import { CustomSelect } from './components/CustomSelect';
 import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
 import { LibraryView } from './components/LibraryView';
+import { ApiSettingsView } from './components/ApiSettingsView';
 import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
@@ -169,6 +170,7 @@ function App() {
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings'>('home');
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api'>('general');
+  const [uiOverlaySection, setUiOverlaySection] = useState<'hotkeys' | 'gridOverlay' | 'pauseOverlay'>('hotkeys');
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [hoveredHotkey, setHoveredHotkey] = useState<string | null>(null);
@@ -742,6 +744,15 @@ function App() {
     storageMode: 'localstorage' as 'localstorage' | 'file',
     ratingThreshold: 3 as number,
     theIntroDbApiKey: '' as string,
+    theIntroDbMode: 'fetch' as 'fetch' | 'send_fetch',
+    getOverlayDataFromTmdb: true as boolean,
+    tmdbApiKey: '' as string,
+    experienceMode: 'cloud' as 'local' | 'cloud' | 'hybrid',
+    overlayPosition: 'bottom-left' as 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right',
+    overlayShowBackground: true as boolean,
+    overlayShowRating: true as boolean,
+    overlayShowOverview: true as boolean,
+    openSubtitlesApiKey: '' as string,
     traktAccessToken: '' as string,
     traktRedirectUri: 'http://localhost:50000' as string,
     traktSyncHistory: true as boolean,
@@ -1394,7 +1405,7 @@ function App() {
 
 
 
-  const handleUpdateVideo = (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting = false, targetVideoId?: string) => {
+  const handleUpdateVideo = (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting = false, targetVideoId?: string, forceSave = false) => {
     setVideos((prev) => {
       let targetVideo: VideoItem | null = null;
       if (typeof updatedVideoOrUpdater !== 'function') {
@@ -1479,8 +1490,8 @@ function App() {
         });
       }
 
-      if (isExiting) {
-        saveVideosToStorage(nextVideos, true);
+      if (isExiting || forceSave) {
+        saveVideosToStorage(nextVideos, isExiting || forceSave);
       }
       return nextVideos;
     });
@@ -2171,6 +2182,12 @@ function App() {
         historySaveInterval={settings.historySaveInterval}
         saveVolume={settings.saveVolume}
         ratingThreshold={settings.ratingThreshold}
+        getOverlayDataFromTmdb={settings.getOverlayDataFromTmdb !== false}
+        overlayPosition={settings.overlayPosition || 'bottom-left'}
+        overlayShowBackground={settings.overlayShowBackground !== false}
+        overlayShowRating={settings.overlayShowRating !== false}
+        overlayShowOverview={settings.overlayShowOverview !== false}
+        openSubtitlesApiKey={settings.openSubtitlesApiKey}
         allowUiSkipping={settings.allowUiSkipping}
         blockSeekingCompletely={settings.blockSeekingCompletely}
         autoSkipIntroOutro={settings.autoSkipIntroOutro}
@@ -2724,24 +2741,38 @@ function App() {
                     >
                       General
                     </button>
-                    <button 
-                      className={`settings-nav-btn ${settingsTab === 'hotkeys' ? 'active' : ''}`}
-                      onClick={() => setSettingsTab('hotkeys')}
-                    >
-                      Hotkeys
-                    </button>
-                    <button 
-                      className={`settings-nav-btn ${settingsTab === 'subtitle' ? 'active' : ''}`}
-                      onClick={() => setSettingsTab('subtitle')}
-                    >
-                      Subtitle Style
-                    </button>
-                    <button 
-                      className={`settings-nav-btn ${settingsTab === 'gridOverlay' ? 'active' : ''}`}
-                      onClick={() => setSettingsTab('gridOverlay')}
-                    >
-                      Settings Grid Overlay
-                    </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      <CustomSelect
+                        value={
+                          settingsTab === 'subtitle' ? 'subtitle' : 
+                          settingsTab === 'hotkeys' ? 'hotkeys' : 
+                          uiOverlaySection
+                        }
+                        onChange={(val) => {
+                          if (val === 'hotkeys') {
+                            setSettingsTab('hotkeys');
+                          } else if (val === 'subtitle') {
+                            setSettingsTab('subtitle');
+                          } else {
+                            setSettingsTab('gridOverlay');
+                            setUiOverlaySection(val as any);
+                          }
+                        }}
+                        options={[
+                          { value: 'subtitle', label: 'Subtitle Style' },
+                          { value: 'hotkeys', label: 'Hotkeys' },
+                          { value: 'gridOverlay', label: 'Grid Overlay' },
+                          { value: 'pauseOverlay', label: 'Pause Overlay' }
+                        ]}
+                        hideSearch
+                        width="max-content"
+                        className={`settings-nav-select ${
+                          settingsTab === 'gridOverlay' || 
+                          settingsTab === 'hotkeys' || 
+                          settingsTab === 'subtitle' ? 'active' : ''
+                        }`}
+                      />
+                    </div>
                     <button 
                       className={`settings-nav-btn ${settingsTab === 'storage' ? 'active' : ''}`}
                       onClick={() => setSettingsTab('storage')}
@@ -3946,229 +3977,20 @@ function App() {
                     {/* API Settings Section */}
                     {settingsTab === 'api' && (
                       <div className="settings-tab-content animate-fade-in" style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', width: '100%' }}>
-                          
-                          {/* Left Column: TheIntroDB & Developer API */}
-                          <div style={{ flex: '1 1 350px' }}>
-                            <div className="settings-section" style={{ marginBottom: '1.5rem' }}>
-                              <h3>TheIntroDB Integration</h3>
-                              <p className="settings-section-desc">API key from theintrodb.org to fetch and prioritize skip segments (Intros, Recaps, Outros).</p>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.6rem' }}>
-                                <input 
-                                  type="text" 
-                                  value={settings.theIntroDbApiKey || ''}
-                                  placeholder="theintrodb:user_xxxx:xxxx"
-                                  onChange={(e) => handleDefaultLangChange('theIntroDbApiKey', e.target.value)}
-                                  style={{
-                                    background: 'rgba(255, 255, 255, 0.05)',
-                                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                                    borderRadius: '6px',
-                                    color: '#fff',
-                                    padding: '0.5rem 0.75rem',
-                                    fontSize: '0.85rem',
-                                    width: '100%',
-                                    boxSizing: 'border-box',
-                                    outline: 'none'
-                                  }}
-                                />
-                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: '0.2rem 0 0 0', fontStyle: 'italic' }}>
-                                  🔒 Note: Your API key is stored securely in your browser's local cache.
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="settings-section">
-                              <h3>Backend Developer API</h3>
-                              <p className="settings-section-desc">View and download the OpenAPI 3.0 specification file for the Valor Backend API endpoints.</p>
-                              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-                                <a
-                                  href="/openapi.yaml"
-                                  target="_blank"
-                                  style={{
-                                    flex: 1,
-                                    background: 'rgba(255, 255, 255, 0.08)',
-                                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '6px',
-                                    color: '#fff',
-                                    padding: '0.5rem 1rem',
-                                    fontSize: '0.85rem',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'background 0.2s'
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
-                                >
-                                  View Spec
-                                </a>
-                                <a
-                                  href="/openapi.yaml"
-                                  download="openapi.yaml"
-                                  style={{
-                                    flex: 1,
-                                    background: '#0070f3',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    color: '#fff',
-                                    padding: '0.5rem 1rem',
-                                    fontSize: '0.85rem',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'background 0.2s'
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#0051b3'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = '#0070f3'}
-                                >
-                                  Download Spec
-                                </a>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Right Column: Trakt.tv Integration */}
-                          <div style={{ flex: '1 1 350px' }}>
-                            <div className="settings-section">
-                              <h3>Trakt.tv Integration</h3>
-                              <p className="settings-section-desc">Connect with Trakt.tv to automatically sync your watched history and favorites.</p>
-                              
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.6rem' }}>
-                                {/* Redirect URI Input */}
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
-                                    Trakt Redirect URI
-                                  </label>
-                                  <input 
-                                    type="text" 
-                                    value={settings.traktRedirectUri || ''}
-                                    placeholder="e.g. http://localhost:50000"
-                                    onChange={(e) => handleDefaultLangChange('traktRedirectUri', e.target.value)}
-                                    style={{
-                                      background: 'rgba(255, 255, 255, 0.05)',
-                                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                                      borderRadius: '6px',
-                                      color: '#fff',
-                                      padding: '0.5rem 0.75rem',
-                                      fontSize: '0.85rem',
-                                      width: '100%',
-                                      boxSizing: 'border-box',
-                                      outline: 'none'
-                                    }}
-                                  />
-                                </div>
-
-                                {/* Access Token Input */}
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#aaa', marginBottom: '0.25rem', fontWeight: 600 }}>
-                                    Trakt Access Token
-                                  </label>
-                                  <input 
-                                    type="text" 
-                                    value={settings.traktAccessToken || ''}
-                                    placeholder="Paste Trakt Access Token"
-                                    onChange={(e) => handleDefaultLangChange('traktAccessToken', e.target.value)}
-                                    style={{
-                                      background: 'rgba(255, 255, 255, 0.05)',
-                                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                                      borderRadius: '6px',
-                                      color: '#fff',
-                                      padding: '0.5rem 0.75rem',
-                                      fontSize: '0.85rem',
-                                      width: '100%',
-                                      boxSizing: 'border-box',
-                                      outline: 'none'
-                                    }}
-                                  />
-                                </div>
-
-                                {/* Auth Buttons */}
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                  <button
-                                    onClick={() => {
-                                      const redirectUri = settings.traktRedirectUri || 'http://localhost:50000';
-                                      const authUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289&redirect_uri=${encodeURIComponent(redirectUri)}`;
-                                      window.location.href = authUrl;
-                                    }}
-                                    style={{
-                                      flex: 1,
-                                      background: '#ed1c24',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      color: '#fff',
-                                      padding: '0.5rem 1rem',
-                                      fontSize: '0.85rem',
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                      textAlign: 'center',
-                                      transition: 'background 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#d11219'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#ed1c24'}
-                                  >
-                                    Connect Trakt Account
-                                  </button>
-                                  {settings.traktAccessToken && (
-                                    <button
-                                      onClick={() => {
-                                        handleDefaultLangChange('traktAccessToken', '');
-                                        addToast('Disconnected from Trakt.tv', 'warning');
-                                      }}
-                                      style={{
-                                        background: 'rgba(255, 255, 255, 0.08)',
-                                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                                        borderRadius: '6px',
-                                        color: '#fff',
-                                        padding: '0.5rem 1rem',
-                                        fontSize: '0.85rem',
-                                        fontWeight: 600,
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      Disconnect
-                                    </button>
-                                  )}
-                                </div>
-
-                                {/* Sync Preferences */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.6rem' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Watched History</span>
-                                    <input 
-                                      type="checkbox"
-                                      checked={settings.traktSyncHistory}
-                                      onChange={(e) => handleDefaultLangChange('traktSyncHistory', e.target.checked)}
-                                      style={{ cursor: 'pointer' }}
-                                    />
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Sync Favorites (Bookmarks)</span>
-                                    <input 
-                                      type="checkbox"
-                                      checked={settings.traktSyncFavorites}
-                                      onChange={(e) => handleDefaultLangChange('traktSyncFavorites', e.target.checked)}
-                                      style={{ cursor: 'pointer' }}
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Disclaimer Note */}
-                                <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.45)', margin: 0, fontStyle: 'italic' }}>
-                                  🔒 Note: Your access token is stored securely in your browser's local cache.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                        </div>
+                        <ApiSettingsView 
+                          settings={settings}
+                          handleDefaultLangChange={handleDefaultLangChange}
+                          addToast={addToast}
+                        />
                       </div>
                     )}
 
                     {/* Settings Grid Overlay Section */}
                     {settingsTab === 'gridOverlay' && (
                       <div className="settings-tab-content animate-fade-in" style={{ width: '100%' }}>
+                        
+                        {/* ── Grid Overlay Sub-section ── */}
+                        {uiOverlaySection === 'gridOverlay' && (
                         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', width: '100%' }}>
                           
                           {/* Left Column: Drag & Drop List */}
@@ -4403,6 +4225,223 @@ function App() {
                           </div>
 
                         </div>
+                        )}
+
+                        {/* ── Pause Overlay Sub-section ── */}
+                        {uiOverlaySection === 'pauseOverlay' && (
+                          <div className="animate-fade-in" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', width: '100%' }}>
+                            {/* Settings Card */}
+                            <div style={{
+                              flex: '1 1 350px',
+                              background: 'rgba(255,255,255,0.025)',
+                              border: '1px solid rgba(255,255,255,0.07)',
+                              borderRadius: '12px',
+                              padding: '1.25rem 1.5rem',
+                            }}>
+                              <div className="settings-section" style={{ margin: 0 }}>
+                                <h3 style={{ marginTop: 0 }}>Pause Overlay</h3>
+                                <p className="settings-section-desc">Customize the metadata overlay shown when the video is paused.</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.6rem' }}>
+                                  
+                                  {/* Enable Toggle */}
+                                  <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span className="pref-label">Enable Pause Overlay</span>
+                                    <ToggleSwitch 
+                                      checked={settings.getOverlayDataFromTmdb !== false} 
+                                      onChange={(checked) => handleDefaultLangChange('getOverlayDataFromTmdb', checked)}
+                                    />
+                                  </div>
+
+                                  {settings.getOverlayDataFromTmdb !== false && (
+                                    <>
+                                      {/* Position Select */}
+                                      <div className="pref-row animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span className="pref-label">Overlay Position</span>
+                                        <CustomSelect 
+                                          value={settings.overlayPosition || 'bottom-left'}
+                                          onChange={(val) => handleDefaultLangChange('overlayPosition', val)}
+                                          options={[
+                                            { value: 'bottom-left', label: 'Bottom Left' },
+                                            { value: 'bottom-right', label: 'Bottom Right' },
+                                            { value: 'top-left', label: 'Top Left' },
+                                            { value: 'top-right', label: 'Top Right' }
+                                          ]}
+                                        />
+                                      </div>
+
+                                      {/* Show Background Gradient */}
+                                      <div className="pref-row animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span className="pref-label">Background Gradient</span>
+                                        <ToggleSwitch 
+                                          checked={settings.overlayShowBackground !== false} 
+                                          onChange={(checked) => handleDefaultLangChange('overlayShowBackground', checked)}
+                                        />
+                                      </div>
+
+                                      {/* Show Rating */}
+                                      <div className="pref-row animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span className="pref-label">Show Rating</span>
+                                        <ToggleSwitch 
+                                          checked={settings.overlayShowRating !== false} 
+                                          onChange={(checked) => handleDefaultLangChange('overlayShowRating', checked)}
+                                        />
+                                      </div>
+
+                                      {/* Show Overview */}
+                                      <div className="pref-row animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span className="pref-label">Show Overview</span>
+                                        <ToggleSwitch 
+                                          checked={settings.overlayShowOverview !== false} 
+                                          onChange={(checked) => handleDefaultLangChange('overlayShowOverview', checked)}
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Visual Drag-Drop Preview */}
+                            {settings.getOverlayDataFromTmdb !== false && (
+                              <div style={{
+                                flex: '1 1 350px',
+                                background: 'rgba(255,255,255,0.025)',
+                                border: '1px solid rgba(255,255,255,0.07)',
+                                borderRadius: '12px',
+                                padding: '1.25rem 1.5rem',
+                              }}>
+                                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>
+                                  Preview — Click a corner to position
+                                </h4>
+                                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', margin: '0 0 1rem 0' }}>
+                                  Click any corner of the video frame below to move the overlay.
+                                </p>
+
+                                {/* Mock Video Frame */}
+                                <div style={{
+                                  position: 'relative',
+                                  width: '100%',
+                                  height: '280px',
+                                  background: 'radial-gradient(circle at 30% 40%, #2a2a3a 0%, #0f0f15 100%)',
+                                  borderRadius: '12px',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  overflow: 'hidden',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const x = (e.clientX - rect.left) / rect.width;
+                                  const y = (e.clientY - rect.top) / rect.height;
+                                  const isLeft = x < 0.5;
+                                  const isTop = y < 0.5;
+                                  const pos = `${isTop ? 'top' : 'bottom'}-${isLeft ? 'left' : 'right'}`;
+                                  handleDefaultLangChange('overlayPosition', pos);
+                                }}
+                                >
+                                  {/* Gradient Scrim Preview */}
+                                  {settings.overlayShowBackground !== false && (
+                                    <div style={{
+                                      position: 'absolute',
+                                      inset: 0,
+                                      background: (() => {
+                                        const pos = settings.overlayPosition || 'bottom-left';
+                                        const hGrad = pos.includes('left')
+                                          ? 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 30%, transparent 60%)'
+                                          : 'linear-gradient(to left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 30%, transparent 60%)';
+                                        const vGrad = pos.includes('top')
+                                          ? 'linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.25) 35%, transparent 60%)'
+                                          : 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.25) 35%, transparent 60%)';
+                                        return `${hGrad}, ${vGrad}`;
+                                      })(),
+                                      transition: 'background 0.4s ease',
+                                      pointerEvents: 'none',
+                                      zIndex: 1
+                                    }} />
+                                  )}
+
+                                  {/* Corner Hotspots */}
+                                  {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => {
+                                    const isActive = (settings.overlayPosition || 'bottom-left') === corner;
+                                    return (
+                                      <div key={corner} style={{
+                                        position: 'absolute',
+                                        ...(corner.includes('top') ? { top: '8px' } : { bottom: '8px' }),
+                                        ...(corner.includes('left') ? { left: '8px' } : { right: '8px' }),
+                                        width: '24px',
+                                        height: '24px',
+                                        borderRadius: '50%',
+                                        border: `2px solid ${isActive ? '#8b5cf6' : 'rgba(255,255,255,0.2)'}`,
+                                        background: isActive ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
+                                        zIndex: 5,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        transition: 'all 0.2s ease',
+                                        pointerEvents: 'none'
+                                      }}>
+                                        {isActive && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8b5cf6' }} />}
+                                      </div>
+                                    );
+                                  })}
+
+                                  {/* Mock Overlay Text */}
+                                  <div style={{
+                                    position: 'absolute',
+                                    zIndex: 3,
+                                    ...((() => {
+                                      const pos = settings.overlayPosition || 'bottom-left';
+                                      return {
+                                        ...(pos.includes('top') ? { top: '20px' } : { bottom: '20px' }),
+                                        ...(pos.includes('left') ? { left: '20px' } : { right: '20px' }),
+                                      };
+                                    })()),
+                                    maxWidth: '45%',
+                                    textAlign: (settings.overlayPosition || 'bottom-left').includes('right') ? 'right' as const : 'left' as const,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px',
+                                    alignItems: (settings.overlayPosition || 'bottom-left').includes('right') ? 'flex-end' : 'flex-start',
+                                    transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                                    pointerEvents: 'none'
+                                  }}>
+                                    <div style={{
+                                      fontSize: '1.1rem',
+                                      fontWeight: 800,
+                                      color: '#fff',
+                                      textShadow: '0 2px 6px rgba(0,0,0,0.8)',
+                                      fontFamily: "'Outfit', 'Inter', sans-serif",
+                                      letterSpacing: '-0.02em'
+                                    }}>
+                                      Movie Title
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>
+                                      Season 1 · Episode 4 · 50m
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff' }}>
+                                      Episode Title
+                                    </div>
+                                    {settings.overlayShowOverview !== false && (
+                                      <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', lineHeight: '1.4', maxWidth: '200px' }}>
+                                        A brief description of the episode content appears here...
+                                      </div>
+                                    )}
+                                    {settings.overlayShowRating !== false && (
+                                      <div style={{ fontSize: '0.6rem', color: '#fbbf24', fontWeight: 600 }}>
+                                        ★ 8.5 / 10
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Video watermark text */}
+                                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.08)', letterSpacing: '2px', textTransform: 'uppercase', pointerEvents: 'none', zIndex: 0 }}>
+                                    VIDEO PREVIEW
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                       </div>
                     )}
 
@@ -4907,6 +4946,34 @@ function App() {
           border-bottom: 2px solid #e50914;
           color: #ffffff;
           box-shadow: none;
+        }
+        .settings-nav-select .custom-select-trigger {
+          background: transparent !important;
+          border: none !important;
+          border-bottom: 2px solid transparent !important;
+          border-radius: 0 !important;
+          color: rgba(255, 255, 255, 0.6) !important;
+          padding: 0.5rem 0.25rem !important;
+          font-size: 0.95rem !important;
+          font-weight: 600 !important;
+          box-shadow: none !important;
+        }
+        .settings-nav-select .custom-select-trigger:hover {
+          color: #ffffff !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+        .settings-nav-select.active .custom-select-trigger {
+          border-bottom: 2px solid #e50914 !important;
+          color: #ffffff !important;
+        }
+        .settings-nav-select .custom-select-dropdown {
+          min-width: 150px;
+          right: auto;
+        }
+        /* Override the global 220px !important for this specific nav dropdown */
+        .settings-panel .custom-select-container.settings-nav-select {
+          width: 140px !important;
         }
         .custom-toggle-switch {
           position: relative;

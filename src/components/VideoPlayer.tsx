@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
@@ -9,6 +9,8 @@ import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/
 import { SubtitleOverlay } from './SubtitleOverlay';
 import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSubPopover } from './AudioSubPopover';
+import { BookmarkPanel } from './BookmarkPanel';
+import { BookmarkModal } from './BookmarkModal';
 import { AudioSyncEngine } from '../utils/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParser';
@@ -38,6 +40,12 @@ interface VideoPlayerProps {
   historySaveInterval?: number;
   saveVolume?: boolean;
   ratingThreshold?: number;
+  getOverlayDataFromTmdb?: boolean;
+  overlayPosition?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
+  overlayShowBackground?: boolean;
+  overlayShowRating?: boolean;
+  overlayShowOverview?: boolean;
+  openSubtitlesApiKey?: string;
   onUpdateSettings?: (settings: Partial<any>) => void;
   allowUiSkipping?: boolean;
   blockSeekingCompletely?: boolean;
@@ -102,6 +110,18 @@ const OdometerClock: React.FC<{ date: Date }> = ({ date }) => {
 };
 
 
+export interface MediaDetails {
+  title: string;
+  episodeTitle?: string;
+  season?: number;
+  episode?: number;
+  releaseDate?: string;
+  overview?: string;
+  imageUrl?: string;
+  logoUrl?: string;
+  rating?: number;
+}
+
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video, 
   videos,
@@ -122,6 +142,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   historySaveInterval = 5,
   saveVolume = true,
   ratingThreshold = 3,
+  getOverlayDataFromTmdb = true,
+  overlayPosition = 'bottom-left',
+  overlayShowBackground = true,
+  overlayShowRating = true,
+  overlayShowOverview = true,
+  openSubtitlesApiKey = '',
   onUpdateSettings,
   allowUiSkipping = true,
   blockSeekingCompletely = false,
@@ -131,6 +157,196 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   uiHideTimeout = 1.5
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [mediaDetails, setMediaDetails] = useState<MediaDetails | null>(null);
+  const [videoLayout, setVideoLayout] = useState({ left: 0, top: 0, width: 0, height: 0 });
+  const [openSubtitles, setOpenSubtitles] = useState<any[]>([]);
+  const [isOpenSubLoading, setIsOpenSubLoading] = useState(false);
+
+  const updateVideoLayout = useCallback(() => {
+    if (!videoRef.current || !containerRef.current) return;
+    const videoEl = videoRef.current;
+    const containerEl = containerRef.current;
+    
+    const containerWidth = containerEl.clientWidth;
+    const containerHeight = containerEl.clientHeight;
+    const videoWidth = videoEl.videoWidth;
+    const videoHeight = videoEl.videoHeight;
+    
+    if (!videoWidth || !videoHeight || !containerWidth || !containerHeight) return;
+    
+    const containerRatio = containerWidth / containerHeight;
+    const videoRatio = videoWidth / videoHeight;
+    
+    let left = 0;
+    let top = 0;
+    let width = containerWidth;
+    let height = containerHeight;
+    
+    if (containerRatio > videoRatio) {
+      width = containerHeight * videoRatio;
+      left = (containerWidth - width) / 2;
+    } else {
+      height = containerWidth / videoRatio;
+      top = (containerHeight - height) / 2;
+    }
+    
+    setVideoLayout({ left, top, width, height });
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      updateVideoLayout();
+    };
+    window.addEventListener('resize', handleResize);
+    const videoEl = videoRef.current;
+    if (videoEl) {
+      videoEl.addEventListener('loadedmetadata', handleResize);
+      videoEl.addEventListener('canplay', handleResize);
+      videoEl.addEventListener('play', handleResize);
+      videoEl.addEventListener('pause', handleResize);
+      videoEl.addEventListener('timeupdate', handleResize);
+    }
+    
+    setTimeout(handleResize, 100);
+    setTimeout(handleResize, 500);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (videoEl) {
+        videoEl.removeEventListener('loadedmetadata', handleResize);
+        videoEl.removeEventListener('canplay', handleResize);
+        videoEl.removeEventListener('play', handleResize);
+        videoEl.removeEventListener('pause', handleResize);
+        videoEl.removeEventListener('timeupdate', handleResize);
+      }
+    };
+  }, [updateVideoLayout, video.url]);
+
+  const fetchOpenSubtitles = useCallback(async () => {
+    if (!openSubtitlesApiKey) {
+      logger.player('[OpenSubtitles] No API key provided in props.');
+      return;
+    }
+
+    setIsOpenSubLoading(true);
+    setOpenSubtitles([]);
+    try {
+      const seriesInfo = classifyVideoTitle(video.title);
+      let searchUrl = '';
+      if (seriesInfo.type === 'series' && seriesInfo.seriesTitle) {
+        searchUrl = `https://api.opensubtitles.com/api/v1/subtitles?query=${encodeURIComponent(seriesInfo.seriesTitle)}&season_number=${seriesInfo.season || 1}&episode_number=${seriesInfo.episode || 1}`;
+        logger.player(`[OpenSubtitles] Querying TV Subtitles: "${seriesInfo.seriesTitle}" S${seriesInfo.season}E${seriesInfo.episode}`);
+      } else {
+        const cleanName = video.title.replace(/\.[^/.]+$/, "");
+        searchUrl = `https://api.opensubtitles.com/api/v1/subtitles?query=${encodeURIComponent(cleanName)}`;
+        logger.player(`[OpenSubtitles] Querying Movie Subtitles: "${cleanName}"`);
+      }
+      
+      const res = await fetch(searchUrl, {
+        headers: {
+          'Api-Key': openSubtitlesApiKey,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Valor v1.0'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const items = (data.data || []).map((d: any) => {
+          const file = d.attributes.files?.[0];
+          return {
+            id: d.id,
+            fileName: file?.file_name || d.attributes.release || 'Subtitle',
+            fileId: file?.file_id,
+            language: d.attributes.language,
+            release: d.attributes.release || ''
+          };
+        }).filter((item: any) => item.fileId);
+
+        // Sort items: default language first, then other languages alphabetically
+        const savedSettings = localStorage.getItem('valor_settings');
+        let defaultLang = 'en';
+        if (savedSettings) {
+          try {
+            defaultLang = JSON.parse(savedSettings).defaultSub || 'en';
+          } catch {}
+        }
+        
+        items.sort((a: any, b: any) => {
+          if (a.language === defaultLang && b.language !== defaultLang) return -1;
+          if (a.language !== defaultLang && b.language === defaultLang) return 1;
+          return a.language.localeCompare(b.language);
+        });
+        
+        setOpenSubtitles(items);
+        logger.player(`[OpenSubtitles] Found ${items.length} subtitles.`);
+      } else {
+        logger.player(`[OpenSubtitles] Search failed: HTTP ${res.status}`);
+      }
+    } catch (err) {
+      logger.player(`[OpenSubtitles] Search error: ${err}`);
+    } finally {
+      setIsOpenSubLoading(false);
+    }
+  }, [openSubtitlesApiKey, video.title, video.url]);
+
+  const downloadOpenSubtitle = useCallback(async (fileId: number, fileName: string, language: string) => {
+    if (!openSubtitlesApiKey) {
+      triggerSwitchToast("OpenSubtitles API Key is required.");
+      return;
+    }
+
+    triggerSwitchToast("Downloading subtitle...");
+    try {
+      const res = await fetch('https://api.opensubtitles.com/api/v1/download', {
+        method: 'POST',
+        headers: {
+          'Api-Key': openSubtitlesApiKey,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Valor v1.0'
+        },
+        body: JSON.stringify({ file_id: fileId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const downloadLink = data.link;
+        if (!downloadLink) {
+          throw new Error("No download link in response.");
+        }
+        
+        const fileRes = await fetch(downloadLink);
+        if (fileRes.ok) {
+          const text = await fileRes.text();
+          const cues = parseSubtitles(text, fileName);
+          const newTrack: CustomSubtitleTrack = {
+            id: `opensub-${fileId}`,
+            name: `OpenSubtitles (${language.toUpperCase()}) - ${fileName}`,
+            url: '',
+            cues: cues,
+            isExtracted: false
+          };
+          
+          onUpdateVideo((prev: any) => ({
+            ...prev,
+            subtitleTracks: [...(prev.subtitleTracks || []), newTrack]
+          }));
+          handleSelectSubTrack(newTrack);
+          triggerSwitchToast("Subtitle loaded successfully!");
+        } else {
+          throw new Error("Failed to fetch subtitle file.");
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `HTTP ${res.status}`);
+      }
+    } catch (err: any) {
+      logger.player(`[OpenSubtitles] Download error: ${err}`);
+      triggerSwitchToast(`Download failed: ${err.message || err}`);
+    }
+  }, [openSubtitlesApiKey, onUpdateVideo]);
+
+  useEffect(() => {
+    fetchOpenSubtitles();
+  }, [fetchOpenSubtitles, video.id]);
 
   // UI Customization & Bookmarks State
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -138,13 +354,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showBookmarksPopover, setShowBookmarksPopover] = useState(false);
   const bookmarksTimeoutRef = useRef<any>(null);
   const [bookmarks, setBookmarks] = useState<any[]>(() => video.bookmarks || []);
-  const [newBookmarkTime, setNewBookmarkTime] = useState(0);
-  const [newBookmarkEndTime, setNewBookmarkEndTime] = useState(0);
-  const [newBookmarkLabel, setNewBookmarkLabel] = useState('');
-  const [isIntro, setIsIntro] = useState(false);
-  const [isOutro, setIsOutro] = useState(false);
-  const [skipEnabled, setSkipEnabled] = useState(false);
-  const [bookmarkType, setBookmarkType] = useState<'standard' | 'intro' | 'outro'>('standard');
+  const [editingBookmark, setEditingBookmark] = useState<Bookmark | undefined>(undefined);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [startTimeStr, setStartTimeStr] = useState('');
   const [endTimeStr, setEndTimeStr] = useState('');
@@ -416,6 +626,71 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [video.id, video.title, videos]);
 
+  // Sync bookmarks to server via GraphQL (for server profiles)
+  const syncBookmarksToServer = async (updatedBookmarks: any[]) => {
+    try {
+      const savedSettings = localStorage.getItem('valor_settings');
+      if (!savedSettings) return;
+      const parsed = JSON.parse(savedSettings);
+      const userId = parsed.userId;
+      const storageMode = parsed.storageMode;
+      
+      // Only sync for server profiles in file storage mode
+      if (!userId || userId === 'local' || userId.startsWith('local_') || storageMode !== 'file') return;
+      
+      const mutation = `
+        mutation SaveBookmarks($userId: String!, $videoId: String!, $bookmarks: [BookmarkInput!]!) {
+          saveBookmarks(userId: $userId, videoId: $videoId, bookmarks: $bookmarks) {
+            success
+            count
+          }
+        }
+      `;
+      
+      const serializedBookmarks = updatedBookmarks.map(bm => ({
+        id: bm.id,
+        time: bm.time,
+        endTime: bm.endTime !== undefined ? bm.endTime : null,
+        label: bm.label || '',
+        isIntro: bm.isIntro || false,
+        isOutro: bm.isOutro || false,
+        skipEnabled: bm.skipEnabled || false
+      }));
+      
+      const response = await fetch('http://127.0.0.1:50001/api/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: mutation,
+          variables: { userId, videoId: video.id, bookmarks: serializedBookmarks }
+        })
+      });
+      
+      const result = await response.json();
+      if (result.errors) {
+        logger.error('[Bookmark Sync] GraphQL error:', result.errors[0].message);
+      } else {
+        logger.player(`[Bookmark Sync] Synced ${serializedBookmarks.length} bookmarks to server for video: ${video.id}`);
+      }
+    } catch (err) {
+      logger.error('[Bookmark Sync] Failed to sync bookmarks:', err);
+    }
+  };
+
+  // Auto-submit existing bookmarks to TheIntroDB when TIDB has no data
+  const autoSubmitBookmarksToTidb = async (currentBookmarks: any[]) => {
+    if (hadTidbDataRef.current) return; // TIDB already has data
+    
+    const introOutroBookmarks = currentBookmarks.filter(
+      bm => bm.isIntro || bm.isOutro
+    );
+    if (introOutroBookmarks.length === 0) return; // No intro/outro bookmarks to submit
+    
+    for (const bm of introOutroBookmarks) {
+      await submitToTheIntroDb(bm);
+    }
+  };
+
   const submitToTheIntroDb = async (bookmark: any) => {
     if (hadTidbDataRef.current) {
       logger.player('[TheIntroDB Submit] Skipping submission: TIDB already has data for this video.');
@@ -430,11 +705,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const savedSettings = localStorage.getItem('valor_settings');
     let apiKey = "";
+    let mode = "fetch";
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
         apiKey = parsed.theIntroDbApiKey || "";
+        mode = parsed.theIntroDbMode || "fetch";
       } catch {}
+    }
+    if (mode === 'fetch') {
+      logger.player('[TheIntroDB Submit] Skipping submission: TheIntroDB Mode is set to Fetch Only.');
+      return;
     }
     if (!apiKey) {
       logger.player('[TheIntroDB Submit] Skipping submission: No API key found in settings.');
@@ -497,31 +778,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  const handleSaveBookmark = () => {
-    const finalTime = Math.round(newBookmarkTime);
-    const finalEndTime = isIntro ? Math.round(newBookmarkEndTime) : undefined;
-    const newBookmark = {
-      id: `bm-${Date.now()}`,
-      time: finalTime,
-      endTime: finalEndTime,
-      label: newBookmarkLabel || `${isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark'} @ ${formatTime(finalTime)}`,
-      isIntro,
-      isOutro,
-      skipEnabled
-    };
-
-    const updatedBookmarks = [...bookmarks, newBookmark].sort((a, b) => a.time - b.time);
+  const handleSaveBookmark = (bmData: Bookmark) => {
+    let newBookmark: Bookmark;
+    let updatedBookmarks: Bookmark[];
+    
+    if (editingBookmark) {
+      newBookmark = { ...editingBookmark, ...bmData };
+      updatedBookmarks = bookmarks.map(b => b.id === newBookmark.id ? newBookmark : b).sort((a, b) => a.time - b.time);
+    } else {
+      newBookmark = {
+        ...bmData,
+        id: `bm-${Date.now()}`
+      };
+      updatedBookmarks = [...bookmarks, newBookmark].sort((a, b) => a.time - b.time);
+    }
+    
     setBookmarks(updatedBookmarks);
 
     onUpdateVideo((prev: any) => ({
       ...prev,
       bookmarks: updatedBookmarks
-    }));
+    }), false, undefined, true); // forceSave = true
 
-    syncFavoriteToTrakt(true);
+    if (newBookmark.favorite) {
+      syncFavoriteToTrakt(true);
+    }
     submitToTheIntroDb(newBookmark);
+    syncBookmarksToServer(updatedBookmarks);
 
     setShowAddDialog(false);
+    setEditingBookmark(undefined);
     if (videoRef.current && isPlaying) {
       videoRef.current.play().catch(console.error);
     }
@@ -534,11 +820,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onUpdateVideo((prev: any) => ({
       ...prev,
       bookmarks: updatedBookmarks
-    }));
+    }), false, undefined, true); // forceSave = true
 
     if (updatedBookmarks.length === 0) {
       syncFavoriteToTrakt(false);
     }
+    syncBookmarksToServer(updatedBookmarks);
   };
   const [currentTime, setCurrentTime] = useState(video.currentTime || 0);
   const latestTimeRef = useRef<number>(video.currentTime || 0);
@@ -715,6 +1002,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const fetchIntroDb = async () => {
       hadTidbDataRef.current = false;
+      setMediaDetails(null);
       try {
         const seriesInfo = classifyVideoTitle(video.title);
         const isTV = seriesInfo.type === 'series';
@@ -760,6 +1048,74 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           ...prev,
           tmdbId: tmdbId
         }));
+
+        // Resolve full metadata details for paused overlay card
+        if (getOverlayDataFromTmdb) {
+          const mediaImg = matchedItem.poster_path ? `https://image.tmdb.org/t/p/w500${matchedItem.poster_path}` : (matchedItem.backdrop_path ? `https://image.tmdb.org/t/p/w500${matchedItem.backdrop_path}` : '');
+          const details: MediaDetails = {
+            title: matchedItem.name || matchedItem.title || seriesInfo.seriesTitle || 'Unknown Title',
+            overview: matchedItem.overview || '',
+            imageUrl: mediaImg,
+            releaseDate: matchedItem.release_date ? matchedItem.release_date.split('-')[0] : (matchedItem.first_air_date ? matchedItem.first_air_date.split('-')[0] : ''),
+            rating: matchedItem.vote_average || undefined
+          };
+
+          // Fetch show/movie logos from TMDB images endpoint
+          try {
+            const imagesUrl = `https://api.themoviedb.org/3/${isTV ? 'tv' : 'movie'}/${tmdbId}/images`;
+            logger.player(`[TheIntroDB Sync] Querying TMDB Images: "${imagesUrl}"`);
+            const imagesRes = await fetch(imagesUrl, {
+              headers: {
+                'Authorization': `Bearer ${tmdbToken}`,
+                'accept': 'application/json'
+              }
+            });
+            if (imagesRes.ok) {
+              const imagesData = await imagesRes.json();
+              const logos = imagesData.logos || [];
+              // Find English logo first, then neutral, then any
+              let selectedLogo = logos.find((l: any) => l.iso_639_1 === 'en');
+              if (!selectedLogo) {
+                selectedLogo = logos.find((l: any) => l.iso_639_1 === null || !l.iso_639_1);
+              }
+              if (!selectedLogo && logos.length > 0) {
+                selectedLogo = logos[0];
+              }
+              if (selectedLogo) {
+                details.logoUrl = `https://image.tmdb.org/t/p/w500${selectedLogo.file_path}`;
+                logger.player(`[TheIntroDB Sync] Found logo URL: ${details.logoUrl}`);
+              }
+            }
+          } catch (imgErr) {
+            logger.player(`[TheIntroDB Sync] Failed to fetch TMDB logos: ${imgErr}`);
+          }
+
+          if (isTV) {
+            try {
+              const epUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seriesInfo.season || 1}/episode/${seriesInfo.episode || 1}`;
+              logger.player(`[TheIntroDB Sync] Querying TMDB Episode Details: "${epUrl}"`);
+              const epRes = await fetch(epUrl, {
+                headers: {
+                  'Authorization': `Bearer ${tmdbToken}`,
+                  'accept': 'application/json'
+                }
+              });
+              if (epRes.ok) {
+                const epData = await epRes.json();
+                details.episodeTitle = epData.name;
+                details.season = epData.season_number;
+                details.episode = epData.episode_number;
+                if (epData.overview) details.overview = epData.overview;
+                if (epData.still_path) {
+                  details.imageUrl = `https://image.tmdb.org/t/p/w500${epData.still_path}`;
+                }
+              }
+            } catch (epErr) {
+              logger.player(`[TheIntroDB Sync] Failed to fetch TMDB episode details: ${epErr}`);
+            }
+          }
+          setMediaDetails(details);
+        }
 
         // 2. Fetch from theintrodb.org
         const durationMs = Math.round(duration * 1000);
@@ -863,6 +1219,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } else {
           logger.player('[TheIntroDB Sync] TheIntroDB returned 0 segments for: ' + video.title);
           triggerSwitchToast("No data on TIDB");
+          
+          // Auto-submit existing intro/outro/recap/credits bookmarks to TIDB
+          const existingBookmarks = video.bookmarks || [];
+          if (existingBookmarks.length > 0) {
+            logger.player(`[TheIntroDB Sync] Video has ${existingBookmarks.length} existing bookmarks. Auto-submitting intro/outro to TIDB...`);
+            autoSubmitBookmarksToTidb(existingBookmarks);
+          }
         }
       } catch (err) {
         logger.player('[TheIntroDB Sync] Failed to fetch from TheIntroDB: ' + err);
@@ -1078,6 +1441,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const currentAudioOptionIndexRef = useRef<number>(-1);
   const currentSubOptionIndexRef = useRef<number>(-1);
   const lastHeartbeatTimeRef = useRef<number>(0);
+  const heartbeatCountRef = useRef<number>(0);
   const audioDebounceTimeoutRef = useRef<any>(null);
   const subDebounceTimeoutRef = useRef<any>(null);
   const hasAutoSelectedRef = useRef(false);
@@ -1400,10 +1764,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setCurrentTime(videoRef.current.currentTime);
         }
 
-        // Heartbeat ping to prevent auto-shutdown when browser throttles background timers
+        // Heartbeat ping — adaptive: 1 min for first 5 calls, then 5 min
         const now = Date.now();
-        if (now - lastHeartbeatTimeRef.current > 4000) {
+        const heartbeatInterval = heartbeatCountRef.current < 5 ? 60000 : 300000;
+        if (now - lastHeartbeatTimeRef.current > heartbeatInterval) {
           lastHeartbeatTimeRef.current = now;
+          heartbeatCountRef.current += 1;
           fetch('http://127.0.0.1:50001/api/heartbeat', { method: 'POST' }).catch(() => {});
         }
         
@@ -1523,8 +1889,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     audioAbortControllerRef.current = new AbortController();
     const signal = audioAbortControllerRef.current.signal;
 
+    // CRITICAL: Immediately silence old audio to prevent stale chunk playback
     if (syncEngineRef.current) {
       syncEngineRef.current.setSyncEnabled(false);
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.removeAttribute('src');
+      audioRef.current.load(); // Force browser to release old blob
+    }
+
+    // Pause video during extraction so user doesn't hear silence gap
+    const wasPlaying = videoRef.current ? !videoRef.current.paused : false;
+    if (wasPlaying && videoRef.current) {
+      videoRef.current.pause();
     }
 
     setExtractingStreamIndex(streamIndex);
@@ -1554,9 +1932,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           
           setActiveAudioStartOffset(offsetTime);
           activeAudioStartOffsetRef.current = offsetTime;
-          if (syncEngineRef.current) {
-            syncEngineRef.current.setSyncEnabled(false);
-          }
 
           const result = await ffmpegService.extractHlsAudioSegment(video.id, segment.uri, {
             index: streamIndex,
@@ -1572,9 +1947,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         
         setActiveAudioStartOffset(offsetTime);
         activeAudioStartOffsetRef.current = offsetTime;
-        if (syncEngineRef.current) {
-          syncEngineRef.current.setSyncEnabled(false);
-        }
 
         const result = await ffmpegService.extractLocalAudioSegment(
           video.id,
@@ -1595,9 +1967,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         
         setActiveAudioStartOffset(offsetTime);
         activeAudioStartOffsetRef.current = offsetTime;
-        if (syncEngineRef.current) {
-          syncEngineRef.current.setSyncEnabled(false);
-        }
 
         const result = await ffmpegService.extractRemoteAudioSegment(
           video.id,
@@ -1620,13 +1989,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           codec: 'mp3'
         };
         setSelectedAudioTrack(newTrack);
+
+        // Auto-resume video after a short delay to let sync engine initialize
+        if (wasPlaying) {
+          // Wait for React to render the new src, then wait for canplay
+          setTimeout(() => {
+            if (audioRef.current) {
+              const tryResume = () => {
+                if (audioRef.current && audioRef.current.readyState >= 2 && videoRef.current) {
+                  // Sync audio time before resuming
+                  const targetAudioTime = Math.max(0, videoRef.current.currentTime - offsetTime);
+                  audioRef.current.currentTime = targetAudioTime;
+                  videoRef.current.play().catch(() => {});
+                } else if (videoRef.current) {
+                  // Audio not ready yet, try again shortly
+                  setTimeout(tryResume, 100);
+                }
+              };
+              tryResume();
+            } else if (videoRef.current) {
+              videoRef.current.play().catch(() => {});
+            }
+          }, 50);
+        }
+      } else if (wasPlaying && videoRef.current) {
+        // No audio URL produced, resume video anyway
+        videoRef.current.play().catch(() => {});
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
         logger.remote('Load aborted');
+        // Resume video if it was playing before
+        if (wasPlaying && videoRef.current) {
+          videoRef.current.play().catch(() => {});
+        }
         return;
       }
       logger.error('Failed to extract remote audio segment:', err);
+      // Resume video on error too
+      if (wasPlaying && videoRef.current) {
+        videoRef.current.play().catch(() => {});
+      }
     } finally {
       setExtractingStreamIndex(null);
       setIsKeyInitiated(false);
@@ -1953,6 +2356,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // On-the-fly selection handlers for embedded streams selected in-player using container-direct chunk reading
   const handleSelectEmbeddedAudio = async (streamIndex: number, codec: string, language?: string, skipLoad = false) => {
+    // Guard: if this stream is already active, don't restart the engine
+    if (activeAudioStreamIndex === streamIndex && selectedAudioTrack?.streamIndex === streamIndex && selectedAudioTrack?.url) {
+      return;
+    }
     if (audioDebounceTimeoutRef.current) {
       clearTimeout(audioDebounceTimeoutRef.current);
       audioDebounceTimeoutRef.current = null;
@@ -2864,14 +3271,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         }
 
-        // Fallback: If no audio track is selected, but the first audio stream is not browser-native (e.g. ac3, eac3, dts, truehd), we must select and transcode it!
+        // Always auto-select the first audio track when available
+        // Browser native decoding from MKV container is unreliable, so always extract via FFmpeg
         if (!selectedAudioTrack && audioStreams.length > 0) {
           const firstAudio = audioStreams[0];
-          const isNative = /aac|mp3|mpeg|opus|flac|vorbis/i.test(firstAudio.codec);
-          if (!isNative) {
-            logger.player(`Primary audio track has non-native codec (${firstAudio.codec}). Auto-selecting it for transcoding.`);
-            handleSelectEmbeddedAudio(firstAudio.index, firstAudio.codec, firstAudio.language);
-          }
+          logger.player(`Auto-selecting first audio track: ${firstAudio.language || 'unknown'} (${firstAudio.codec})`);
+          handleSelectEmbeddedAudio(firstAudio.index, firstAudio.codec, firstAudio.language);
         }
 
         // Auto-select subtitle stream
@@ -2950,6 +3355,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return `${h}:${mStr}:${sStr}`;
     }
     return `${m}:${sStr}`;
+  };
+
+  const formatRuntime = (secs: number) => {
+    if (isNaN(secs) || secs <= 0) return '0m';
+    const mins = Math.round(secs / 60);
+    const hrs = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    if (hrs > 0) {
+      return `${hrs}h ${remainingMins}m`;
+    }
+    return `${mins}m`;
   };
 
   const parseTimeStringToSeconds = (val: string): number => {
@@ -3275,7 +3691,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onSeeked={handleVideoSeeked}
           onSeeking={() => setIsBuffering(true)}
           onError={handleVideoError}
-          onEnded={scrobbleToTrakt}
+          onEnded={() => {
+            scrobbleToTrakt();
+            // Auto-submit bookmarks to TheIntroDB when video finishes
+            if (!hadTidbDataRef.current && bookmarks.length > 0) {
+              logger.player('[TheIntroDB] Video ended. Auto-submitting existing bookmarks to TIDB...');
+              autoSubmitBookmarksToTidb(bookmarks);
+            }
+          }}
           playsInline
         />
       </div>
@@ -3284,6 +3707,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <audio 
         ref={audioRef} 
         src={selectedAudioTrack?.url || ''}
+        preload="auto"
+        onLoadStart={() => {
+          // Immediately pause when a new source starts loading to prevent playback from time 0
+          if (audioRef.current) {
+            audioRef.current.pause();
+          }
+        }}
         style={{ display: 'none' }}
       />
       {false && activeSubtitleStartOffset}
@@ -3296,6 +3726,170 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           settings={subSettings} 
           controlsVisible={controlsVisible}
         />
+      )}
+
+      {/* Paused Metadata Overlay Card */}
+      {!isPlaying && mediaDetails && getOverlayDataFromTmdb && !hideUIOverlays && !isLocked && !showAudioSubMenu && (
+        <>
+          {/* Dark gradient scrim — adapts direction based on overlay corner position */}
+          {overlayShowBackground && (
+          <div 
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              background: (() => {
+                const hGrad = overlayPosition.includes('left')
+                  ? 'linear-gradient(to right, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 25%, rgba(0,0,0,0.2) 50%, transparent 70%)'
+                  : 'linear-gradient(to left, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 25%, rgba(0,0,0,0.2) 50%, transparent 70%)';
+                const vGrad = overlayPosition.includes('top')
+                  ? 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 40%, transparent 70%)'
+                  : 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 40%, transparent 70%)';
+                return `${hGrad}, ${vGrad}`;
+              })(),
+              zIndex: 45,
+              pointerEvents: 'none',
+              animation: 'overlayScrimFadeIn 0.8s ease forwards'
+            }}
+          />
+          )}
+          <div 
+            className="paused-metadata-overlay animate-metadata-slide-in"
+            style={{
+              position: 'absolute',
+              ...(overlayPosition === 'bottom-left' && {
+                bottom: '140px',
+                left: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
+              }),
+              ...(overlayPosition === 'bottom-right' && {
+                bottom: '140px',
+                right: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
+              }),
+              ...(overlayPosition === 'top-left' && {
+                top: videoLayout.top > 0 ? `${videoLayout.top + 60}px` : '5%',
+                left: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
+              }),
+              ...(overlayPosition === 'top-right' && {
+                top: videoLayout.top > 0 ? `${videoLayout.top + 60}px` : '5%',
+                right: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
+              }),
+              zIndex: 50,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              maxWidth: videoLayout.width > 0 ? `${Math.min(videoLayout.width * 0.45, 550)}px` : '40%',
+              textShadow: '0 2px 8px rgba(0, 0, 0, 0.95), 0 0 20px rgba(0, 0, 0, 0.5)',
+              pointerEvents: 'none',
+              fontFamily: "'Inter', sans-serif",
+              alignItems: overlayPosition.includes('right') ? 'flex-end' : 'flex-start',
+              textAlign: overlayPosition.includes('right') ? 'right' : 'left'
+            }}
+          >
+          {mediaDetails.logoUrl ? (
+            <img 
+              src={mediaDetails.logoUrl} 
+              alt={mediaDetails.title}
+              crossOrigin="anonymous"
+              onError={() => {
+                // Logo failed to load, clear it so we fall back to text title
+                setMediaDetails(prev => prev ? { ...prev, logoUrl: undefined } : prev);
+              }}
+              style={{
+                height: '60px',
+                maxWidth: '300px',
+                width: 'auto',
+                objectFit: 'contain',
+                alignSelf: overlayPosition.includes('right') ? 'flex-end' : 'flex-start',
+                marginBottom: '4px',
+                filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.7))'
+              }}
+            />
+          ) : (
+            <h2 style={{ 
+              margin: 0, 
+              fontSize: '2.8rem', 
+              fontWeight: 800, 
+              color: '#fff',
+              fontFamily: "'Outfit', 'Inter', sans-serif",
+              letterSpacing: '-0.02em',
+              lineHeight: '1.1'
+            }}>
+              {mediaDetails.title}
+            </h2>
+          )}
+          
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px',
+            fontSize: '0.95rem', 
+            color: 'rgba(255, 255, 255, 0.7)',
+            fontWeight: 500,
+            margin: '2px 0',
+            fontFamily: "'Inter', sans-serif"
+          }}>
+            {mediaDetails.episodeTitle ? (
+              <>
+                <span>Season {mediaDetails.season}</span>
+                <span>·</span>
+                <span>Episode {mediaDetails.episode}</span>
+              </>
+            ) : (
+              <span>Movie</span>
+            )}
+            <span>·</span>
+            <span>{formatRuntime(duration)}</span>
+          </div>
+
+          {mediaDetails.episodeTitle && (
+            <h3 style={{ 
+              margin: '2px 0 0 0', 
+              fontSize: '1.2rem', 
+              fontWeight: 700, 
+              color: '#fff',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              {mediaDetails.episodeTitle}
+            </h3>
+          )}
+
+          {overlayShowOverview && mediaDetails.overview && (
+            <p style={{ 
+              margin: 0, 
+              fontSize: '0.95rem', 
+              color: 'rgba(255, 255, 255, 0.8)', 
+              lineHeight: '1.5',
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '550px',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              {mediaDetails.overview}
+            </p>
+          )}
+
+          {/* Rating badge */}
+          {overlayShowRating && mediaDetails.rating && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              marginTop: '4px',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              color: '#fbbf24'
+            }}>
+              <span>★</span>
+              <span>{mediaDetails.rating.toFixed(1)}</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', fontWeight: 400 }}>/ 10</span>
+            </div>
+          )}
+          </div>
+        </>
       )}
 
       {/* Lock Overlay to block mouse clicks and all settings */}
@@ -3578,15 +4172,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             left: `${percent}%`,
                             width: `${widthPercent}%`,
                             position: 'absolute',
-                            height: '6px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            background: bm.isIntro ? 'rgba(59, 130, 246, 0.45)' : bm.isOutro ? 'rgba(168, 85, 247, 0.45)' : 'rgba(234, 179, 8, 0.45)',
-                            borderLeft: bm.isIntro ? '1px solid #3b82f6' : bm.isOutro ? '1px solid #a855f7' : '1px solid #eab308',
-                            borderRight: bm.isIntro ? '1px solid #3b82f6' : bm.isOutro ? '1px solid #a855f7' : '1px solid #eab308',
-                            borderRadius: '3px',
+                            height: '100%',
+                            background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : bm.category === 'Outro' ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
+                            borderRadius: '2px',
                             cursor: 'pointer',
-                            zIndex: 8
+                            zIndex: 4
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -3608,8 +4198,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     return (
                       <div 
                         key={bm.id}
-                        className={`timeline-bookmark-dot ${bm.isIntro ? 'intro-dot' : bm.isOutro ? 'outro-dot' : ''} ${hoveredSetting === 'autoSkipIntroOutro' ? 'highlight-active' : ''}`}
-                        style={{ left: `${percent}%` }}
+                        className={`timeline-bookmark-dot ${hoveredSetting === 'autoSkipIntroOutro' ? 'highlight-active' : ''}`}
+                        style={{ 
+                          left: `${percent}%`,
+                          position: 'absolute',
+                          height: '100%',
+                          width: '4px',
+                          background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : bm.category === 'Outro' ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
+                          borderRadius: '2px',
+                          zIndex: 4,
+                          cursor: 'pointer'
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (uiConfig.blockSeekingCompletely) return;
@@ -3786,6 +4385,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       onUpdateSubSettings={onUpdateSubSettings}
                       audioBoost={audioBoost}
                       setAudioBoost={handleSetAudioBoost}
+                      openSubtitles={openSubtitles}
+                      isOpenSubLoading={isOpenSubLoading}
+                      onDownloadOpenSubtitle={downloadOpenSubtitle}
                     />
                   )}
                 </div>
@@ -3808,77 +4410,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onClick={() => setShowBookmarksPopover(prev => !prev)} 
                     title="Bookmarks"
                   >
-                    <Pencil size={20} />
+                    <BookmarkIcon size={20} />
                   </button>
 
                   {showBookmarksPopover && (
-                    <div className="audio-sub-popover audio-sub-popover-center bookmarks-popover-list animate-fade-in-pure" style={{ bottom: '45px', left: '50%', transform: 'translateX(-50%)', width: '340px', height: '240px', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-                      <div className="popover-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>Bookmarks ({bookmarks.length})</span>
-                        <button 
-                          className="drawer-add-btn"
-                          style={{ padding: '2px 8px', fontSize: '0.7rem' }}
-                          onClick={() => {
-                            if (videoRef.current) {
-                              const curTimeSecs = Math.round(videoRef.current.currentTime);
-                              setNewBookmarkTime(curTimeSecs);
-                              setNewBookmarkEndTime(curTimeSecs + 90);
-                              setNewBookmarkLabel(`Bookmark @ ${formatTime(curTimeSecs)}`);
-                              setIsIntro(false);
-                              setIsOutro(false);
-                              setSkipEnabled(false);
-                              setBookmarkType('standard');
-                              setTypeDropdownOpen(false);
-                              setStartTimeStr(formatTime(curTimeSecs));
-                              setEndTimeStr(formatTime(curTimeSecs + 90));
-                              setShowAddDialog(true);
-                              setShowBookmarksPopover(false);
-                            }
-                          }}
-                        >
-                          + Add
-                        </button>
-                      </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {bookmarks.length === 0 ? (
-                          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', fontStyle: 'italic', margin: 0 }}>No bookmarks added yet.</p>
-                        ) : (
-                          bookmarks.map((bm) => (
-                            <div className="drawer-bookmark-item" key={bm.id} style={{ padding: '6px 8px' }}>
-                              <div 
-                                className="bookmark-item-info"
-                                onClick={() => {
-                                  if (videoRef.current) {
-                                    videoRef.current.currentTime = bm.time;
-                                    setCurrentTime(bm.time);
-                                  }
-                                }}
-                              >
-                                <span className={`bookmark-item-badge ${bm.isIntro ? 'badge-intro' : bm.isOutro ? 'badge-outro' : ''}`} style={{ fontSize: '0.6rem' }}>
-                                  {bm.isIntro ? 'Intro' : bm.isOutro ? 'Outro' : 'Mark'}
-                                </span>
-                                <span className="bookmark-item-label" title={bm.label} style={{ fontSize: '0.8rem' }}>{bm.label}</span>
-                                <span className="bookmark-item-time" style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
-                                  {bm.isIntro && bm.endTime 
-                                    ? `${formatTime(bm.time)} - ${formatTime(bm.endTime)}` 
-                                    : bm.isOutro 
-                                      ? `${formatTime(bm.time)} - End` 
-                                      : formatTime(bm.time)}
-                                </span>
-                              </div>
-                              <button 
-                                className="bookmark-delete-btn"
-                                onClick={() => handleDeleteBookmark(bm.id)}
-                                title="Delete Bookmark"
-                              >
-                                <Trash size={12} />
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                    <BookmarkPanel
+                      bookmarks={bookmarks}
+                      onJump={(time) => {
+                        if (videoRef.current) {
+                          videoRef.current.currentTime = time;
+                          setCurrentTime(time);
+                        }
+                      }}
+                      onEdit={(bm) => {
+                        setEditingBookmark(bm);
+                        setShowAddDialog(true);
+                        setShowBookmarksPopover(false);
+                      }}
+                      onDelete={handleDeleteBookmark}
+                      onAdd={() => {
+                        if (videoRef.current) {
+                          setEditingBookmark(undefined);
+                          setShowAddDialog(true);
+                          setShowBookmarksPopover(false);
+                        }
+                      }}
+                      onClose={() => setShowBookmarksPopover(false)}
+                    />
                   )}
                 </div>
               </div>
@@ -4060,285 +4618,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Add Bookmark Dialog Overlay */}
       {showAddDialog && (
-        <div 
-          className="bookmark-dialog-overlay" 
-          onClick={() => setShowAddDialog(false)}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'none',
-            backdropFilter: 'none',
-            WebkitBackdropFilter: 'none',
-            zIndex: 160,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            paddingRight: '0'
-          }}
-        >
-          <div 
-            className="bookmark-dialog-box" 
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'rgba(18, 18, 18, 0.96)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRight: 'none',
-              borderRadius: '16px 0 0 16px',
-              padding: '1.5rem',
-              width: '360px',
-              boxShadow: '-10px 0 30px rgba(0,0,0,0.6)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1.25rem',
-              fontFamily: 'sans-serif'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#ffffff' }}>Add Bookmark</h3>
-              <button 
-                onClick={() => setShowAddDialog(false)}
-                style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.6)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s ease' }}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
-                onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="dialog-field">
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>Label</label>
-              <input 
-                type="text" 
-                value={newBookmarkLabel} 
-                onChange={(e) => setNewBookmarkLabel(e.target.value)}
-                placeholder="e.g. Intro Start"
-                autoFocus
-                style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  padding: '0.6rem 0.85rem',
-                  fontSize: '0.9rem',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
-            {/* Custom Dropdown Selection for Bookmark Type */}
-            <div className="dialog-field" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', fontWeight: 600 }}>Type</label>
-              <div style={{ position: 'relative', width: '100%' }}>
-                <button
-                  onClick={() => setTypeDropdownOpen(prev => !prev)}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    padding: '0.6rem 0.85rem',
-                    fontSize: '0.9rem',
-                    textAlign: 'left',
-                    width: '100%',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  <span>
-                    {bookmarkType === 'standard' ? 'Standard Bookmark' :
-                     bookmarkType === 'intro' ? 'Intro Section' : 'Outro Section'}
-                  </span>
-                  <ChevronRight size={16} style={{ transform: typeDropdownOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
-                </button>
-                {typeDropdownOpen && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '100%',
-                      left: 0,
-                      right: 0,
-                      marginBottom: '4px',
-                      background: 'rgba(25, 25, 25, 0.98)',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      borderRadius: '6px',
-                      zIndex: 200,
-                      boxShadow: '0 -10px 25px rgba(0,0,0,0.5)',
-                      overflow: 'hidden'
-                    }}
-                  >
-                    {[
-                      { value: 'standard', label: 'Standard Bookmark' },
-                      { value: 'intro', label: 'Intro Section' },
-                      { value: 'outro', label: 'Outro Section' }
-                    ].map((opt) => (
-                      <div
-                        key={opt.value}
-                        onClick={() => {
-                          setBookmarkType(opt.value as any);
-                          setTypeDropdownOpen(false);
-                          if (opt.value === 'intro') {
-                            setIsIntro(true);
-                            setIsOutro(false);
-                            setSkipEnabled(true);
-                            setNewBookmarkLabel('Intro');
-                          } else if (opt.value === 'outro') {
-                            setIsIntro(false);
-                            setIsOutro(true);
-                            setSkipEnabled(true);
-                            setNewBookmarkLabel('Outro');
-                          } else {
-                            setIsIntro(false);
-                            setIsOutro(false);
-                            setSkipEnabled(false);
-                            setNewBookmarkLabel(`Bookmark @ ${formatTime(newBookmarkTime)}`);
-                          }
-                        }}
-                        style={{
-                          padding: '0.6rem 0.85rem',
-                          fontSize: '0.85rem',
-                          color: bookmarkType === opt.value ? '#e50914' : 'rgba(255,255,255,0.85)',
-                          background: bookmarkType === opt.value ? 'rgba(255,255,255,0.04)' : 'transparent',
-                          cursor: 'pointer',
-                          transition: 'background 0.15s, color 0.15s'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (bookmarkType !== opt.value) e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (bookmarkType !== opt.value) e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        {opt.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
-              <div className="dialog-field" style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
-                  Start Time
-                </label>
-                <input 
-                  type="text" 
-                  value={startTimeStr} 
-                  placeholder="e.g. 1:20"
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setStartTimeStr(val);
-                    const parsed = parseTimeStringToSeconds(val);
-                    setNewBookmarkTime(parsed);
-                  }}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    padding: '0.6rem 0.85rem',
-                    fontSize: '0.9rem',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-              
-              {(bookmarkType === 'intro' || isIntro) && (
-                <div className="dialog-field" style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
-                    End Time
-                  </label>
-                  <input 
-                    type="text" 
-                    value={endTimeStr} 
-                    placeholder="e.g. 2:50"
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setEndTimeStr(val);
-                      const parsed = parseTimeStringToSeconds(val);
-                      setNewBookmarkEndTime(parsed);
-                    }}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '6px',
-                      color: '#fff',
-                      padding: '0.6rem 0.85rem',
-                      fontSize: '0.9rem',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {(bookmarkType === 'intro' || bookmarkType === 'outro' || isIntro || isOutro) && (
-              <div className="dialog-field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                <input 
-                  type="checkbox"
-                  id="enable-auto-skip-checkbox"
-                  checked={skipEnabled}
-                  onChange={(e) => setSkipEnabled(e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <label htmlFor="enable-auto-skip-checkbox" style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer', userSelect: 'none' }}>
-                  Enable Auto-Skip
-                </label>
-              </div>
-            )}
-            
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-              <button 
-                onClick={() => setShowAddDialog(false)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '6px',
-                  color: 'rgba(255, 255, 255, 0.8)',
-                  padding: '0.6rem 1.2rem',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'background 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSaveBookmark}
-                style={{
-                  background: '#e50914',
-                  border: 'none',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  padding: '0.6rem 1.4rem',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(229,9,20,0.3)',
-                  transition: 'background 0.2s, transform 0.1s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f40b17'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#e50914'}
-              >
-                Save
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -4711,14 +4990,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 8px;
-          border-radius: 6px;
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid rgba(255, 255, 255, 0.02);
-          transition: background-color 0.15s ease;
+          padding: 8px 10px;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.04);
+          border-left: 2px solid transparent;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          cursor: pointer;
         }
         .drawer-bookmark-item:hover {
-          background: rgba(255, 255, 255, 0.08);
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.06) 100%);
+          border-left-color: rgba(139, 92, 246, 0.6);
+          border-color: rgba(255, 255, 255, 0.08);
+          transform: translateX(2px);
+          box-shadow: -2px 0 8px rgba(139, 92, 246, 0.15);
         }
         .bookmark-item-info {
           flex: 1;
@@ -4729,50 +5014,56 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           min-width: 0;
         }
         .bookmark-item-badge {
-          font-size: 0.65rem;
+          font-size: 0.6rem;
           font-weight: 700;
-          padding: 2px 6px;
-          border-radius: 3px;
-          background: rgba(255, 255, 255, 0.15);
-          color: #ffffff;
+          padding: 2px 7px;
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.7);
           text-transform: uppercase;
+          letter-spacing: 0.03em;
+          white-space: nowrap;
         }
         .bookmark-item-badge.badge-intro {
-          background: rgba(59, 130, 246, 0.25);
-          color: #3b82f6;
-          border: 1px solid rgba(59, 130, 246, 0.2);
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(99, 102, 241, 0.2) 100%);
+          color: #60a5fa;
+          border: 1px solid rgba(59, 130, 246, 0.25);
         }
         .bookmark-item-badge.badge-outro {
-          background: rgba(16, 185, 129, 0.25);
-          color: #10b981;
-          border: 1px solid rgba(16, 185, 129, 0.2);
+          background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(52, 211, 153, 0.2) 100%);
+          color: #34d399;
+          border: 1px solid rgba(16, 185, 129, 0.25);
         }
         .bookmark-item-label {
           color: #ffffff;
-          font-size: 0.85rem;
+          font-size: 0.82rem;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
           flex: 1;
+          font-weight: 500;
         }
         .bookmark-item-time {
-          color: rgba(255, 255, 255, 0.5);
-          font-size: 0.8rem;
-          font-family: monospace;
+          color: rgba(255, 255, 255, 0.45);
+          font-size: 0.75rem;
+          font-family: 'JetBrains Mono', 'Fira Code', monospace;
+          font-variant-numeric: tabular-nums;
         }
         .bookmark-delete-btn {
           background: none;
           border: none;
-          color: rgba(255, 255, 255, 0.4);
+          color: rgba(255, 255, 255, 0.3);
           cursor: pointer;
-          padding: 4px;
+          padding: 5px;
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: color 0.15s ease;
+          border-radius: 4px;
+          transition: all 0.2s ease;
         }
         .bookmark-delete-btn:hover {
-          color: #ff4444;
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.12);
         }
 
         /* Bookmark dialog popup */
@@ -5321,8 +5612,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         .scrub-container-premium:hover .scrub-track-bg,
         .scrub-container-premium:hover .scrub-track-buffered,
-        .scrub-container-premium:hover .scrub-track-progress {
-          height: 6px;
+        .scrub-container-premium:hover .scrub-track-progress,
+        .scrub-container-premium:hover .timeline-bookmark-range,
+        .scrub-container-premium:hover .timeline-bookmark-dot {
+          height: 6px !important;
         }
 
         .scrub-hover-tooltip {
@@ -5444,7 +5737,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           bottom: 50px;
           left: 50%;
           transform: translateX(-50%);
-          width: 460px;
           max-width: 95vw;
           background: rgba(18, 18, 18, 0.88);
           backdrop-filter: blur(25px);
@@ -5455,9 +5747,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           box-shadow: 0 15px 40px rgba(0,0,0,0.7);
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .audio-sub-popover-center.has-transcript {
-          width: 960px;
         }
         .audio-sub-popover-center::before {
           content: '';
@@ -5471,18 +5760,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         .popover-cols {
           display: grid;
-          grid-template-columns: 1fr 1fr;
           gap: 1.25rem;
-        }
-        .audio-sub-popover-center.has-transcript .popover-cols {
-          grid-template-columns: 1fr 1fr 1.3fr 1.1fr;
+          transition: grid-template-columns 0.3s ease;
         }
         @media (max-width: 1024px) {
           .popover-transcript-col,
           .popover-style-col {
             display: none !important;
           }
-          .audio-sub-popover-center.has-transcript .popover-cols {
+          .popover-cols {
             grid-template-columns: 1fr 1fr !important;
           }
         }
@@ -5813,8 +6099,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           gap: 0.4rem;
           max-height: 140px;
           overflow-y: auto;
-          scrollbar-width: none; /* Firefox */
-          -ms-overflow-style: none; /* IE 10+ */
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255,255,255,0.1) transparent;
         }
         .popover-options::-webkit-scrollbar {
           display: none; /* Safari and Chrome */
@@ -5876,10 +6162,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             transform: translate(-50%, 0);
           }
         }
+        .animate-metadata-slide-in {
+          animation: metadataSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes metadataSlideUp {
+          from {
+            opacity: 0;
+            transform: translateY(12px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
         .animate-overlay-fade-in {
           animation: overlayFadeIn 0.2s ease forwards;
         }
         @keyframes overlayFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes overlayScrimFadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
         }
@@ -5889,6 +6192,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         @keyframes fadeInPure {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+
+        @keyframes bookmarkOverlayFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes bookmarkDialogSlideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
         }
 
         .netflix-buffer-ring {
