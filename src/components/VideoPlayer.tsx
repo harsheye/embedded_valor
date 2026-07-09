@@ -654,7 +654,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         label: bm.label || '',
         isIntro: bm.isIntro || false,
         isOutro: bm.isOutro || false,
-        skipEnabled: bm.skipEnabled || false
+        skipEnabled: bm.skipEnabled || false,
+        title: bm.title || '',
+        description: bm.description || '',
+        category: bm.category || 'Custom',
+        thumbnail: bm.thumbnail || '',
+        favorite: bm.favorite || false,
+        createdAt: bm.createdAt || new Date().toISOString(),
+        updatedAt: bm.updatedAt || new Date().toISOString()
       }));
       
       const response = await fetch('http://127.0.0.1:50001/api/graphql', {
