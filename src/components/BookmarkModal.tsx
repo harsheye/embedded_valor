@@ -22,7 +22,6 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Standard');
   const [favorite, setFavorite] = useState(false);
-  const [thumbnail, setThumbnail] = useState<string | null>(null);
 
   const categories = ['Standard', 'Movie Scene', 'Action', 'Funny', 'Hot Scene', 'Outro', 'Intro'];
 
@@ -32,24 +31,8 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
       setDescription(initialBookmark.description || '');
       setCategory(initialBookmark.category || 'Standard');
       setFavorite(initialBookmark.favorite || false);
-      if (initialBookmark.thumbnail) {
-        setThumbnail(initialBookmark.thumbnail);
-      }
-    } else if (videoElement) {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 320;
-        canvas.height = 180;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-          setThumbnail(canvas.toDataURL('image/jpeg', 0.85));
-        }
-      } catch (err) {
-        console.error('Failed to capture thumbnail', err);
-      }
     }
-  }, [initialBookmark, videoElement]);
+  }, [initialBookmark]);
 
   const handleSave = () => {
     onSave({
@@ -58,7 +41,6 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
       description,
       category,
       favorite,
-      thumbnail: thumbnail || undefined,
       time: initialBookmark?.time ?? initialTime,
       endTime: initialBookmark?.endTime ?? initialEndTime,
       createdAt: initialBookmark?.createdAt || new Date().toISOString(),
@@ -77,10 +59,9 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   return (
     <div 
       className="premium-bookmark-modal-overlay animate-fade-in" 
-      onClick={onClose}
       style={{
         position: 'fixed',
-        top: 0, left: 0, right: 0, bottom: 0,
+        inset: 0,
         zIndex: 1000,
         background: 'transparent',
         pointerEvents: 'none'
@@ -92,63 +73,69 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
         onClick={onClose} 
       />
       <div 
-        className="premium-bookmark-modal animate-scale-up" 
+        className="animate-slide-in-right" 
         onClick={e => e.stopPropagation()} 
         style={{ 
           position: 'fixed',
-          top: '50%',
-          right: '24px',
-          transform: 'translateY(-50%)',
-          margin: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: '380px',
+          background: 'rgba(20, 20, 22, 0.95)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderLeft: '1px solid rgba(255,255,255,0.05)',
+          boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
+          padding: '32px 24px',
           color: 'white', 
           pointerEvents: 'auto',
-          zIndex: 1001 
+          zIndex: 1001,
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'auto'
         }}
       >
-        <h2 style={{ color: 'white', fontSize: '20px', margin: '0 0 20px 0' }}>{initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}</h2>
-        
-        <div className="bookmark-modal-content">
-          <div className="bookmark-modal-thumbnail-wrapper">
-            {thumbnail ? (
-              <img src={thumbnail} alt="Live Thumbnail" className="bookmark-modal-thumbnail" />
-            ) : (
-              <div className="bookmark-modal-thumbnail-placeholder">No Thumbnail Available</div>
-            )}
-            <div className="bookmark-modal-timestamp">
-              {formatTime(initialTime)} {initialEndTime ? ` → ${formatTime(initialEndTime)}` : ''}
-            </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+          <h2 style={{ color: 'white', fontSize: '22px', margin: 0, fontWeight: 600 }}>{initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}</h2>
+          <div style={{ fontSize: '14px', color: '#e50914', fontWeight: 600, background: 'rgba(229, 9, 20, 0.1)', padding: '4px 12px', borderRadius: '12px' }}>
+            {formatTime(initialTime)} {initialEndTime ? ` → ${formatTime(initialEndTime)}` : ''}
           </div>
-
-          <div className="bookmark-modal-fields" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ color: '#ccc', fontSize: '13px' }}>Title</label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Bookmark Title" autoFocus style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', fontSize: '14px' }} />
+        </div>
+        
+        <div className="bookmark-modal-content" style={{ flex: 1 }}>
+          <div className="bookmark-modal-fields" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Title</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Bookmark Title" autoFocus style={{ color: 'white', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: '12px', fontSize: '15px', outline: 'none', transition: 'border-color 0.2s' }} onFocus={e => e.target.style.borderColor = '#e50914'} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
             </div>
 
-            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ color: '#ccc', fontSize: '13px' }}>Description (Optional)</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add notes..." style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', minHeight: '60px', fontSize: '14px' }}></textarea>
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Description (Optional)</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add notes..." style={{ color: 'white', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: '12px', minHeight: '100px', fontSize: '15px', outline: 'none', resize: 'vertical', transition: 'border-color 0.2s' }} onFocus={e => e.target.style.borderColor = '#e50914'} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}></textarea>
             </div>
 
-            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ color: '#ccc', fontSize: '13px' }}>Category</label>
-              <select value={category} onChange={e => setCategory(e.target.value)} style={{ color: 'white', backgroundColor: '#222', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', fontSize: '14px' }}>
-                {categories.map(cat => <option key={cat} value={cat} style={{ color: 'white', backgroundColor: '#222' }}>{cat}</option>)}
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Category</label>
+              <select value={category} onChange={e => setCategory(e.target.value)} style={{ color: 'white', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: '12px', fontSize: '15px', outline: 'none', cursor: 'pointer', appearance: 'none', transition: 'border-color 0.2s' }} onFocus={e => e.target.style.borderColor = '#e50914'} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}>
+                {categories.map(cat => <option key={cat} value={cat} style={{ color: 'white', backgroundColor: '#18181b' }}>{cat}</option>)}
               </select>
             </div>
 
-            <div className="field-group-checkbox" style={{ marginTop: '8px' }}>
-              <label style={{ color: '#ccc', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={favorite} onChange={e => setFavorite(e.target.checked)} />
+            <div className="field-group-checkbox" style={{ marginTop: '12px' }}>
+              <label style={{ color: 'rgba(255,255,255,0.8)', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '6px', border: `2px solid ${favorite ? '#e50914' : 'rgba(255,255,255,0.3)'}`, background: favorite ? '#e50914' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+                  {favorite && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                </div>
+                <input type="checkbox" checked={favorite} onChange={e => setFavorite(e.target.checked)} style={{ display: 'none' }} />
                 Mark as Favorite
               </label>
             </div>
           </div>
         </div>
 
-        <div className="bookmark-modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
-          <button className="bookmark-modal-btn cancel" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '8px', color: '#ccc', background: 'transparent', border: 'none', cursor: 'pointer' }}>Cancel</button>
-          <button className="bookmark-modal-btn save" onClick={handleSave} style={{ padding: '10px 20px', borderRadius: '8px', color: 'white', background: '#e50914', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Save</button>
+        <div className="bookmark-modal-actions" style={{ display: 'flex', gap: '12px', marginTop: '40px' }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '14px', borderRadius: '12px', color: 'white', background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 600, transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>Cancel</button>
+          <button onClick={handleSave} style={{ flex: 1, padding: '14px', borderRadius: '12px', color: 'white', background: '#e50914', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 600, transition: 'background 0.2s', boxShadow: '0 4px 12px rgba(229, 9, 20, 0.3)' }} onMouseEnter={e => e.currentTarget.style.background = '#f40b17'} onMouseLeave={e => e.currentTarget.style.background = '#e50914'}>Save</button>
         </div>
       </div>
     </div>
