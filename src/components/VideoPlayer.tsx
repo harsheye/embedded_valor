@@ -2918,6 +2918,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 10);
         triggerHudFlash('forward');
       }
+    } else if (pressedKey === 'c') {
+      e.preventDefault();
+      if (activeSkipBookmarkRef.current) {
+        const bm = activeSkipBookmarkRef.current;
+        const targetTime = (bm.isOutro || bm.category === 'Outro') ? duration : bm.endTime!;
+        if (videoRef.current) {
+          videoRef.current.currentTime = targetTime;
+          setCurrentTime(targetTime);
+          triggerSwitchToast(`Skipped ${bm.title || bm.label}`);
+        }
+      }
     } else if (pressedKey === nextSubKey) {
       e.preventDefault();
       cycleSubtitles();
@@ -3593,6 +3604,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
 
 
+  const activeSkipBookmark = useMemo(() => {
+    if (isScrubbing) return null;
+    return bookmarks.find(bm => {
+      if (bm.category !== 'Intro' && bm.category !== 'Outro' && !bm.isIntro && !bm.isOutro && !bm.skipEnabled) return false;
+      if (bm.category === 'Outro' || bm.isOutro) {
+        return currentTime >= bm.time && currentTime < (duration - 1);
+      }
+      return bm.endTime && currentTime >= bm.time && currentTime < bm.endTime;
+    }) || null;
+  }, [bookmarks, currentTime, duration, isScrubbing]);
+
+  const activeSkipBookmarkRef = useRef<Bookmark | null>(null);
+  activeSkipBookmarkRef.current = activeSkipBookmark;
+
   const controlsVisible = showControls && !isLocked;
 
   return (
@@ -3602,7 +3627,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onMouseMove={(e) => {
         if (!isLocked) handleMouseMove(e);
       }}
-      onContextMenu={(e) => e.preventDefault()}
       onDoubleClick={(e) => {
         const target = e.target as HTMLElement;
         if (
@@ -3666,22 +3690,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 latestTimeRef.current = time;
               }
   
-              // Auto-Skip Intros & Outros
-              if (uiConfig.autoSkipIntroOutro && !isScrubbing) {
-                const activeSkip = bookmarks.find(bm => {
-                  if (!bm.skipEnabled) return false;
-                  if (bm.isOutro) {
-                    return time >= bm.time && time < (duration - 1);
-                  }
-                  return bm.endTime && time >= bm.time && time < bm.endTime;
-                });
-                if (activeSkip) {
-                  const targetTime = activeSkip.isOutro ? duration : activeSkip.endTime!;
-                  videoRef.current.currentTime = targetTime;
-                  setCurrentTime(targetTime);
-                  triggerSwitchToast(`Auto-Skipped ${activeSkip.isIntro ? 'Intro' : 'Outro'}`);
-                }
-              }
             }
           }}
           onPlay={() => setIsPlaying(true)}
@@ -4125,6 +4133,44 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="rating-thanks">Thanks for rating! ({userRating}/5)</div>
           )}
         </div>
+      )}
+
+      {/* Skip Button */}
+      {activeSkipBookmark && (
+        <button
+          className="skip-btn"
+          style={{
+            position: 'absolute',
+            bottom: controlsVisible ? '120px' : '40px',
+            right: '40px',
+            zIndex: 90,
+            background: 'rgba(0,0,0,0.7)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            backdropFilter: 'blur(8px)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const targetTime = (activeSkipBookmark.isOutro || activeSkipBookmark.category === 'Outro') ? duration : activeSkipBookmark.endTime!;
+            if (videoRef.current) {
+              videoRef.current.currentTime = targetTime;
+              setCurrentTime(targetTime);
+              triggerSwitchToast(`Skipped ${activeSkipBookmark.title || activeSkipBookmark.label}`);
+            }
+          }}
+        >
+          Skip {activeSkipBookmark.category === 'Intro' || activeSkipBookmark.isIntro ? 'Intro' : activeSkipBookmark.category === 'Outro' || activeSkipBookmark.isOutro ? 'Outro' : 'Scene'} (C)
+        </button>
       )}
 
       {/* Bottom Controls Overlay */}

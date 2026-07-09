@@ -24,7 +24,7 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   const [favorite, setFavorite] = useState(initialBookmark?.favorite || false);
   const [thumbnail, setThumbnail] = useState(initialBookmark?.thumbnail || '');
 
-  const categories = ['Movie Scene', 'Favorite', 'Funny', 'Action', 'Dialogue', 'Reference', 'Important', 'Ending', 'Custom'];
+  const categories = ['Movie Scene', 'Intro', 'Outro', 'Favorite', 'Funny', 'Action', 'Dialogue', 'Reference', 'Important', 'Ending', 'Custom'];
 
   useEffect(() => {
     if (!initialBookmark && videoElement && !thumbnail) {
