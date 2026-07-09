@@ -77,16 +77,12 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   return (
     <div 
       className="premium-bookmark-modal-overlay animate-fade-in" 
+      onClick={onClose}
       style={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
         zIndex: 1000,
         background: 'transparent',
-        backdropFilter: 'none',
-        WebkitBackdropFilter: 'none',
         pointerEvents: 'none'
       }}
     >
@@ -99,10 +95,13 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
         className="premium-bookmark-modal animate-scale-up" 
         onClick={e => e.stopPropagation()} 
         style={{ 
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          margin: 0,
           color: 'white', 
-          position: 'relative', 
           pointerEvents: 'auto',
-          margin: '0 auto',
           zIndex: 1001 
         }}
       >
