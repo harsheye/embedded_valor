@@ -18,39 +18,47 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   onSave, 
   onClose 
 }) => {
-  const [title, setTitle] = useState(initialBookmark?.title || initialBookmark?.label || '');
-  const [description, setDescription] = useState(initialBookmark?.description || '');
-  const [category, setCategory] = useState(initialBookmark?.category || 'Custom');
-  const [favorite, setFavorite] = useState(initialBookmark?.favorite || false);
-  const [thumbnail, setThumbnail] = useState(initialBookmark?.thumbnail || '');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('Standard');
+  const [favorite, setFavorite] = useState(false);
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
 
-  const categories = ['Movie Scene', 'Intro', 'Outro', 'Favorite', 'Funny', 'Action', 'Dialogue', 'Reference', 'Important', 'Ending', 'Custom'];
+  const categories = ['Standard', 'Movie Scene', 'Action', 'Funny', 'Hot Scene', 'Outro', 'Intro'];
 
   useEffect(() => {
-    if (!initialBookmark && videoElement && !thumbnail) {
+    if (initialBookmark) {
+      setTitle(initialBookmark.title || initialBookmark.label || '');
+      setDescription(initialBookmark.description || '');
+      setCategory(initialBookmark.category || 'Standard');
+      setFavorite(initialBookmark.favorite || false);
+      if (initialBookmark.thumbnail) {
+        setThumbnail(initialBookmark.thumbnail);
+      }
+    } else if (videoElement) {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = 480;
-        canvas.height = (480 / videoElement.videoWidth) * videoElement.videoHeight;
+        canvas.width = 320;
+        canvas.height = 180;
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-          setThumbnail(canvas.toDataURL('image/jpeg', 0.6));
+          setThumbnail(canvas.toDataURL('image/jpeg', 0.85));
         }
-      } catch (e) {
-        console.warn('Failed to capture thumbnail', e);
+      } catch (err) {
+        console.error('Failed to capture thumbnail', err);
       }
     }
-  }, [videoElement, initialBookmark, thumbnail]);
+  }, [initialBookmark, videoElement]);
 
   const handleSave = () => {
     onSave({
-      title: title || 'Untitled Bookmark',
-      label: title || 'Untitled Bookmark',
+      ...(initialBookmark || {}),
+      title: title || undefined,
       description,
       category,
       favorite,
-      thumbnail,
+      thumbnail: thumbnail || undefined,
       time: initialBookmark?.time ?? initialTime,
       endTime: initialBookmark?.endTime ?? initialEndTime,
       createdAt: initialBookmark?.createdAt || new Date().toISOString(),
@@ -67,8 +75,37 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   };
 
   return (
-    <div className="premium-bookmark-modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="premium-bookmark-modal animate-scale-up" onClick={e => e.stopPropagation()} style={{ color: 'white' }}>
+    <div 
+      className="premium-bookmark-modal-overlay animate-fade-in" 
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        background: 'transparent',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
+        pointerEvents: 'none'
+      }}
+    >
+      {/* Invisible backdrop for clicks to close */}
+      <div 
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }} 
+        onClick={onClose} 
+      />
+      <div 
+        className="premium-bookmark-modal animate-scale-up" 
+        onClick={e => e.stopPropagation()} 
+        style={{ 
+          color: 'white', 
+          position: 'relative', 
+          pointerEvents: 'auto',
+          margin: '0 auto',
+          zIndex: 1001 
+        }}
+      >
         <h2 style={{ color: 'white', fontSize: '20px', margin: '0 0 20px 0' }}>{initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}</h2>
         
         <div className="bookmark-modal-content">
