@@ -844,37 +844,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     latestTimeRef.current = currentTime;
   }, [currentTime]);
 
-  // Auto-skip logic for Intro/Outro and Sex/Nudity scenes
-  useEffect(() => {
-    if (isScrubbing || !videoRef.current || duration <= 0) return;
-    const time = currentTime;
-    
-    const skippableBookmark = bookmarks.find(bm => {
-      // Check if it's an Intro/Outro and auto-skip is enabled
-      const isIntroOutro = bm.category === 'Intro' || bm.category === 'Outro' || bm.isIntro || bm.isOutro;
-      if (isIntroOutro && playerSettings.autoSkipIntroOutro) {
-        if (bm.category === 'Outro' || bm.isOutro) {
-          return time >= bm.time && time < (duration - 1);
-        }
-        return bm.endTime && time >= bm.time && time < bm.endTime;
-      }
-      
-      // Check if it's a Sex scene and auto-skip sex scenes is enabled
-      const isSexScene = bm.category === 'Sex' || bm.category === 'Nudity';
-      if (isSexScene && playerSettings.autoSkipSexScenes) {
-        return bm.endTime && time >= bm.time && time < bm.endTime;
-      }
-      
-      return false;
-    });
 
-    if (skippableBookmark) {
-      const targetTime = (skippableBookmark.category === 'Outro' || skippableBookmark.isOutro) ? duration : skippableBookmark.endTime!;
-      videoRef.current.currentTime = targetTime;
-      setCurrentTime(targetTime);
-      triggerSwitchToast(`Auto-Skipped ${skippableBookmark.category || 'Scene'}`);
-    }
-  }, [currentTime, bookmarks, duration, isScrubbing, playerSettings.autoSkipIntroOutro, playerSettings.autoSkipSexScenes]);
   const [duration, setDuration] = useState(0);
 
   const totalTimeWatchedRef = useRef<number>((video as any).totalTimeWatched || 0);
@@ -1320,6 +1290,38 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Auto-skip logic for Intro/Outro and Sex/Nudity scenes
+  useEffect(() => {
+    if (isScrubbing || !videoRef.current || duration <= 0) return;
+    const time = currentTime;
+    
+    const skippableBookmark = bookmarks.find(bm => {
+      // Check if it's an Intro/Outro and auto-skip is enabled
+      const isIntroOutro = bm.category === 'Intro' || bm.category === 'Outro' || bm.isIntro || bm.isOutro;
+      if (isIntroOutro && playerSettings.autoSkipIntroOutro) {
+        if (bm.category === 'Outro' || bm.isOutro) {
+          return time >= bm.time && time < (duration - 1);
+        }
+        return bm.endTime && time >= bm.time && time < bm.endTime;
+      }
+      
+      // Check if it's a Sex scene and auto-skip sex scenes is enabled
+      const isSexScene = bm.category === 'Sex' || bm.category === 'Nudity';
+      if (isSexScene && playerSettings.autoSkipSexScenes) {
+        return bm.endTime && time >= bm.time && time < bm.endTime;
+      }
+      
+      return false;
+    });
+
+    if (skippableBookmark) {
+      const targetTime = (skippableBookmark.category === 'Outro' || skippableBookmark.isOutro) ? duration : skippableBookmark.endTime!;
+      videoRef.current.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      triggerSwitchToast(`Auto-Skipped ${skippableBookmark.category || 'Scene'}`);
+    }
+  }, [currentTime, bookmarks, duration, isScrubbing, playerSettings.autoSkipIntroOutro, playerSettings.autoSkipSexScenes]);
 
   // Tracks Selection State
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<CustomAudioTrack | null>(null);

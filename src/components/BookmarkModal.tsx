@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronRight, Settings } from 'lucide-react';
+import { X, Settings } from 'lucide-react';
 import type { Bookmark } from '../types/media';
 
 interface BookmarkModalProps {
