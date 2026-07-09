@@ -68,8 +68,8 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
 
   return (
     <div className="premium-bookmark-modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="premium-bookmark-modal animate-scale-up" onClick={e => e.stopPropagation()}>
-        <h2>{initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}</h2>
+      <div className="premium-bookmark-modal animate-scale-up" onClick={e => e.stopPropagation()} style={{ color: 'white' }}>
+        <h2 style={{ color: 'white', fontSize: '20px', margin: '0 0 20px 0' }}>{initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}</h2>
         
         <div className="bookmark-modal-content">
           <div className="bookmark-modal-thumbnail-wrapper">
@@ -83,26 +83,26 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
             </div>
           </div>
 
-          <div className="bookmark-modal-fields">
-            <div className="field-group">
-              <label>Title</label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Bookmark Title" autoFocus />
+          <div className="bookmark-modal-fields" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px' }}>Title</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Bookmark Title" autoFocus style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', fontSize: '14px' }} />
             </div>
 
-            <div className="field-group">
-              <label>Description (Optional)</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add notes..."></textarea>
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px' }}>Description (Optional)</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add notes..." style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', minHeight: '60px', fontSize: '14px' }}></textarea>
             </div>
 
-            <div className="field-group">
-              <label>Category</label>
-              <select value={category} onChange={e => setCategory(e.target.value)}>
-                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px' }}>Category</label>
+              <select value={category} onChange={e => setCategory(e.target.value)} style={{ color: 'white', backgroundColor: '#222', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', fontSize: '14px' }}>
+                {categories.map(cat => <option key={cat} value={cat} style={{ color: 'white', backgroundColor: '#222' }}>{cat}</option>)}
               </select>
             </div>
 
-            <div className="field-group-checkbox">
-              <label>
+            <div className="field-group-checkbox" style={{ marginTop: '8px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={favorite} onChange={e => setFavorite(e.target.checked)} />
                 Mark as Favorite
               </label>
@@ -110,9 +110,9 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
           </div>
         </div>
 
-        <div className="bookmark-modal-actions">
-          <button className="btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="btn-save" onClick={handleSave}>Save</button>
+        <div className="bookmark-modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+          <button className="bookmark-modal-btn cancel" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '8px', color: '#ccc', background: 'transparent', border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <button className="bookmark-modal-btn save" onClick={handleSave} style={{ padding: '10px 20px', borderRadius: '8px', color: 'white', background: '#e50914', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Save</button>
         </div>
       </div>
     </div>
