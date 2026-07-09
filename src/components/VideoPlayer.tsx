@@ -50,6 +50,7 @@ interface VideoPlayerProps {
   allowUiSkipping?: boolean;
   blockSeekingCompletely?: boolean;
   autoSkipIntroOutro?: boolean;
+  autoSkipSexScenes?: boolean;
   lockModeActive?: boolean;
   settingsOrder?: string[];
   uiHideTimeout?: number;
@@ -152,6 +153,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   allowUiSkipping = true,
   blockSeekingCompletely = false,
   autoSkipIntroOutro = true,
+  autoSkipSexScenes = true,
   lockModeActive: propLockModeActive = false,
   settingsOrder,
   uiHideTimeout = 1.5
@@ -355,6 +357,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const bookmarksTimeoutRef = useRef<any>(null);
   const [bookmarks, setBookmarks] = useState<any[]>(() => video.bookmarks || []);
   const [editingBookmark, setEditingBookmark] = useState<Bookmark | undefined>(undefined);
+  const [markingStartTime, setMarkingStartTime] = useState<number | null>(null);
 
   const [hoveredSetting, setHoveredSetting] = useState<string | null>(null);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
@@ -370,6 +373,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     allowUiSkipping: boolean;
     blockSeekingCompletely: boolean;
     autoSkipIntroOutro: boolean;
+    autoSkipSexScenes: boolean;
     lockModeActive: boolean;
     disableAnimations: boolean;
     pauseOnFocusChange: boolean;
@@ -386,6 +390,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     allowUiSkipping: allowUiSkipping !== false,
     blockSeekingCompletely: !!blockSeekingCompletely,
     autoSkipIntroOutro: autoSkipIntroOutro !== false,
+    autoSkipSexScenes: autoSkipSexScenes !== false,
     lockModeActive: !!propLockModeActive,
     disableAnimations: !!disableAnimations,
     pauseOnFocusChange: !!pauseOnFocusChange
@@ -404,11 +409,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       allowUiSkipping: allowUiSkipping !== false,
       blockSeekingCompletely: !!blockSeekingCompletely,
       autoSkipIntroOutro: autoSkipIntroOutro !== false,
+      autoSkipSexScenes: autoSkipSexScenes !== false,
       lockModeActive: !!propLockModeActive,
       disableAnimations: !!disableAnimations,
       pauseOnFocusChange: !!pauseOnFocusChange
     }));
-  }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen, allowUiSkipping, blockSeekingCompletely, autoSkipIntroOutro, propLockModeActive, disableAnimations, pauseOnFocusChange]);
+  }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen, allowUiSkipping, blockSeekingCompletely, autoSkipIntroOutro, autoSkipSexScenes, propLockModeActive, disableAnimations, pauseOnFocusChange]);
 
   const updatePlayerSetting = (key: keyof typeof playerSettings, value: any) => {
     setPlayerSettings(prev => {
@@ -429,7 +435,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const uiConfig = {
     allowUiSkipping: playerSettings.allowUiSkipping,
     blockSeekingCompletely: playerSettings.blockSeekingCompletely,
-    autoSkipIntroOutro: playerSettings.autoSkipIntroOutro
+    autoSkipIntroOutro: playerSettings.autoSkipIntroOutro,
+    autoSkipSexScenes: playerSettings.autoSkipSexScenes
   };
 
   // Helper to determine mode (enable, hide, disable)
@@ -786,7 +793,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     let newBookmark: Bookmark;
     let updatedBookmarks: Bookmark[];
     
-    if (editingBookmark) {
+    if (editingBookmark && editingBookmark.id) {
       newBookmark = { ...editingBookmark, ...bmData };
       updatedBookmarks = bookmarks.map(b => b.id === newBookmark.id ? newBookmark : b).sort((a, b) => a.time - b.time);
     } else {
@@ -836,6 +843,38 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     latestTimeRef.current = currentTime;
   }, [currentTime]);
+
+  // Auto-skip logic for Intro/Outro and Sex/Nudity scenes
+  useEffect(() => {
+    if (isScrubbing || !videoRef.current || duration <= 0) return;
+    const time = currentTime;
+    
+    const skippableBookmark = bookmarks.find(bm => {
+      // Check if it's an Intro/Outro and auto-skip is enabled
+      const isIntroOutro = bm.category === 'Intro' || bm.category === 'Outro' || bm.isIntro || bm.isOutro;
+      if (isIntroOutro && playerSettings.autoSkipIntroOutro) {
+        if (bm.category === 'Outro' || bm.isOutro) {
+          return time >= bm.time && time < (duration - 1);
+        }
+        return bm.endTime && time >= bm.time && time < bm.endTime;
+      }
+      
+      // Check if it's a Sex scene and auto-skip sex scenes is enabled
+      const isSexScene = bm.category === 'Sex' || bm.category === 'Nudity';
+      if (isSexScene && playerSettings.autoSkipSexScenes) {
+        return bm.endTime && time >= bm.time && time < bm.endTime;
+      }
+      
+      return false;
+    });
+
+    if (skippableBookmark) {
+      const targetTime = (skippableBookmark.category === 'Outro' || skippableBookmark.isOutro) ? duration : skippableBookmark.endTime!;
+      videoRef.current.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      triggerSwitchToast(`Auto-Skipped ${skippableBookmark.category || 'Scene'}`);
+    }
+  }, [currentTime, bookmarks, duration, isScrubbing, playerSettings.autoSkipIntroOutro, playerSettings.autoSkipSexScenes]);
   const [duration, setDuration] = useState(0);
 
   const totalTimeWatchedRef = useRef<number>((video as any).totalTimeWatched || 0);
@@ -2801,9 +2840,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
       if (showAddDialog) {
         setShowAddDialog(false);
-      } else {
-        setEditingBookmark(undefined);
-        setShowAddDialog(true);
+        return;
+      }
+      if (markingStartTime !== null) {
+        if (videoRef.current) {
+          const endTime = Math.round(videoRef.current.currentTime);
+          const startTime = markingStartTime;
+          setMarkingStartTime(null);
+          setEditingBookmark({
+            id: '',
+            time: startTime,
+            endTime: endTime,
+            title: '',
+            label: '',
+            category: 'Nudity',
+            description: '',
+            createdAt: '',
+            updatedAt: ''
+          });
+          setShowAddDialog(true);
+        }
+        return;
+      }
+      if (markingStartTime === null) {
+        if (videoRef.current) {
+          setMarkingStartTime(Math.round(videoRef.current.currentTime));
+          setEditingBookmark(undefined);
+        }
+        return;
       }
       return;
     }
@@ -4457,7 +4521,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       onAdd={() => {
                         if (videoRef.current) {
                           setEditingBookmark(undefined);
-                          setShowAddDialog(true);
+                          setMarkingStartTime(Math.round(videoRef.current.currentTime));
                           setShowBookmarksPopover(false);
                         }
                       }}
@@ -4649,12 +4713,69 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           initialEndTime={Math.round((videoRef.current?.currentTime || 0) + 90)}
           initialBookmark={editingBookmark}
           videoElement={videoRef.current}
+          videoTitle={video.title || video.fileName || "Video"}
           onSave={(bm) => {
             handleSaveBookmark(bm as Bookmark);
             setShowAddDialog(false);
           }}
           onClose={() => setShowAddDialog(false)}
         />
+      )}
+
+      {/* Active Marking HUD */}
+      {markingStartTime !== null && (
+        <button
+          onClick={() => {
+            if (videoRef.current) {
+              const endTime = Math.round(videoRef.current.currentTime);
+              const startTime = markingStartTime;
+              setMarkingStartTime(null);
+              setEditingBookmark({
+                id: '',
+                time: startTime,
+                endTime: endTime,
+                title: '',
+                label: '',
+                category: 'Nudity',
+                description: '',
+                createdAt: '',
+                updatedAt: ''
+              });
+              setShowAddDialog(true);
+            }
+          }}
+          className="marking-hud-button"
+          style={{
+            position: 'absolute',
+            bottom: '90px',
+            right: '3.5rem',
+            background: '#e50914',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '24px',
+            padding: '10px 20px',
+            fontSize: '0.9rem',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            boxShadow: '0 4px 15px rgba(229, 9, 20, 0.4)',
+            zIndex: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontFamily: 'Outfit, sans-serif',
+            animation: 'pulseMarking 1.5s infinite alternate'
+          }}
+        >
+          <span style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: '#fff',
+            animation: 'flashDot 1s infinite'
+          }} />
+          <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
+        </button>
       )}
 
       <input 
@@ -6595,6 +6716,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           color: #cccccc;
           margin: 0;
           line-height: 1.5;
+        }
+        @keyframes pulseMarking {
+          from { transform: scale(1); }
+          to { transform: scale(1.03); }
+        }
+        @keyframes flashDot {
+          0% { opacity: 0.3; }
+          50% { opacity: 1; }
+          100% { opacity: 0.3; }
+        }
+        .marking-hud-button:hover {
+          background: #f40b17 !important;
         }
       `}</style>
     </div>

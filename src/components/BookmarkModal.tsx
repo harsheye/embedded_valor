@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronRight } from 'lucide-react';
+import { X, ChevronRight, Settings } from 'lucide-react';
 import type { Bookmark } from '../types/media';
 
 interface BookmarkModalProps {
@@ -7,6 +7,7 @@ interface BookmarkModalProps {
   initialEndTime?: number;
   initialBookmark?: Bookmark;
   videoElement: HTMLVideoElement | null;
+  videoTitle?: string;
   onSave: (bm: Partial<Bookmark>) => void;
   onClose: () => void;
 }
@@ -16,16 +17,20 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   initialEndTime,
   initialBookmark,
   videoElement,
+  videoTitle,
   onSave, 
   onClose 
 }) => {
   const [newBookmarkLabel, setNewBookmarkLabel] = useState(initialBookmark?.title || initialBookmark?.label || '');
-  const [bookmarkType, setBookmarkType] = useState<'standard' | 'intro' | 'outro'>(
+  const [bookmarkType, setBookmarkType] = useState<'nudity' | 'sex' | 'gore' | 'intro' | 'outro' | 'custom'>(
+    initialBookmark?.category === 'Nudity' ? 'nudity' : 
+    initialBookmark?.category === 'Sex' ? 'sex' : 
+    initialBookmark?.category === 'Gore' ? 'gore' : 
     initialBookmark?.category === 'Intro' ? 'intro' : 
-    initialBookmark?.category === 'Outro' ? 'outro' : 'standard'
+    initialBookmark?.category === 'Outro' ? 'outro' : 'custom'
   );
   
-  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
+  const [showAdjustTimes, setShowAdjustTimes] = useState(false);
   
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -49,10 +54,6 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   const [newBookmarkTime, setNewBookmarkTime] = useState(initialBookmark?.time ?? initialTime);
   const [newBookmarkEndTime, setNewBookmarkEndTime] = useState(initialBookmark?.endTime ?? (initialEndTime || initialTime + 90));
   
-  const [skipEnabled, setSkipEnabled] = useState(
-    initialBookmark?.category === 'Intro' || initialBookmark?.category === 'Outro'
-  );
-
   const [thumbnail, setThumbnail] = useState(initialBookmark?.thumbnail || '');
 
   useEffect(() => {
@@ -74,299 +75,345 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
 
   const handleSaveBookmark = () => {
     let finalCategory = 'Custom';
+    if (bookmarkType === 'nudity') finalCategory = 'Nudity';
+    if (bookmarkType === 'sex') finalCategory = 'Sex';
+    if (bookmarkType === 'gore') finalCategory = 'Gore';
     if (bookmarkType === 'intro') finalCategory = 'Intro';
     if (bookmarkType === 'outro') finalCategory = 'Outro';
 
     onSave({
-      title: newBookmarkLabel || 'Untitled Bookmark',
-      label: newBookmarkLabel || 'Untitled Bookmark',
+      title: newBookmarkLabel || finalCategory || 'Untitled Bookmark',
+      label: newBookmarkLabel || finalCategory || 'Untitled Bookmark',
       description: '',
       category: finalCategory,
       favorite: initialBookmark?.favorite || false,
       thumbnail: thumbnail,
       time: newBookmarkTime,
-      endTime: (bookmarkType === 'intro' || bookmarkType === 'outro') ? newBookmarkEndTime : undefined,
+      endTime: (bookmarkType !== 'outro') ? newBookmarkEndTime : undefined,
       createdAt: initialBookmark?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
   };
 
+  const presets = [
+    { value: 'nudity', label: 'Nudity' },
+    { value: 'sex', label: 'Sex' },
+    { value: 'gore', label: 'Gore' },
+    { value: 'intro', label: 'Intro' },
+    { value: 'outro', label: 'Outro' },
+    { value: 'custom', label: 'Custom' }
+  ];
+
+  const handlePresetSelect = (val: 'nudity' | 'sex' | 'gore' | 'intro' | 'outro' | 'custom') => {
+    setBookmarkType(val);
+    const matchedLabel = presets.find(p => p.value === val)?.label || 'Custom';
+    setNewBookmarkLabel(matchedLabel);
+  };
+
   return (
     <div 
-      className="bookmark-dialog-overlay animate-fade-in" 
+      className="bookmark-dialog-overlay custom-overlay-anim" 
       onClick={onClose}
       style={{
-        position: 'absolute',
+        position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'rgba(0, 0, 0, 0.6)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-        zIndex: 160,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1rem'
+        background: 'transparent',
+        zIndex: 9999,
       }}
     >
-      <div 
-        className="bookmark-dialog-box animate-scale-in" 
-        onClick={(e) => e.stopPropagation()}
+      <style>{`
+        @keyframes customFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes customScaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .custom-overlay-anim {
+          animation: customFadeIn 0.2s ease forwards;
+        }
+        .custom-box-anim {
+          animation: customScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        .preset-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.7);
+          padding: 0.65rem 1rem;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-align: center;
+          font-family: inherit;
+        }
+        .preset-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #fff;
+        }
+        .preset-btn.active {
+          background: rgba(255, 122, 0, 0.1);
+          border-color: #ff7a00;
+          color: #fff;
+          box-shadow: 0 0 10px rgba(255, 122, 0, 0.2);
+        }
+      `}</style>
+      <div
         style={{
-          background: 'rgba(18, 18, 18, 0.96)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '16px',
-          padding: '1.5rem',
-          width: '90%',
-          maxWidth: '400px',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1.25rem',
-          fontFamily: 'sans-serif'
+          position: 'absolute',
+          top: '50%',
+          right: '24px',
+          transform: 'translateY(-50%)',
+          zIndex: 10000,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#ffffff' }}>
-            {initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}
-          </h3>
-          <button 
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.6)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s ease' }}
-            onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        
-        <div className="dialog-field">
-          <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>Label</label>
-          <input 
-            type="text" 
-            value={newBookmarkLabel} 
-            onChange={(e) => setNewBookmarkLabel(e.target.value)}
-            placeholder="e.g. Intro Start"
-            autoFocus
-            style={{
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: '6px',
-              color: '#fff',
-              padding: '0.6rem 0.85rem',
-              fontSize: '0.9rem',
-              width: '100%',
-              boxSizing: 'border-box',
-              outline: 'none'
-            }}
-          />
-        </div>
-
-        {/* Custom Dropdown Selection for Bookmark Type */}
-        <div className="dialog-field" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', fontWeight: 600 }}>Type</label>
-          <div style={{ position: 'relative', width: '100%' }}>
-            <button
-              onClick={() => setTypeDropdownOpen(prev => !prev)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: '6px',
-                color: '#fff',
-                padding: '0.6rem 0.85rem',
-                fontSize: '0.9rem',
-                textAlign: 'left',
-                width: '100%',
-                cursor: 'pointer',
+        <div 
+          className="bookmark-dialog-box custom-box-anim" 
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: 'rgba(18, 18, 18, 0.98)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '16px',
+            padding: '1.75rem',
+            width: '380px',
+            maxWidth: 'calc(100vw - 48px)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            fontFamily: 'Outfit, sans-serif'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
+                Mark Scene
+              </h2>
+              {videoTitle && (
+                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+                  {videoTitle}
+                </span>
+              )}
+            </div>
+            <button 
+              onClick={onClose}
+              style={{ 
+                background: 'rgba(255, 255, 255, 0.05)', 
+                border: 'none', 
+                color: '#fff', 
+                cursor: 'pointer', 
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                boxSizing: 'border-box'
+                justifyContent: 'center',
+                transition: 'background 0.2s'
               }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
             >
-              <span>
-                {bookmarkType === 'standard' ? 'Standard Bookmark' :
-                 bookmarkType === 'intro' ? 'Intro Section' : 'Outro Section'}
-              </span>
-              <ChevronRight size={16} style={{ transform: typeDropdownOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+              <X size={18} />
             </button>
-            {typeDropdownOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: 0,
-                  right: 0,
-                  marginBottom: '4px',
-                  background: 'rgba(25, 25, 25, 0.98)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '6px',
-                  zIndex: 200,
-                  boxShadow: '0 -10px 25px rgba(0,0,0,0.5)',
-                  overflow: 'hidden'
-                }}
-              >
-                {[
-                  { value: 'standard', label: 'Standard Bookmark' },
-                  { value: 'intro', label: 'Intro Section' },
-                  { value: 'outro', label: 'Outro Section' }
-                ].map((opt) => (
-                  <div
-                    key={opt.value}
-                    onClick={() => {
-                      setBookmarkType(opt.value as any);
-                      setTypeDropdownOpen(false);
-                      if (opt.value === 'intro') {
-                        setSkipEnabled(true);
-                        if (!newBookmarkLabel) setNewBookmarkLabel('Intro');
-                      } else if (opt.value === 'outro') {
-                        setSkipEnabled(true);
-                        if (!newBookmarkLabel) setNewBookmarkLabel('Outro');
-                      } else {
-                        setSkipEnabled(false);
-                        if (!newBookmarkLabel) setNewBookmarkLabel(`Bookmark @ ${formatTime(newBookmarkTime)}`);
-                      }
-                    }}
+          </div>
+
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.04)',
+            borderRadius: '12px',
+            padding: '8px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '0.92rem',
+            color: '#fff',
+            fontWeight: 600,
+            width: 'fit-content',
+            margin: '0 auto',
+            border: '1px solid rgba(255, 255, 255, 0.04)'
+          }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ff7a00', boxShadow: '0 0 8px #ff7a00' }} />
+            <span>{startTimeStr} {bookmarkType !== 'outro' ? ` - ${endTimeStr}` : ''}</span>
+          </div>
+
+          <p style={{
+            fontSize: '0.78rem',
+            color: 'rgba(255, 255, 255, 0.45)',
+            textAlign: 'center',
+            lineHeight: '1.4',
+            margin: '0 0 0.25rem 0',
+            fontStyle: 'normal',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+            paddingBottom: '0.75rem'
+          }}>
+            See a scene others should skip? Tap once to start, tap again to end, 2 clicks! Your mark helps everyone watching the same movie or show.
+          </p>
+
+          <div className="dialog-field" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>What type of scene is this?</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+              {presets.map((preset) => (
+                <button
+                  key={preset.value}
+                  className={`preset-btn ${bookmarkType === preset.value ? 'active' : ''}`}
+                  onClick={() => handlePresetSelect(preset.value as any)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="dialog-field" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Scene Title / Label</label>
+            <input 
+              type="text" 
+              style={{
+                width: '100%',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                padding: '0.75rem',
+                color: '#fff',
+                fontSize: '0.95rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit'
+              }}
+              onFocus={(e) => e.currentTarget.style.borderColor = '#ff7a00'}
+              onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'}
+              value={newBookmarkLabel} 
+              onChange={(e) => setNewBookmarkLabel(e.target.value)}
+              placeholder="e.g. Action Scene"
+            />
+          </div>
+
+          {/* Adjust segment duration toggle */}
+          <div style={{ marginTop: '0.2rem' }}>
+            <button
+              onClick={() => setShowAdjustTimes(!showAdjustTimes)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.45)',
+                fontSize: '0.8rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                padding: 0,
+                fontFamily: 'inherit'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+              onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.45)'}
+            >
+              <Settings size={12} />
+              <span>{showAdjustTimes ? 'Hide time adjustments' : 'Adjust times manually'}</span>
+            </button>
+
+            {showAdjustTimes && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem', animation: 'customFadeIn 0.2s ease forwards' }}>
+                <div className="dialog-field" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Start Time</label>
+                  <input 
+                    type="text" 
                     style={{
-                      padding: '0.6rem 0.85rem',
-                      fontSize: '0.85rem',
-                      color: bookmarkType === opt.value ? '#e50914' : 'rgba(255,255,255,0.85)',
-                      background: bookmarkType === opt.value ? 'rgba(255,255,255,0.04)' : 'transparent',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s, color 0.15s'
+                      width: '100%',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      padding: '0.5rem 0.75rem',
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      fontFamily: 'inherit'
                     }}
-                    onMouseEnter={(e) => {
-                      if (bookmarkType !== opt.value) e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                    value={startTimeStr} 
+                    onChange={(e) => {
+                      setStartTimeStr(e.target.value);
+                      setNewBookmarkTime(parseTimeStringToSeconds(e.target.value));
                     }}
-                    onMouseLeave={(e) => {
-                      if (bookmarkType !== opt.value) e.currentTarget.style.background = 'transparent';
+                  />
+                </div>
+
+                <div className="dialog-field" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', opacity: (bookmarkType !== 'outro') ? 1 : 0.5, pointerEvents: (bookmarkType !== 'outro') ? 'auto' : 'none' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>End Time</label>
+                  <input 
+                    type="text" 
+                    style={{
+                      width: '100%',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      padding: '0.5rem 0.75rem',
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      fontFamily: 'inherit'
                     }}
-                  >
-                    {opt.label}
-                  </div>
-                ))}
+                    value={endTimeStr} 
+                    onChange={(e) => {
+                      setEndTimeStr(e.target.value);
+                      setNewBookmarkEndTime(parseTimeStringToSeconds(e.target.value));
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>
-        </div>
-        
-        <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
-          <div className="dialog-field" style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
-              Start Time
-            </label>
-            <input 
-              type="text" 
-              value={startTimeStr} 
-              placeholder="e.g. 1:20"
-              onChange={(e) => {
-                const val = e.target.value;
-                setStartTimeStr(val);
-                const parsed = parseTimeStringToSeconds(val);
-                setNewBookmarkTime(parsed);
-              }}
-              style={{
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: '6px',
-                color: '#fff',
-                padding: '0.6rem 0.85rem',
-                fontSize: '0.9rem',
-                width: '100%',
-                boxSizing: 'border-box',
-                outline: 'none'
-              }}
-            />
-          </div>
-          
-          {bookmarkType === 'intro' && (
-            <div className="dialog-field" style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#aaa', marginBottom: '0.4rem', fontWeight: 600 }}>
-                End Time
-              </label>
-              <input 
-                type="text" 
-                value={endTimeStr} 
-                placeholder="e.g. 2:50"
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setEndTimeStr(val);
-                  const parsed = parseTimeStringToSeconds(val);
-                  setNewBookmarkEndTime(parsed);
-                }}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  padding: '0.6rem 0.85rem',
-                  fontSize: '0.9rem',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  outline: 'none'
-                }}
-              />
-            </div>
-          )}
-        </div>
 
-        {(bookmarkType === 'intro' || bookmarkType === 'outro') && (
-          <div className="dialog-field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-            <input 
-              type="checkbox"
-              id="enable-auto-skip-checkbox"
-              checked={skipEnabled}
-              onChange={(e) => setSkipEnabled(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            <label htmlFor="enable-auto-skip-checkbox" style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer', userSelect: 'none' }}>
-              Enable Auto-Skip
-            </label>
+          <div className="dialog-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <button 
+              onClick={onClose}
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: 'none',
+                borderRadius: '8px',
+                color: 'rgba(255, 255, 255, 0.8)',
+                padding: '0.7rem 1.25rem',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+                fontFamily: 'inherit'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleSaveBookmark}
+              style={{
+                background: '#ff7a00',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff',
+                padding: '0.7rem 1.5rem',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(255,122,0,0.3)',
+                transition: 'background 0.2s, transform 0.1s',
+                fontFamily: 'inherit'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#e06b00'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#ff7a00'}
+              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.96)'}
+              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              Save Mark
+            </button>
           </div>
-        )}
-        
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-          <button 
-            onClick={onClose}
-            style={{
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '6px',
-              color: 'rgba(255, 255, 255, 0.8)',
-              padding: '0.6rem 1.2rem',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={handleSaveBookmark}
-            style={{
-              background: '#e50914',
-              border: 'none',
-              borderRadius: '6px',
-              color: '#fff',
-              padding: '0.6rem 1.4rem',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(229,9,20,0.3)',
-              transition: 'background 0.2s, transform 0.1s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f40b17'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#e50914'}
-          >
-            Save
-          </button>
         </div>
       </div>
     </div>
   );
 };
+

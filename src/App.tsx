@@ -169,7 +169,7 @@ function App() {
   });
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings'>('home');
-  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api' | 'bookmarks'>('general');
   const [uiOverlaySection, setUiOverlaySection] = useState<'hotkeys' | 'gridOverlay' | 'pauseOverlay'>('hotkeys');
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -730,6 +730,7 @@ function App() {
     allowUiSkipping: true,
     blockSeekingCompletely: false,
     autoSkipIntroOutro: true,
+    autoSkipSexScenes: true,
     lockModeActive: false,
     settingsOrder: [
       'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
@@ -2191,6 +2192,7 @@ function App() {
         allowUiSkipping={settings.allowUiSkipping}
         blockSeekingCompletely={settings.blockSeekingCompletely}
         autoSkipIntroOutro={settings.autoSkipIntroOutro}
+        autoSkipSexScenes={settings.autoSkipSexScenes}
         lockModeActive={settings.lockModeActive}
         settingsOrder={settings.settingsOrder}
         onUpdateSubSettings={(newSubSettings) => {
@@ -2787,6 +2789,12 @@ function App() {
                       onClick={() => setSettingsTab('api')}
                     >
                       API Settings
+                    </button>
+                    <button 
+                      className={`settings-nav-btn ${settingsTab === 'bookmarks' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('bookmarks')}
+                    >
+                      Bookmarks
                     </button>
                   </div>
 
@@ -3985,6 +3993,32 @@ function App() {
                           handleDefaultLangChange={handleDefaultLangChange}
                           addToast={addToast}
                         />
+                      </div>
+                    )}
+
+                    {/* Bookmarks settings section */}
+                    {settingsTab === 'bookmarks' && (
+                      <div className="settings-tab-content animate-fade-in" style={{ width: '100%' }}>
+                        <div className="settings-section">
+                          <h3>Auto-Skip Scenes</h3>
+                          <p className="settings-section-desc">Choose which marked segments are automatically skipped during playback.</p>
+                          
+                          <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                            <span className="pref-label">Auto-Skip Intro & Outro Sections</span>
+                            <ToggleSwitch 
+                              checked={settings.autoSkipIntroOutro} 
+                              onChange={(checked) => handleDefaultLangChange('autoSkipIntroOutro', checked)}
+                            />
+                          </div>
+
+                          <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="pref-label">Auto-Skip Sex & Nudity Scenes</span>
+                            <ToggleSwitch 
+                              checked={settings.autoSkipSexScenes} 
+                              onChange={(checked) => handleDefaultLangChange('autoSkipSexScenes', checked)}
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
 
