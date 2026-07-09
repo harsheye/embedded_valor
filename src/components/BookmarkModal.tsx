@@ -101,27 +101,27 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'none',
-        backdropFilter: 'none',
-        WebkitBackdropFilter: 'none',
+        background: 'rgba(0, 0, 0, 0.6)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
         zIndex: 160,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
-        paddingRight: '0'
+        justifyContent: 'center',
+        padding: '1rem'
       }}
     >
       <div 
-        className="bookmark-dialog-box animate-slide-in-right" 
+        className="bookmark-dialog-box animate-scale-in" 
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'rgba(18, 18, 18, 0.96)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRight: 'none',
-          borderRadius: '16px 0 0 16px',
+          borderRadius: '16px',
           padding: '1.5rem',
-          width: '360px',
-          boxShadow: '-10px 0 30px rgba(0,0,0,0.6)',
+          width: '90%',
+          maxWidth: '400px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
           display: 'flex',
           flexDirection: 'column',
           gap: '1.25rem',
