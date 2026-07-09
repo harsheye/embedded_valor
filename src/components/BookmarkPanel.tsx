@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Pencil, Trash, Play, Bookmark as BookmarkIcon, Heart } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Search, Pencil, Trash, Play, Bookmark as BookmarkIcon, Clock, Film, Image as ImageIcon, Heart } from 'lucide-react';
 import type { Bookmark } from '../types/media';
 
 interface BookmarkPanelProps {
@@ -11,10 +11,31 @@ interface BookmarkPanelProps {
   onClose: () => void;
 }
 
-export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd }) => {
-  const sortedBookmarks = useMemo(() => {
-    return [...bookmarks].sort((a, b) => a.time - b.time);
-  }, [bookmarks]);
+export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'recent' | 'favorites'>('all');
+
+  const filteredBookmarks = useMemo(() => {
+    let result = bookmarks;
+    if (search) {
+      const s = search.toLowerCase();
+      result = result.filter(bm => 
+        (bm.title || bm.label || '').toLowerCase().includes(s) || 
+        (bm.description || '').toLowerCase().includes(s) ||
+        (bm.category || '').toLowerCase().includes(s)
+      );
+    }
+    if (filter === 'favorites') {
+      result = result.filter(bm => bm.favorite);
+    }
+    if (filter === 'recent') {
+      result = [...result].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    } else {
+      // default sort by timeline
+      result = [...result].sort((a, b) => a.time - b.time);
+    }
+    return result;
+  }, [bookmarks, search, filter]);
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -37,8 +58,24 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
         <button className="bookmark-add-btn" onClick={onAdd}>+ New</button>
       </div>
 
+      <div className="bookmark-search-container">
+        <Search size={14} className="search-icon" />
+        <input 
+          type="text" 
+          placeholder="Search bookmarks..." 
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div className="bookmark-filters">
+        <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Timeline</button>
+        <button className={filter === 'recent' ? 'active' : ''} onClick={() => setFilter('recent')}>Recent</button>
+        <button className={filter === 'favorites' ? 'active' : ''} onClick={() => setFilter('favorites')}>Favorites</button>
+      </div>
+
       <div className="bookmark-list">
-        {sortedBookmarks.length === 0 ? (
+        {filteredBookmarks.length === 0 ? (
           <div className="bookmark-empty-state">
             <BookmarkIcon size={32} className="empty-icon" />
             <p>No bookmarks yet</p>
@@ -46,8 +83,15 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
             <button className="empty-add-btn" onClick={onAdd}>Create First Bookmark</button>
           </div>
         ) : (
-          sortedBookmarks.map(bm => (
+          filteredBookmarks.map(bm => (
             <div className="premium-bookmark-card" key={bm.id}>
+              {bm.thumbnail && (
+                <div className="bookmark-card-thumbnail" style={{ backgroundImage: `url(${bm.thumbnail})` }}>
+                  <div className="bookmark-card-play-overlay" onClick={() => onJump(bm.time)}>
+                    <Play fill="white" size={24} />
+                  </div>
+                </div>
+              )}
               <div className="bookmark-card-content">
                 <div className="bookmark-card-top">
                   <div className="bookmark-card-title">
