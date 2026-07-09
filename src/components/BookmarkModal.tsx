@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Bookmark } from '../types/media';
 
 interface BookmarkModalProps {
@@ -18,39 +18,34 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   onSave, 
   onClose 
 }) => {
-  const [title, setTitle] = useState(initialBookmark?.title || initialBookmark?.label || '');
-  const [description, setDescription] = useState(initialBookmark?.description || '');
-  const [category, setCategory] = useState(initialBookmark?.category || 'Custom');
-  const [favorite, setFavorite] = useState(initialBookmark?.favorite || false);
-  const [thumbnail, setThumbnail] = useState(initialBookmark?.thumbnail || '');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('Standard');
+  const [favorite, setFavorite] = useState(false);
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
 
-  const categories = ['Movie Scene', 'Intro', 'Outro', 'Favorite', 'Funny', 'Action', 'Dialogue', 'Reference', 'Important', 'Ending', 'Custom'];
+  const categories = ['Standard', 'Movie Scene', 'Action', 'Funny', 'Hot Scene', 'Outro', 'Intro'];
 
   useEffect(() => {
-    if (!initialBookmark && videoElement && !thumbnail) {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 480;
-        canvas.height = (480 / videoElement.videoWidth) * videoElement.videoHeight;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-          setThumbnail(canvas.toDataURL('image/jpeg', 0.6));
-        }
-      } catch (e) {
-        console.warn('Failed to capture thumbnail', e);
+    if (initialBookmark) {
+      setTitle(initialBookmark.title || initialBookmark.label || '');
+      setDescription(initialBookmark.description || '');
+      setCategory(initialBookmark.category || 'Standard');
+      setFavorite(initialBookmark.favorite || false);
+      if (initialBookmark.thumbnail) {
+        setThumbnail(initialBookmark.thumbnail);
       }
     }
-  }, [videoElement, initialBookmark, thumbnail]);
+  }, [initialBookmark, videoElement]);
 
   const handleSave = () => {
     onSave({
-      title: title || 'Untitled Bookmark',
-      label: title || 'Untitled Bookmark',
+      ...(initialBookmark || {}),
+      title: title || undefined,
       description,
       category,
       favorite,
-      thumbnail,
+      thumbnail: thumbnail || undefined,
       time: initialBookmark?.time ?? initialTime,
       endTime: initialBookmark?.endTime ?? initialEndTime,
       createdAt: initialBookmark?.createdAt || new Date().toISOString(),
@@ -67,42 +62,59 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   };
 
   return (
-    <div className="premium-bookmark-modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="premium-bookmark-modal animate-scale-up" onClick={e => e.stopPropagation()}>
-        <h2>{initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}</h2>
+    <div 
+      className="premium-bookmark-modal-overlay animate-fade-in" 
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 1000,
+        background: 'transparent',
+        pointerEvents: 'none'
+      }}
+    >
+      {/* Invisible backdrop for clicks to close */}
+      <div 
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }} 
+        onClick={onClose} 
+      />
+      <div 
+        className="premium-bookmark-modal animate-scale-up" 
+        onClick={e => e.stopPropagation()} 
+        style={{ 
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          margin: 0,
+          color: 'white', 
+          pointerEvents: 'auto',
+          zIndex: 1001 
+        }}
+      >
+        <h2 style={{ color: 'white', fontSize: '20px', margin: '0 0 20px 0' }}>{initialBookmark ? 'Edit Bookmark' : 'Add Bookmark'}</h2>
         
         <div className="bookmark-modal-content">
-          <div className="bookmark-modal-thumbnail-wrapper">
-            {thumbnail ? (
-              <img src={thumbnail} alt="Live Thumbnail" className="bookmark-modal-thumbnail" />
-            ) : (
-              <div className="bookmark-modal-thumbnail-placeholder">No Thumbnail Available</div>
-            )}
-            <div className="bookmark-modal-timestamp">
-              {formatTime(initialTime)} {initialEndTime ? ` → ${formatTime(initialEndTime)}` : ''}
-            </div>
-          </div>
-
-          <div className="bookmark-modal-fields">
-            <div className="field-group">
-              <label>Title</label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Bookmark Title" autoFocus />
+          <div className="bookmark-modal-fields" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px' }}>Title</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Bookmark Title" autoFocus style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', fontSize: '14px' }} />
             </div>
 
-            <div className="field-group">
-              <label>Description (Optional)</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add notes..."></textarea>
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px' }}>Description (Optional)</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add notes..." style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', minHeight: '60px', fontSize: '14px' }}></textarea>
             </div>
 
-            <div className="field-group">
-              <label>Category</label>
-              <select value={category} onChange={e => setCategory(e.target.value)}>
-                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            <div className="field-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px' }}>Category</label>
+              <select value={category} onChange={e => setCategory(e.target.value)} style={{ color: 'white', backgroundColor: '#222', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', fontSize: '14px' }}>
+                {categories.map(cat => <option key={cat} value={cat} style={{ color: 'white', backgroundColor: '#222' }}>{cat}</option>)}
               </select>
             </div>
 
-            <div className="field-group-checkbox">
-              <label>
+            <div className="field-group-checkbox" style={{ marginTop: '8px' }}>
+              <label style={{ color: '#ccc', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={favorite} onChange={e => setFavorite(e.target.checked)} />
                 Mark as Favorite
               </label>
@@ -110,9 +122,9 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
           </div>
         </div>
 
-        <div className="bookmark-modal-actions">
-          <button className="btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="btn-save" onClick={handleSave}>Save</button>
+        <div className="bookmark-modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+          <button className="bookmark-modal-btn cancel" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '8px', color: '#ccc', background: 'transparent', border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <button className="bookmark-modal-btn save" onClick={handleSave} style={{ padding: '10px 20px', borderRadius: '8px', color: 'white', background: '#e50914', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Save</button>
         </div>
       </div>
     </div>
