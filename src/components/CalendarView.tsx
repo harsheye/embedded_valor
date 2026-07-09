@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Star, Clock, Film, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, Clock, Film, Play, Bookmark } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 
 interface CalendarViewProps {
@@ -238,6 +238,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ videos, onPlayVideo 
                           <Film size={11} style={{ color: '#e50914' }} />
                           <span>Length: <b>{durationStr}</b></span>
                         </div>
+                        {vid.bookmarks && vid.bookmarks.length > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Bookmark size={11} style={{ color: '#8b5cf6' }} />
+                            <span>Bookmarks: <b>{vid.bookmarks.length}</b></span>
+                          </div>
+                        )}
                         
                         {rating > 0 && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', gridColumn: 'span 2' }}>

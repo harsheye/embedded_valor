@@ -2674,6 +2674,9 @@ function App() {
                               {(video as any).timeToFinish && (
                                 <span className="stat-badge finish-badge">Completed in: {formatTime((video as any).timeToFinish)}</span>
                               )}
+                              {(video.bookmarks && video.bookmarks.length > 0) && (
+                                <span className="stat-badge bookmark-badge">Bookmarks: {video.bookmarks.length}</span>
+                              )}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>

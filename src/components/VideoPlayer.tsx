@@ -4671,7 +4671,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Add Bookmark Dialog Overlay */}
       {showAddDialog && (
-        </div>
+        <div style={{ display: 'none' }}></div>
       )}
 
       <input 

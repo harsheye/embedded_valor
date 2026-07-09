@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ChevronLeft, ChevronRight, Clock, Star, Play, Film, Calendar, UploadCloud } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clock, Star, Play, Film, Calendar, UploadCloud, Bookmark } from "lucide-react"
 import type { VideoItem } from "../../../types/media"
 import { classifyVideoTitle } from "../../../utils/libraryClassifier"
 
@@ -295,6 +295,12 @@ export default function Calendar02({ videos, onPlayVideo, isInstantlyPlayable }:
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#f59e0b' }}>
                                     <Star size={12} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
                                     <span>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</span>
+                                  </div>
+                                )}
+                                {video.bookmarks && video.bookmarks.length > 0 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#8b5cf6' }}>
+                                    <Bookmark size={12} style={{ color: '#8b5cf6' }} />
+                                    <span>Bookmarks: <b>{video.bookmarks.length}</b></span>
                                   </div>
                                 )}
                               </div>
