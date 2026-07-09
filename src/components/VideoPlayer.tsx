@@ -4749,8 +4749,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className="marking-hud-button"
           style={{
             position: 'absolute',
-            bottom: '90px',
-            right: '3.5rem',
+            bottom: controlsVisible ? '120px' : '45px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            transition: 'bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             background: '#e50914',
             color: '#ffffff',
             border: 'none',
