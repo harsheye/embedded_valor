@@ -4484,9 +4484,62 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   )}
                 </div>
 
+                {markingStartTime !== null && (
+                  <button
+                    onClick={() => {
+                      if (videoRef.current) {
+                        const startTime = markingStartTime;
+                        const endTime = Math.round(videoRef.current.currentTime);
+                        setMarkingStartTime(null);
+                        setEditingBookmark({
+                          id: '',
+                          time: startTime,
+                          endTime: endTime,
+                          title: '',
+                          label: '',
+                          category: 'Nudity',
+                          description: '',
+                          createdAt: '',
+                          updatedAt: ''
+                        });
+                        setShowAddDialog(true);
+                      }
+                    }}
+                    className="marking-hud-button-controls"
+                    style={{
+                      background: '#e50914',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '20px',
+                      padding: '6px 14px',
+                      fontSize: '0.85rem',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(229, 9, 20, 0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontFamily: 'Outfit, sans-serif',
+                      animation: 'pulseMarking 1.5s infinite alternate',
+                      height: '36px',
+                      marginLeft: '15px'
+                    }}
+                  >
+                    <span style={{
+                      display: 'inline-block',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#fff',
+                      animation: 'flashDot 1s infinite'
+                    }} />
+                    <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
+                  </button>
+                )}
+
                 <div 
                   className="popover-wrapper"
-                  style={{ marginLeft: '50px' }}
+                  style={{ marginLeft: markingStartTime !== null ? '15px' : '50px' }}
                   onMouseEnter={() => {
                     if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
                     setShowBookmarksPopover(true);
@@ -4724,63 +4777,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         />
       )}
 
-      {/* Active Marking HUD */}
-      {markingStartTime !== null && (
-        <button
-          onClick={() => {
-            if (videoRef.current) {
-              const endTime = Math.round(videoRef.current.currentTime);
-              const startTime = markingStartTime;
-              setMarkingStartTime(null);
-              setEditingBookmark({
-                id: '',
-                time: startTime,
-                endTime: endTime,
-                title: '',
-                label: '',
-                category: 'Nudity',
-                description: '',
-                createdAt: '',
-                updatedAt: ''
-              });
-              setShowAddDialog(true);
-            }
-          }}
-          className="marking-hud-button"
-          style={{
-            position: 'absolute',
-            bottom: controlsVisible ? '120px' : '45px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            transition: 'bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            background: '#e50914',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '24px',
-            padding: '10px 20px',
-            fontSize: '0.9rem',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            boxShadow: '0 4px 15px rgba(229, 9, 20, 0.4)',
-            zIndex: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontFamily: 'Outfit, sans-serif',
-            animation: 'pulseMarking 1.5s infinite alternate'
-          }}
-        >
-          <span style={{
-            display: 'inline-block',
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            background: '#fff',
-            animation: 'flashDot 1s infinite'
-          }} />
-          <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
-        </button>
-      )}
+
 
       <input 
         type="file" 
