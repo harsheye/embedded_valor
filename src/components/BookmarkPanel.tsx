@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Pencil, Trash, Play, Bookmark as BookmarkIcon, Clock, Film, Image as ImageIcon, Heart } from 'lucide-react';
+import { Search, Pencil, Trash, Play, Bookmark as BookmarkIcon, Heart } from 'lucide-react';
 import type { Bookmark } from '../types/media';
 
 interface BookmarkPanelProps {
@@ -11,7 +11,7 @@ interface BookmarkPanelProps {
   onClose: () => void;
 }
 
-export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd, onClose }) => {
+export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd }) => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'recent' | 'favorites'>('all');
 

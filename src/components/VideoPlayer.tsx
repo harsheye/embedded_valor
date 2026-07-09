@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
-  Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash,
-  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft, Eye, Settings
+  Volume2, Volume1, VolumeX, AlertCircle, Lock,
+  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft, Eye, Settings, Bookmark as BookmarkIcon
 } from 'lucide-react';
-import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
+import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack, Bookmark } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSubPopover } from './AudioSubPopover';
@@ -24,7 +24,7 @@ interface VideoPlayerProps {
   userId?: string;
   videos?: VideoItem[];
   onBack: () => void;
-  onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean, targetVideoId?: string) => void;
+  onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean, targetVideoId?: string, forceSave?: boolean) => void;
   hideUIOverlays?: boolean;
   hideVideoName?: boolean;
   toastDuration?: number;
@@ -355,9 +355,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const bookmarksTimeoutRef = useRef<any>(null);
   const [bookmarks, setBookmarks] = useState<any[]>(() => video.bookmarks || []);
   const [editingBookmark, setEditingBookmark] = useState<Bookmark | undefined>(undefined);
-  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
-  const [startTimeStr, setStartTimeStr] = useState('');
-  const [endTimeStr, setEndTimeStr] = useState('');
 
   const [hoveredSetting, setHoveredSetting] = useState<string | null>(null);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
@@ -2805,20 +2802,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (showAddDialog) {
         setShowAddDialog(false);
       } else {
-        if (videoRef.current) {
-          const curTimeSecs = Math.round(videoRef.current.currentTime);
-          setNewBookmarkTime(curTimeSecs);
-          setNewBookmarkEndTime(curTimeSecs + 90);
-          setNewBookmarkLabel(`Bookmark @ ${formatTime(curTimeSecs)}`);
-          setIsIntro(false);
-          setIsOutro(false);
-          setSkipEnabled(false);
-          setBookmarkType('standard');
-          setTypeDropdownOpen(false);
-          setStartTimeStr(formatTime(curTimeSecs));
-          setEndTimeStr(formatTime(curTimeSecs + 90));
-          setShowAddDialog(true);
-        }
+        setEditingBookmark(undefined);
+        setShowAddDialog(true);
       }
       return;
     }
@@ -3386,18 +3371,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return `${mins}m`;
   };
 
-  const parseTimeStringToSeconds = (val: string): number => {
-    const clean = val.replace(/[^0-9:]/g, '');
-    const parts = clean.split(':').map(Number);
-    if (parts.length === 2) {
-      return (parts[0] * 60) + parts[1];
-    }
-    if (parts.length === 3) {
-      return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
-    }
-    const parsed = parseInt(clean, 10);
-    return isNaN(parsed) ? 0 : parsed;
-  };
 
   // Progress Bar Hover Indicator
   const handleProgressMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
@@ -4671,7 +4644,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Add Bookmark Dialog Overlay */}
       {showAddDialog && (
-        <div style={{ display: 'none' }}></div>
+        <BookmarkModal
+          initialTime={Math.round(videoRef.current?.currentTime || 0)}
+          initialEndTime={Math.round((videoRef.current?.currentTime || 0) + 90)}
+          initialBookmark={editingBookmark}
+          videoElement={videoRef.current}
+          onSave={(bm) => {
+            handleSaveBookmark(bm as Bookmark);
+            setShowAddDialog(false);
+          }}
+          onClose={() => setShowAddDialog(false)}
+        />
       )}
 
       <input 
