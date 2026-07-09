@@ -4484,6 +4484,54 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   )}
                 </div>
 
+                <div 
+                  className="popover-wrapper"
+                  style={{ marginLeft: '50px' }}
+                  onMouseEnter={() => {
+                    if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
+                    setShowBookmarksPopover(true);
+                  }}
+                  onMouseLeave={() => {
+                    bookmarksTimeoutRef.current = setTimeout(() => {
+                      setShowBookmarksPopover(false);
+                    }, 150);
+                  }}
+                >
+                  <button 
+                    className="control-btn-bookmark-list" 
+                    onClick={() => setShowBookmarksPopover(prev => !prev)} 
+                    title="Bookmarks"
+                  >
+                    <BookmarkIcon size={20} />
+                  </button>
+
+                  {showBookmarksPopover && (
+                    <BookmarkPanel
+                      bookmarks={bookmarks}
+                      onJump={(time) => {
+                        if (videoRef.current) {
+                          videoRef.current.currentTime = time;
+                          setCurrentTime(time);
+                        }
+                      }}
+                      onEdit={(bm) => {
+                        setEditingBookmark(bm);
+                        setShowAddDialog(true);
+                        setShowBookmarksPopover(false);
+                      }}
+                      onDelete={handleDeleteBookmark}
+                      onAdd={() => {
+                        if (videoRef.current) {
+                          setEditingBookmark(undefined);
+                          setMarkingStartTime(Math.round(videoRef.current.currentTime));
+                          setShowBookmarksPopover(false);
+                        }
+                      }}
+                      onClose={() => setShowBookmarksPopover(false)}
+                    />
+                  )}
+                </div>
+
                 {markingStartTime !== null && (
                   <button
                     onClick={() => {
@@ -4536,54 +4584,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
                   </button>
                 )}
-
-                <div 
-                  className="popover-wrapper"
-                  style={{ marginLeft: markingStartTime !== null ? '15px' : '50px' }}
-                  onMouseEnter={() => {
-                    if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
-                    setShowBookmarksPopover(true);
-                  }}
-                  onMouseLeave={() => {
-                    bookmarksTimeoutRef.current = setTimeout(() => {
-                      setShowBookmarksPopover(false);
-                    }, 150);
-                  }}
-                >
-                  <button 
-                    className="control-btn-bookmark-list" 
-                    onClick={() => setShowBookmarksPopover(prev => !prev)} 
-                    title="Bookmarks"
-                  >
-                    <BookmarkIcon size={20} />
-                  </button>
-
-                  {showBookmarksPopover && (
-                    <BookmarkPanel
-                      bookmarks={bookmarks}
-                      onJump={(time) => {
-                        if (videoRef.current) {
-                          videoRef.current.currentTime = time;
-                          setCurrentTime(time);
-                        }
-                      }}
-                      onEdit={(bm) => {
-                        setEditingBookmark(bm);
-                        setShowAddDialog(true);
-                        setShowBookmarksPopover(false);
-                      }}
-                      onDelete={handleDeleteBookmark}
-                      onAdd={() => {
-                        if (videoRef.current) {
-                          setEditingBookmark(undefined);
-                          setMarkingStartTime(Math.round(videoRef.current.currentTime));
-                          setShowBookmarksPopover(false);
-                        }
-                      }}
-                      onClose={() => setShowBookmarksPopover(false)}
-                    />
-                  )}
-                </div>
               </div>
 
               <div className="bottom-controls-right-group">
