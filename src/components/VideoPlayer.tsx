@@ -4532,6 +4532,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   )}
                 </div>
 
+              </div>
+
+              <div className="bottom-controls-right-group">
                 {markingStartTime !== null && (
                   <button
                     onClick={() => {
@@ -4570,7 +4573,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       fontFamily: 'Outfit, sans-serif',
                       animation: 'pulseMarking 1.5s infinite alternate',
                       height: '36px',
-                      marginLeft: '15px'
+                      marginRight: '15px'
                     }}
                   >
                     <span style={{
@@ -4584,9 +4587,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
                   </button>
                 )}
-              </div>
-
-              <div className="bottom-controls-right-group">
                 <button 
                   className="control-btn-settings" 
                   onClick={() => setShowSettingsPanel(prev => !prev)} 
