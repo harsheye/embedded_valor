@@ -4505,7 +4505,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         setShowAddDialog(true);
                       }
                     }}
-                    className="marking-hud-button-controls"
+                    className="marking-hud-button-controls marking-hud-button-desktop"
                     style={{
                       background: '#e50914',
                       color: '#ffffff',
@@ -4779,6 +4779,62 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
 
 
+      {markingStartTime !== null && (
+        <button
+          onClick={() => {
+            if (videoRef.current) {
+              const startTime = markingStartTime;
+              const endTime = Math.round(videoRef.current.currentTime);
+              setMarkingStartTime(null);
+              setEditingBookmark({
+                id: '',
+                time: startTime,
+                endTime: endTime,
+                title: '',
+                label: '',
+                category: 'Nudity',
+                description: '',
+                createdAt: '',
+                updatedAt: ''
+              });
+              setShowAddDialog(true);
+            }
+          }}
+          className="marking-hud-button-mobile"
+          style={{
+            position: 'absolute',
+            bottom: controlsVisible ? '120px' : '45px',
+            right: '1.5rem',
+            background: '#e50914',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '24px',
+            padding: '10px 20px',
+            fontSize: '0.9rem',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            boxShadow: '0 4px 15px rgba(229, 9, 20, 0.4)',
+            zIndex: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontFamily: 'Outfit, sans-serif',
+            animation: 'pulseMarking 1.5s infinite alternate',
+            transition: 'bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          <span style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: '#fff',
+            animation: 'flashDot 1s infinite'
+          }} />
+          <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
+        </button>
+      )}
+
       <input 
         type="file" 
         ref={customAudioInputRef} 
@@ -4890,6 +4946,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Styles */}
       <style>{`
+        @media (max-width: 768px) {
+          .marking-hud-button-desktop {
+            display: none !important;
+          }
+          .marking-hud-button-mobile {
+            display: flex !important;
+          }
+        }
+        @media (min-width: 769px) {
+          .marking-hud-button-desktop {
+            display: flex !important;
+          }
+          .marking-hud-button-mobile {
+            display: none !important;
+          }
+        }
+
         .player-container {
           position: fixed;
           inset: 0;
