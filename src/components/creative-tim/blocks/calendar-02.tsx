@@ -150,7 +150,8 @@ export default function Calendar02({ videos, onPlayVideo, isInstantlyPlayable }:
         style={{ 
           padding: '1.5rem', 
           borderRadius: '12px', 
-          maxHeight: '65vh', 
+          height: 'calc(100vh - 220px)',
+          maxHeight: 'calc(100vh - 220px)', 
           overflowY: 'auto', 
           scrollbarWidth: 'thin',
           border: '1px solid rgba(255, 255, 255, 0.08)'

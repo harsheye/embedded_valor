@@ -120,8 +120,7 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(4px)',
+        background: 'transparent',
         zIndex: 9999,
       }}
     >
@@ -168,8 +167,8 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
         style={{
           position: 'absolute',
           top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
+          right: '24px',
+          transform: 'translateY(-50%)',
           zIndex: 10000,
         }}
       >

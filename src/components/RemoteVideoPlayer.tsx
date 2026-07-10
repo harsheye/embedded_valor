@@ -4110,25 +4110,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
                 filter="url(#glow-filter)"
               />
             </g>
-            
-            {/* Pulsing Starburst Fire Flare */}
-            <g className="flare-group" style={{ transformOrigin: '80px 85px' }}>
-              <circle cx="80" cy="85" r="22" fill="url(#fire-glow-grad)" />
-              {/* Flare spikes */}
-              <path 
-                d="M 80,50 L 80,120 M 45,85 L 115,85 M 55,60 L 105,110 M 55,110 L 105,60" 
-                stroke="#ffffff" 
-                strokeWidth="2.8" 
-                strokeLinecap="round"
-                filter="url(#glow-filter)"
-              />
-              <path 
-                d="M 80,62 L 80,108 M 57,85 L 103,85" 
-                stroke="#ffffdd" 
-                strokeWidth="4.5" 
-                strokeLinecap="round"
-              />
-            </g>
           </svg>
         </div>
       )}

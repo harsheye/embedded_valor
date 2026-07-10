@@ -85,7 +85,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ videos, onPlayVideo 
 
   return (
     <div className="workspace-panel-wrapper">
-      <div className="glass-panel workspace-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '82vh', overflow: 'hidden' }}>
+      <div className="glass-panel workspace-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)', maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}>
         
         {/* Calendar Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>

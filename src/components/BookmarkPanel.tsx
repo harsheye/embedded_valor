@@ -30,21 +30,22 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
       onClick={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
-        left: 0,
-        top: 0,
-        bottom: 0,
+        left: '24px',
+        bottom: '80px',
         zIndex: 150,
         width: '380px',
-        height: '100%',
+        maxHeight: 'calc(100% - 120px)',
         background: 'rgba(20, 20, 22, 0.95)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        borderRight: '1px solid rgba(255,255,255,0.05)',
-        boxShadow: '10px 0 30px rgba(0,0,0,0.5)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '16px',
+        boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
         display: 'flex',
         flexDirection: 'column',
         color: 'white',
-        padding: '0'
+        padding: '0',
+        overflow: 'hidden'
       }}
     >
       <div style={{ padding: '32px 24px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
