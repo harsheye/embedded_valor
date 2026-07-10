@@ -158,3 +158,67 @@ export async function extractLocalSubtitleTrack(
     }
   });
 }
+
+/**
+ * Extract a subtitle segment from a local file using a start offset and duration
+ */
+export async function extractLocalSubtitleSegment(
+  videoId: string,
+  file: File,
+  startTime: number,
+  duration: number,
+  stream: StreamInfo,
+  signal?: AbortSignal
+): Promise<string> {
+  return ffmpegService.lock.run(async () => {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const ff = await ffmpegService.ensureLoaded(videoId);
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const uniqueId = Math.random().toString(36).substring(2, 9);
+    const inputPath = await ffmpegService.mountFile(ff, file, uniqueId);
+    if (signal?.aborted) {
+      await ffmpegService.cleanupSession(ff, inputPath, "");
+      throw new DOMException("Aborted", "AbortError");
+    }
+    const format = ffmpegService.detectSubtitleFormat(stream.codec);
+    const tempOutFile = `sub_local_seg_${stream.index}.${format}`;
+
+    try {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const code = await ff.exec([
+        '-ss', startTime.toFixed(3),
+        '-i', inputPath,
+        '-t', duration.toFixed(3),
+        '-map', `0:${stream.index}`,
+        '-c:s', 'copy',
+        tempOutFile
+      ]);
+
+      if (code !== 0) {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        logger.warn("[ffmpeg] Local subtitle segment copy failed, attempting transcode to srt...");
+        const fallbackOutFile = `sub_local_seg_${stream.index}.srt`;
+        const fallbackCode = await ff.exec([
+          '-ss', startTime.toFixed(3),
+          '-i', inputPath,
+          '-t', duration.toFixed(3),
+          '-map', `0:${stream.index}`,
+          '-c:s', 'srt',
+          fallbackOutFile
+        ]);
+        if (fallbackCode !== 0) {
+          throw new Error(`Local subtitle segment extraction failed. Exit code ${fallbackCode}`);
+        }
+        const data = await ff.readFile(fallbackOutFile);
+        await ff.deleteFile(fallbackOutFile);
+        return new TextDecoder("utf-8").decode(data as Uint8Array);
+      }
+
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const data = await ff.readFile(tempOutFile);
+      return new TextDecoder("utf-8").decode(data as Uint8Array);
+    } finally {
+      await ffmpegService.cleanupSession(ff, inputPath, tempOutFile);
+    }
+  });
+}

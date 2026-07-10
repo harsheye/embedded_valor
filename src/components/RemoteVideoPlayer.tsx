@@ -17,7 +17,7 @@ import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParse
 import { ffmpegService } from '../services/ffmpeg';
 import { HttpByteSource, CachedByteSource } from '../services/remote/remoteByteSource';
 import { FileByteSource } from '../services/local/localByteSource';
-import { extractLocalAudioSegment, extractLocalSubtitleTrack } from '../services/local/ffmpegLocal';
+import { extractLocalAudioSegment, extractLocalSubtitleSegment } from '../services/local/ffmpegLocal';
 import { extractRemoteAudioSegment, extractRemoteSubtitleSegment, extractHlsAudioSegment } from '../services/remote/ffmpegRemote';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
@@ -2230,19 +2230,23 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           format = 'vtt';
         }
       } else if (!video.isRemote && video.file) {
-        // LOCAL FILE FLOW: Extract full subtitle track at once
+        // LOCAL FILE FLOW: Extract subtitle segment chunk
         const subStream = subtitleStreams.find(s => s.index === streamIndex);
         const codec = subStream?.codec || 'srt';
-        logger.player(`Local file: extracting entire subtitle track index ${streamIndex} (${codec})`);
+        const subDuration = 300; // 5 minute chunk
+        offsetTime = Math.max(0, time - 10);
+        logger.player(`Local file seek/load subtitle segment index ${streamIndex} (${codec}) starting at ${offsetTime}s`);
         
-        offsetTime = 0; // complete track loaded from 0s
         setActiveSubtitleStartOffset(offsetTime);
         activeSubtitleStartOffsetRef.current = offsetTime;
 
-        const subtitleText = await extractLocalSubtitleTrack(
+        const subtitleText = await extractLocalSubtitleSegment(
           video.id,
           video.file,
-          { index: streamIndex, codec }
+          offsetTime,
+          subDuration,
+          { index: streamIndex, codec },
+          signal
         );
         const isAss = /ass|ssa/i.test(codec);
         const isVtt = /webvtt/i.test(codec);
