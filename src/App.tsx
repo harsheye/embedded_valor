@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from './types/media';
 import { ffmpegService } from './services/ffmpeg';
-import { VideoPlayer } from './components/VideoPlayer';
+import { LocalVideoPlayer } from './components/LocalVideoPlayer';
+import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
 import { CustomSelect } from './components/CustomSelect';
 import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
@@ -2157,64 +2158,77 @@ function App() {
 
   // If playing, render VideoPlayer fullscreen
   if (playingVideo) {
-    return (
-      <VideoPlayer 
-        key={playingVideo.id}
-        video={playingVideo} 
-        userId={settings.userId}
-        onBack={() => {
-          setPlayingVideo(null);
-          // Clear query parameter when returning to library
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }} 
-        onUpdateVideo={handleUpdateVideo}
-        hideUIOverlays={settings.hideUIOverlays}
-        hideVideoName={settings.hideVideoName}
-        uiHideTimeout={settings.uiHideTimeout}
-        toastDuration={settings.toastDuration}
-        disableAnimations={settings.disableAnimations}
-        pauseOnFocusChange={settings.pauseOnFocusChange}
-        showPlayButton={settings.showPlayButton}
-        showTimeDisplay={settings.showTimeDisplay}
-        showPlayBar={settings.showPlayBar}
-        showVolumeControl={settings.showVolumeControl}
-        showFullscreen={settings.showFullscreen}
-        subSettings={settings.subSettings}
-        historySaveInterval={settings.historySaveInterval}
-        saveVolume={settings.saveVolume}
-        ratingThreshold={settings.ratingThreshold}
-        getOverlayDataFromTmdb={settings.getOverlayDataFromTmdb !== false}
-        overlayPosition={settings.overlayPosition || 'bottom-left'}
-        overlayShowBackground={settings.overlayShowBackground !== false}
-        overlayShowRating={settings.overlayShowRating !== false}
-        overlayShowOverview={settings.overlayShowOverview !== false}
-        openSubtitlesApiKey={settings.openSubtitlesApiKey}
-        allowUiSkipping={settings.allowUiSkipping}
-        blockSeekingCompletely={settings.blockSeekingCompletely}
-        autoSkipIntroOutro={settings.autoSkipIntroOutro}
-        autoSkipSexScenes={settings.autoSkipSexScenes}
-        lockModeActive={settings.lockModeActive}
-        settingsOrder={settings.settingsOrder}
-        onUpdateSubSettings={(newSubSettings) => {
-          const updated = {
-            ...settings,
-            subSettings: {
-              ...settings.subSettings,
-              ...newSubSettings
-            }
-          };
-          setSettings(updated);
+    const playerProps = {
+      video: playingVideo,
+      userId: settings.userId,
+      onBack: () => {
+        setPlayingVideo(null);
+        // Clear query parameter when returning to library
+        window.history.replaceState({}, document.title, window.location.pathname);
+      },
+      onUpdateVideo: handleUpdateVideo,
+      hideUIOverlays: settings.hideUIOverlays,
+      hideVideoName: settings.hideVideoName,
+      uiHideTimeout: settings.uiHideTimeout,
+      toastDuration: settings.toastDuration,
+      disableAnimations: settings.disableAnimations,
+      pauseOnFocusChange: settings.pauseOnFocusChange,
+      showPlayButton: settings.showPlayButton,
+      showTimeDisplay: settings.showTimeDisplay,
+      showPlayBar: settings.showPlayBar,
+      showVolumeControl: settings.showVolumeControl,
+      showFullscreen: settings.showFullscreen,
+      subSettings: settings.subSettings,
+      historySaveInterval: settings.historySaveInterval,
+      saveVolume: settings.saveVolume,
+      ratingThreshold: settings.ratingThreshold,
+      getOverlayDataFromTmdb: settings.getOverlayDataFromTmdb !== false,
+      overlayPosition: settings.overlayPosition || 'bottom-left',
+      overlayShowBackground: settings.overlayShowBackground !== false,
+      overlayShowRating: settings.overlayShowRating !== false,
+      overlayShowOverview: settings.overlayShowOverview !== false,
+      openSubtitlesApiKey: settings.openSubtitlesApiKey,
+      allowUiSkipping: settings.allowUiSkipping,
+      blockSeekingCompletely: settings.blockSeekingCompletely,
+      autoSkipIntroOutro: settings.autoSkipIntroOutro,
+      autoSkipSexScenes: settings.autoSkipSexScenes,
+      lockModeActive: settings.lockModeActive,
+      settingsOrder: settings.settingsOrder,
+      onUpdateSubSettings: (newSubSettings: any) => {
+        const updated = {
+          ...settings,
+          subSettings: {
+            ...settings.subSettings,
+            ...newSubSettings
+          }
+        };
+        setSettings(updated);
+        saveSettingsToStorage(updated);
+      },
+      onUpdateSettings: (updatedSettings: any) => {
+        setSettings(prev => {
+          const updated = { ...prev, ...updatedSettings };
           saveSettingsToStorage(updated);
-        }}
-        onUpdateSettings={(updatedSettings) => {
-          setSettings(prev => {
-            const updated = { ...prev, ...updatedSettings };
-            saveSettingsToStorage(updated);
-            return updated;
-          });
-        }}
-      />
-    );
+          return updated;
+        });
+      }
+    };
+
+    if (playingVideo.isRemote) {
+      return (
+        <RemoteVideoPlayer 
+          key={playingVideo.id}
+          {...playerProps}
+        />
+      );
+    } else {
+      return (
+        <LocalVideoPlayer 
+          key={playingVideo.id}
+          {...playerProps}
+        />
+      );
+    }
   }
 
   if (!settings.isOnboarded) {
