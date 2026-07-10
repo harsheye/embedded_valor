@@ -742,6 +742,7 @@ export class AudioScheduler {
     source.buffer = packet.buffer;
     source.playbackRate.value = playbackRate;
     source.connect(this.gainNode);
+    console.log(`[AudioScheduler] Created new AudioBufferSourceNode for chunk starting at ${packet.startTime}s: YES`);
 
     // Math: when to start audio source relative to AudioContext.currentTime
     const timeDelta = packet.startTime - currentTime;
@@ -755,15 +756,21 @@ export class AudioScheduler {
       startTime: packet.startTime,
       endTime: packet.endTime
     });
+    console.log(`[AudioScheduler] Active Sources: ${this.activeNodes.length}`);
   }
 
   stopAll(): void {
+    console.log(`[AudioScheduler] stopAll called. Stopping ${this.activeNodes.length} active nodes.`);
     for (const active of this.activeNodes) {
       try {
+        console.log(`[AudioScheduler] source.stop() called for chunk starting at ${active.startTime}s: YES`);
         active.node.stop();
-      } catch {}
+      } catch (e: any) {
+        console.log(`[AudioScheduler] source.stop() failed or already stopped for chunk starting at ${active.startTime}s: ${e.message}`);
+      }
     }
     this.activeNodes = [];
+    console.log(`[AudioScheduler] Active Sources: 0`);
   }
 
   evictPlayed(currentTime: number): number[] {
@@ -852,6 +859,10 @@ export class PlaybackQueue {
   clear(): void {
     this.audioScheduler.stopAll();
     this.scheduledTimes.clear();
+  }
+
+  getQueueSize(): number {
+    return this.scheduledTimes.size;
   }
 }
 
@@ -973,6 +984,8 @@ export class PlaybackController {
     this.runSchedulerCycle('timeupdate');
   };
 
+  private heartbeatTickCount = 0;
+
   private runSchedulerCycle(callerName: string): void {
     if (!this.videoEl) return;
     const currentTime = this.videoEl.currentTime;
@@ -982,6 +995,15 @@ export class PlaybackController {
 
     // Update queue to schedule cached chunks and prune completed
     this.playbackQueue.update(currentTime, this.playbackRate);
+
+    if (callerName === 'heartbeat') {
+      this.heartbeatTickCount++;
+      if (this.heartbeatTickCount % 4 === 0) {
+        const bufferedRanges = this.bufferManager.getCache().getAllPackets()
+          .map(p => `${p.startTime}-${p.endTime.toFixed(1)}`).join(', ');
+        console.log(`Video Time: ${currentTime.toFixed(2)}, AudioContext Time: ${this.audioCtx.currentTime.toFixed(2)}, Queue Size: ${this.playbackQueue.getQueueSize()}, Buffered: [${bufferedRanges || 'none'}]`);
+      }
+    }
 
     // Check if buffering is needed
     this.fillBufferWindow(currentTime, callerName).catch(console.error);
@@ -1075,6 +1097,7 @@ export class PlaybackController {
   async play(): Promise<void> {
     if (!this.videoEl) return;
 
+    console.log("[PlaybackController] Playback State: PLAYING");
     await this.audioScheduler.resume();
 
     this.bufferManager.resetFailures();
@@ -1091,6 +1114,7 @@ export class PlaybackController {
   }
 
   pause(): void {
+    console.log("[PlaybackController] Playback State: PAUSED");
     if (this.videoEl) {
       this.videoEl.pause();
     }
