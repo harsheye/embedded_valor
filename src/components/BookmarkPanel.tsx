@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pencil, Trash, Play, Bookmark as BookmarkIcon, Heart, Clock } from 'lucide-react';
+import { Pencil, Trash, Play, Bookmark as BookmarkIcon, Heart, Clock, X } from 'lucide-react';
 import type { Bookmark } from '../types/media';
 
 interface BookmarkPanelProps {
@@ -11,7 +11,7 @@ interface BookmarkPanelProps {
   onClose: () => void;
 }
 
-export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd }) => {
+export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd, onClose }) => {
   const sortedBookmarks = useMemo(() => {
     return [...bookmarks].sort((a, b) => a.time - b.time);
   }, [bookmarks]);
@@ -29,6 +29,11 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
       className="animate-slide-in-left"
       onClick={(e) => e.stopPropagation()}
       style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        zIndex: 150,
         width: '380px',
         height: '100%',
         background: 'rgba(20, 20, 22, 0.95)',
@@ -47,14 +52,25 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
           <BookmarkIcon size={22} color="#e50914" />
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Bookmarks</h2>
         </div>
-        <button 
-          onClick={onAdd}
-          style={{ background: 'rgba(229, 9, 20, 0.1)', color: '#e50914', border: 'none', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(229, 9, 20, 0.2)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'rgba(229, 9, 20, 0.1)'}
-        >
-          + New
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button 
+            onClick={onAdd}
+            style={{ background: 'rgba(229, 9, 20, 0.1)', color: '#e50914', border: 'none', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(229, 9, 20, 0.2)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(229, 9, 20, 0.1)'}
+          >
+            + New
+          </button>
+          <button 
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'white'}
+            onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.6)'}
+            title="Close Panel"
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>

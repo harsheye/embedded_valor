@@ -357,7 +357,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBookmarksPopover, setShowBookmarksPopover] = useState(false);
-  const bookmarksTimeoutRef = useRef<any>(null);
   const [bookmarks, setBookmarks] = useState<any[]>(() => video.bookmarks || []);
   const [editingBookmark, setEditingBookmark] = useState<Bookmark | undefined>(undefined);
   const [markingStartTime, setMarkingStartTime] = useState<number | null>(null);
@@ -4500,15 +4499,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
                 <div 
                   className="popover-wrapper"
                   style={{ marginLeft: '50px' }}
-                  onMouseEnter={() => {
-                    if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
-                    setShowBookmarksPopover(true);
-                  }}
-                  onMouseLeave={() => {
-                    bookmarksTimeoutRef.current = setTimeout(() => {
-                      setShowBookmarksPopover(false);
-                    }, 150);
-                  }}
                 >
                   <button 
                     className="control-btn-bookmark-list" 
@@ -4517,32 +4507,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
                   >
                     <BookmarkIcon size={20} />
                   </button>
-
-                  {showBookmarksPopover && (
-                    <BookmarkPanel
-                      bookmarks={bookmarks}
-                      onJump={(time) => {
-                        if (videoRef.current) {
-                          videoRef.current.currentTime = time;
-                          setCurrentTime(time);
-                        }
-                      }}
-                      onEdit={(bm) => {
-                        setEditingBookmark(bm);
-                        setShowAddDialog(true);
-                        setShowBookmarksPopover(false);
-                      }}
-                      onDelete={handleDeleteBookmark}
-                      onAdd={() => {
-                        if (videoRef.current) {
-                          setEditingBookmark(undefined);
-                          setMarkingStartTime(Math.round(videoRef.current.currentTime));
-                          setShowBookmarksPopover(false);
-                        }
-                      }}
-                      onClose={() => setShowBookmarksPopover(false)}
-                    />
-                  )}
                 </div>
 
               </div>
@@ -4772,6 +4736,33 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bookmarks Sidebar Panel */}
+      {showBookmarksPopover && (
+        <BookmarkPanel
+          bookmarks={bookmarks}
+          onJump={(time) => {
+            if (videoRef.current) {
+              videoRef.current.currentTime = time;
+              setCurrentTime(time);
+            }
+          }}
+          onEdit={(bm) => {
+            setEditingBookmark(bm);
+            setShowAddDialog(true);
+            setShowBookmarksPopover(false);
+          }}
+          onDelete={handleDeleteBookmark}
+          onAdd={() => {
+            if (videoRef.current) {
+              setEditingBookmark(undefined);
+              setMarkingStartTime(Math.round(videoRef.current.currentTime));
+              setShowBookmarksPopover(false);
+            }
+          }}
+          onClose={() => setShowBookmarksPopover(false)}
+        />
       )}
 
       {/* Add Bookmark Dialog Overlay */}
