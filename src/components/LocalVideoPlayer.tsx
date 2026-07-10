@@ -19,6 +19,7 @@ import { HttpByteSource, CachedByteSource } from '../services/remote/remoteByteS
 import { FileByteSource } from '../services/local/localByteSource';
 import { extractLocalAudioSegment, extractLocalSubtitleSegment } from '../services/local/ffmpegLocal';
 import { extractRemoteAudioSegment, extractRemoteSubtitleSegment, extractHlsAudioSegment } from '../services/remote/ffmpegRemote';
+import { FFmpegManager, DemuxManager, PlaybackController } from '../services/mediaPipeline';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
 
@@ -1475,6 +1476,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     }, toastDuration * 1000);
   };
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playbackControllerRef = useRef<PlaybackController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const syncEngineRef = useRef<AudioSyncEngine | null>(null);
   const controlsTimeoutRef = useRef<any>(null);
@@ -1751,56 +1753,27 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     autoProbe();
   }, [video.id, video.type, video.file]);
 
-  // Synchronize Audio Engine
-  useEffect(() => {
-    if (selectedAudioTrack && selectedAudioTrack.url && videoRef.current && audioRef.current) {
-      logger.player(`Initializing sync engine for track: ${selectedAudioTrack.name} with offset: ${activeAudioStartOffset}`);
-      const engine = new AudioSyncEngine(videoRef.current, audioRef.current, activeAudioStartOffset);
-      syncEngineRef.current = engine;
-
-      // Sync initial volume
-      audioRef.current.volume = volume;
-      audioRef.current.muted = isMuted;
-
-      return () => {
-        engine.destroy();
-        syncEngineRef.current = null;
-      };
-    } else {
-      if (videoRef.current) {
-        videoRef.current.muted = isMuted;
-        videoRef.current.volume = volume;
-      }
-    }
-  }, [selectedAudioTrack, activeAudioStartOffset]);
-
+  // Synchronize Audio Volume / Muted State to video element and PlaybackController
   useEffect(() => {
     if (saveVolume) {
       localStorage.setItem('valor_volume', volume.toString());
-    } else {
-      localStorage.removeItem('valor_volume');
-    }
-    if (videoRef.current) {
-      videoRef.current.volume = (selectedAudioTrack && selectedAudioTrack.url) ? 0 : volume;
-    }
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
-  }, [volume, saveVolume, selectedAudioTrack]);
-
-  useEffect(() => {
-    if (saveVolume) {
       localStorage.setItem('valor_muted', isMuted ? 'true' : 'false');
     } else {
+      localStorage.removeItem('valor_volume');
       localStorage.removeItem('valor_muted');
     }
+
+    const hasAlternateAudio = activeAudioStreamIndex !== null;
+
     if (videoRef.current) {
-      videoRef.current.muted = (selectedAudioTrack || activeAudioStreamIndex !== null) ? true : isMuted;
+      videoRef.current.volume = hasAlternateAudio ? 0 : volume;
+      videoRef.current.muted = hasAlternateAudio ? true : isMuted;
     }
-    if (audioRef.current) {
-      audioRef.current.muted = isMuted;
+
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.setVolume(volume, isMuted);
     }
-  }, [isMuted, saveVolume, selectedAudioTrack, activeAudioStreamIndex]);
+  }, [volume, isMuted, saveVolume, activeAudioStreamIndex]);
 
   // RequestAnimationFrame tick loop for micro-fine time updates (essential for subtitles)
   useEffect(() => {
@@ -1931,165 +1904,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Audio/subtitle segment chunk loading on demand
   const loadAudioChunk = async (time: number, streamIndex: number, codec: string, isSeek = false) => {
-    // Seek optimization: abort any active remote fetches
-    if (audioAbortControllerRef.current) {
-      audioAbortControllerRef.current.abort();
-    }
-    audioAbortControllerRef.current = new AbortController();
-    const signal = audioAbortControllerRef.current.signal;
-
-    setExtractingStreamIndex(streamIndex);
-
-    // If it's a seek or selection, immediately silence and pause old audio/video
-    if (isSeek) {
-      if (syncEngineRef.current) {
-        syncEngineRef.current.setSyncEnabled(false);
-      }
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeAttribute('src');
-        audioRef.current.load(); // Force browser to release old blob
-      }
-      if (videoRef.current && !videoRef.current.paused) {
-        videoRef.current.pause();
-      }
-    }
-
-    const wasPlaying = videoRef.current ? !videoRef.current.paused : false;
-
-    try {
-      if (!ffmpegService.isReady()) {
-        await ffmpegService.load(video.id);
-      }
-
-      let audioUrl = '';
-      let offsetTime = time;
-
-      const cachedSource = cachedSourceRef.current || (
-        video.file
-          ? new CachedByteSource(new FileByteSource(video.file), 4 * 1024 * 1024, 16)
-          : new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16)
-      );
-
-      if (video.containerType === 'hls' && video.hlsPlaylist) {
-        const segments = video.hlsPlaylist.segments || [];
-        const segIdx = segments.findIndex((s: any) => s.startTime <= time && time < s.startTime + s.duration);
-        const segment = segIdx !== -1 ? segments[segIdx] : segments[0];
-        
-        if (segment) {
-          offsetTime = segment.startTime;
-          logger.remote(`HLS segment time: ${offsetTime}, url: ${segment.uri}`);
-          
-          setActiveAudioStartOffset(offsetTime);
-          activeAudioStartOffsetRef.current = offsetTime;
-
-          const result = await extractHlsAudioSegment(video.id, segment.uri, {
-            index: streamIndex,
-            codec: codec || 'aac'
-          }, signal);
-          audioUrl = result.url;
-        }
-      } else if (!video.isRemote && video.file) {
-        // LOCAL FILE FLOW: Extract chunk directly from mounted file
-        const audioDuration = 30;
-        offsetTime = Math.max(0, time - 5);
-        logger.player(`Local file seek/load audio chunk starting at ${offsetTime}s`);
-        
-        setActiveAudioStartOffset(offsetTime);
-        activeAudioStartOffsetRef.current = offsetTime;
-
-        const result = await extractLocalAudioSegment(
-          video.id,
-          video.file,
-          offsetTime,
-          audioDuration,
-          { index: streamIndex, codec },
-          signal
-        );
-        audioUrl = result.url;
-      } else {
-        const isRemote = video.isRemote;
-        const audioDuration = isRemote ? 30 : 120;
-        const { startOffset, endOffset, offsetTime: resolvedOffsetTime } = await getByteRangeForTimeRange(time, audioDuration, cachedSource);
-        offsetTime = resolvedOffsetTime;
-
-        logger.remote(`Range: ${startOffset}-${endOffset}, time: ${offsetTime}`);
-        
-        setActiveAudioStartOffset(offsetTime);
-        activeAudioStartOffsetRef.current = offsetTime;
-
-        const result = await extractRemoteAudioSegment(
-          video.id,
-          cachedSource,
-          startOffset,
-          endOffset,
-          { index: streamIndex, codec },
-          signal
-        );
-        audioUrl = result.url;
-      }
-
-      if (audioUrl && !signal.aborted) {
-        // If background cross-boundary load, silence old audio only after extraction is done
-        if (!isSeek) {
-          if (syncEngineRef.current) {
-            syncEngineRef.current.setSyncEnabled(false);
-          }
-          if (audioRef.current) {
-            audioRef.current.pause();
-          }
-        }
-
-        const newTrack: CustomAudioTrack = {
-          id: `remote-aud-${streamIndex}-${offsetTime}`,
-          name: `Remote Audio (${offsetTime.toFixed(0)}s)`,
-          url: audioUrl,
-          isExtracted: true,
-          streamIndex,
-          codec: 'mp3'
-        };
-        setSelectedAudioTrack(newTrack);
-
-        // Sync engine initialization and resume
-        if (wasPlaying && videoRef.current) {
-          setTimeout(() => {
-            if (audioRef.current) {
-              const tryResume = () => {
-                if (audioRef.current && audioRef.current.readyState >= 2 && videoRef.current) {
-                  const targetAudioTime = Math.max(0, videoRef.current.currentTime - offsetTime);
-                  audioRef.current.currentTime = targetAudioTime;
-                  if (videoRef.current.paused) {
-                    videoRef.current.play().catch(() => {});
-                  }
-                } else if (videoRef.current && !videoRef.current.paused) {
-                  setTimeout(tryResume, 100);
-                }
-              };
-              tryResume();
-            } else if (videoRef.current && videoRef.current.paused) {
-              videoRef.current.play().catch(() => {});
-            }
-          }, 50);
-        }
-      } else if (isSeek && wasPlaying && videoRef.current) {
-        videoRef.current.play().catch(() => {});
-      }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        logger.remote('Load aborted');
-        if (isSeek && wasPlaying && videoRef.current) {
-          videoRef.current.play().catch(() => {});
-        }
-        return;
-      }
-      logger.error("loadAudioChunk error:", err);
-      if (isSeek && wasPlaying && videoRef.current) {
-        videoRef.current.play().catch(() => {});
-      }
-    } finally {
-      setExtractingStreamIndex(null);
-      setIsKeyInitiated(false);
-    }
+    // Legacy Blob-based audio loading is disabled. Audio playback is handled entirely by PlaybackController via Web Audio API.
   };
 
   const loadSubtitleChunk = async (time: number, streamIndex: number) => {
@@ -2220,73 +2035,78 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       }
 
-      if (!ffmpegService.isReady()) {
-        await ffmpegService.load(video.id);
+      const subStream = subtitleStreams.find(s => s.index === streamIndex);
+      const codec = subStream?.codec || 'srt';
+      const subDuration = video.isRemote ? 60 : 300;
+
+      if (!video.isRemote && video.file) {
+        offsetTime = Math.max(0, time - 10);
+      } else {
+        const { startOffset: sOff, endOffset: eOff, offsetTime: resolvedOffsetTime } = await getByteRangeForTimeRange(time, subDuration, cachedSource);
+        offsetTime = resolvedOffsetTime;
+        startOffset = sOff;
+        endOffset = eOff;
       }
 
-      if (video.containerType === 'hls' && video.hlsPlaylist) {
-        const segments = video.hlsPlaylist.segments || [];
-        const segIdx = segments.findIndex((s: any) => s.startTime <= time && time < s.startTime + s.duration);
-        const segment = segIdx !== -1 ? segments[segIdx] : segments[0];
-        
-        if (segment) {
-          offsetTime = segment.startTime;
-          setActiveSubtitleStartOffset(offsetTime);
-          const res = await fetch(segment.uri);
-          const text = await res.text();
-          cues = parseSubtitles(text, 'segment.vtt');
-          format = 'vtt';
+      setActiveSubtitleStartOffset(offsetTime);
+      activeSubtitleStartOffsetRef.current = offsetTime;
+
+      let fetchedCues: any[] | null = null;
+
+      if (playbackControllerRef.current) {
+        const bm = playbackControllerRef.current.getBufferManager();
+        const ff = playbackControllerRef.current.getFFmpeg();
+        if (ff) {
+          fetchedCues = await bm.getOrFetchSubtitles(
+            video.id,
+            streamIndex,
+            offsetTime,
+            subDuration,
+            codec,
+            !!video.isRemote,
+            video.file || null,
+            cachedSource,
+            startOffset,
+            endOffset,
+            signal
+          );
+          const isAss = /ass|ssa/i.test(codec);
+          const isVtt = /webvtt/i.test(codec);
+          format = isAss ? 'ass' : (isVtt ? 'vtt' : 'srt');
         }
-      } else if (!video.isRemote && video.file) {
-        // LOCAL FILE FLOW: Extract subtitle segment chunk
-        const subStream = subtitleStreams.find(s => s.index === streamIndex);
-        const codec = subStream?.codec || 'srt';
-        const subDuration = 300; // 5 minute chunk
-        offsetTime = Math.max(0, time - 10);
-        logger.player(`Local file seek/load subtitle segment index ${streamIndex} (${codec}) starting at ${offsetTime}s`);
-        
-        setActiveSubtitleStartOffset(offsetTime);
-        activeSubtitleStartOffsetRef.current = offsetTime;
+      }
 
-        const subtitleText = await extractLocalSubtitleSegment(
-          video.id,
-          video.file,
-          offsetTime,
-          subDuration,
-          { index: streamIndex, codec },
-          signal
-        );
-        const isAss = /ass|ssa/i.test(codec);
-        const isVtt = /webvtt/i.test(codec);
-        const formatExt = isAss ? 'ass' : (isVtt ? 'vtt' : 'srt');
-        
-        cues = parseSubtitles(subtitleText, `subtitles.${formatExt}`);
-        format = formatExt === 'vtt' ? 'vtt' : (formatExt === 'ass' ? 'ass' : 'srt');
+      if (fetchedCues !== null) {
+        cues = fetchedCues;
       } else {
-        const isRemote = video.isRemote;
-        const subDuration = isRemote ? 60 : 300;
-        const { startOffset, endOffset, offsetTime: resolvedOffsetTime } = await getByteRangeForTimeRange(time, subDuration, cachedSource);
-        offsetTime = resolvedOffsetTime;
-
-        setActiveSubtitleStartOffset(offsetTime);
-        activeSubtitleStartOffsetRef.current = offsetTime;
-
-        const subStream = subtitleStreams.find(s => s.index === streamIndex);
-        const codec = subStream?.codec || 'srt';
+        // Fallback if playback controller or FFmpeg is not loaded yet
+        if (!ffmpegService.isReady()) {
+          await ffmpegService.load(video.id);
+        }
         
-        const subtitleText = await extractRemoteSubtitleSegment(
-          video.id,
-          cachedSource,
-          startOffset,
-          endOffset,
-          { index: streamIndex, codec },
-          signal
-        );
-        
+        let subtitleText = '';
+        if (!video.isRemote && video.file) {
+          subtitleText = await extractLocalSubtitleSegment(
+            video.id,
+            video.file,
+            offsetTime,
+            subDuration,
+            { index: streamIndex, codec },
+            signal
+          );
+        } else {
+          subtitleText = await extractRemoteSubtitleSegment(
+            video.id,
+            cachedSource,
+            startOffset,
+            endOffset,
+            { index: streamIndex, codec },
+            signal
+          );
+        }
         const isAss = /ass|ssa/i.test(codec);
         const isVtt = /webvtt/i.test(codec);
         const formatExt = isAss ? 'ass' : (isVtt ? 'vtt' : 'srt');
-        
         cues = parseSubtitles(subtitleText, `subtitles.${formatExt}`);
         format = formatExt === 'vtt' ? 'vtt' : (formatExt === 'ass' ? 'ass' : 'srt');
       }
@@ -2487,10 +2307,18 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (isPlaying) {
-      videoRef.current.pause();
+      if (playbackControllerRef.current) {
+        playbackControllerRef.current.pause();
+      } else {
+        videoRef.current.pause();
+      }
       setIsPlaying(false);
     } else {
-      videoRef.current.play().catch(console.error);
+      if (playbackControllerRef.current) {
+        playbackControllerRef.current.play().catch(console.error);
+      } else {
+        videoRef.current.play().catch(console.error);
+      }
       setIsPlaying(true);
     }
     resetControlsTimeout();
@@ -2498,15 +2326,25 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleRewind = () => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-    setCurrentTime(videoRef.current.currentTime);
+    const targetTime = Math.max(0, videoRef.current.currentTime - 10);
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.seek(targetTime);
+    } else {
+      videoRef.current.currentTime = targetTime;
+    }
+    setCurrentTime(targetTime);
     resetControlsTimeout();
   };
 
   const handleForward = () => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
-    setCurrentTime(videoRef.current.currentTime);
+    const targetTime = Math.min(duration, videoRef.current.currentTime + 10);
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.seek(targetTime);
+    } else {
+      videoRef.current.currentTime = targetTime;
+    }
+    setCurrentTime(targetTime);
     resetControlsTimeout();
   };
 
@@ -2514,7 +2352,11 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     if (uiConfig.blockSeekingCompletely) return;
     if (!videoRef.current) return;
     const seekTime = parseFloat(e.target.value);
-    videoRef.current.currentTime = seekTime;
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.seek(seekTime);
+    } else {
+      videoRef.current.currentTime = seekTime;
+    }
     setCurrentTime(seekTime);
     resetControlsTimeout();
     if (previewVideoRef.current) {
@@ -2655,14 +2497,18 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       audioDebounceTimeoutRef.current = null;
     }
     setSelectedAudioTrack(track);
+    const targetIdx = track === null ? -1 : (track.streamIndex !== undefined ? track.streamIndex : -1);
+    setActiveAudioStreamIndex(targetIdx === -1 ? null : targetIdx);
+    
+    if (targetIdx !== -1) {
+      playbackControllerRef.current?.switchAudioTrack(targetIdx);
+    }
+    
     if (track === null) {
-      setActiveAudioStreamIndex(null);
       syncAudioRef(null, null);
     } else if (track.streamIndex !== undefined) {
-      setActiveAudioStreamIndex(track.streamIndex);
       syncAudioRef(null, track.streamIndex);
     } else {
-      setActiveAudioStreamIndex(null);
       syncAudioRef(track, null);
     }
   };
@@ -3149,14 +2995,54 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     hasSeekedRef.current = false;
   }, [video.url]);
 
+  // PlaybackController lifecycle hook
+  useEffect(() => {
+    let active = true;
+    let controller: PlaybackController | null = null;
+
+    if (videoRef.current) {
+      const ffmpegMgr = new FFmpegManager(video.id);
+      const fileOrSource = video.file || new HttpByteSource(video.url);
+      const demuxMgr = new DemuxManager(ffmpegMgr, fileOrSource);
+      controller = new PlaybackController(ffmpegMgr, demuxMgr, video.seekMap);
+      
+      playbackControllerRef.current = controller;
+
+      controller.setBufferingCallback((buffering) => {
+        if (active) setIsBuffering(buffering);
+      });
+
+      controller.initialize(videoRef.current, activeAudioStreamIndex).then(() => {
+        if (active) logger.player('PlaybackController initialized successfully');
+      });
+    }
+
+    return () => {
+      active = false;
+      if (controller) {
+        controller.destroy();
+      }
+      playbackControllerRef.current = null;
+    };
+  }, [video.id, video.file, video.url]);
+
+  // Handle track switches on-the-fly without rebuilding the controller
+  useEffect(() => {
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.switchAudioTrack(activeAudioStreamIndex);
+    }
+  }, [activeAudioStreamIndex]);
+
   // Autoplay (autostart) on load
   useEffect(() => {
     if (videoRef.current) {
       // Seek / resume is handled strictly and reliably in onLoadedMetadata.
       // We only run autoplay playback trigger here.
-      videoRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch(err => logger.player('Autoplay blocked:', err));
+      const p = playbackControllerRef.current 
+        ? playbackControllerRef.current.play() 
+        : videoRef.current.play();
+      p.then(() => setIsPlaying(true))
+       .catch(err => logger.player('Autoplay blocked:', err));
     }
   }, [video.url]);
 
@@ -3169,7 +3055,11 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       if (!isCurrentFullscreen) return;
       if (videoRef.current && !videoRef.current.paused) {
         logger.player('Focus lost, auto-pausing video playback');
-        videoRef.current.pause();
+        if (playbackControllerRef.current) {
+          playbackControllerRef.current.pause();
+        } else {
+          videoRef.current.pause();
+        }
         setIsPlaying(false);
         wasPausedByFocusLossRef.current = true;
       }
@@ -3178,9 +3068,11 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     const handleFocusGain = () => {
       if (wasPausedByFocusLossRef.current && videoRef.current && videoRef.current.paused) {
         logger.player('Focus regained, auto-resuming video playback');
-        videoRef.current.play()
-          .then(() => setIsPlaying(true))
-          .catch(err => logger.player('Autoplay play error on focus gain:', err));
+        const p = playbackControllerRef.current 
+          ? playbackControllerRef.current.play() 
+          : videoRef.current.play();
+        p.then(() => setIsPlaying(true))
+         .catch(err => logger.player('Autoplay play error on focus gain:', err));
         wasPausedByFocusLossRef.current = false;
       }
     };
@@ -3191,7 +3083,11 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       if (document.visibilityState === 'hidden') {
         if (videoRef.current && !videoRef.current.paused) {
           logger.player('Tab hidden, auto-pausing video playback');
-          videoRef.current.pause();
+          if (playbackControllerRef.current) {
+            playbackControllerRef.current.pause();
+          } else {
+            videoRef.current.pause();
+          }
           setIsPlaying(false);
           wasPausedByFocusLossRef.current = true;
         }
@@ -3808,19 +3704,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         />
       </div>
 
-      {/* Hidden Secondary Audio Tag for sync tracks */}
-      <audio 
-        ref={audioRef} 
-        src={selectedAudioTrack?.url || ''}
-        preload="auto"
-        onLoadStart={() => {
-          // Immediately pause when a new source starts loading to prevent playback from time 0
-          if (audioRef.current) {
-            audioRef.current.pause();
-          }
-        }}
-        style={{ display: 'none' }}
-      />
       {false && activeSubtitleStartOffset}
 
       {/* Subtitles Overlay */}
