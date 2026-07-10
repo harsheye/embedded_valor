@@ -3751,7 +3751,14 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
             }
           }}
           onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onPause={() => {
+            setIsPlaying(false);
+            onUpdateVideoRef.current((prev: any) => ({
+              ...prev,
+              currentTime: latestTimeRef.current,
+              totalTimeWatched: Math.round(totalTimeWatchedRef.current)
+            }), false, video.id);
+          }}
           onWaiting={() => setIsBuffering(true)}
           onPlaying={() => setIsBuffering(false)}
           onSeeked={handleVideoSeeked}
@@ -3763,6 +3770,32 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
               setShowRatingPrompt(true);
               ratingPromptedRef.current = true;
             }
+
+            const exitTime = Date.now();
+            const sessionDuration = (exitTime - mountTimeRef.current) / 1000;
+            const newSession = {
+              startedAt: new Date(mountTimeRef.current).toISOString(),
+              endedAt: new Date(exitTime).toISOString(),
+              durationWatched: Math.round(sessionDuration)
+            };
+            const existingSessions = (video as any).sessions || [];
+            const updatedSessions = [...existingSessions, newSession];
+
+            let timeToFinish = (video as any).timeToFinish;
+            if (!timeToFinish && duration > 0) {
+              const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
+              timeToFinish = (exitTime - firstPlay) / 1000;
+            }
+
+            onUpdateVideoRef.current((prev: any) => ({
+              ...prev,
+              currentTime: duration,
+              totalTimeWatched: Math.round(totalTimeWatchedRef.current),
+              sessions: updatedSessions,
+              timeToFinish: timeToFinish ? Math.round(timeToFinish) : prev.timeToFinish,
+              firstPlayTimestamp: prev.firstPlayTimestamp || mountTimeRef.current
+            }), true, video.id, true);
+
             // Auto-submit bookmarks to TheIntroDB when video finishes
             if (!hadTidbDataRef.current && bookmarks.length > 0) {
               logger.player('[TheIntroDB] Video ended. Auto-submitting existing bookmarks to TIDB...');

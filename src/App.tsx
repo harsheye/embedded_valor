@@ -1492,9 +1492,7 @@ function App() {
         });
       }
 
-      if (isExiting || forceSave) {
-        saveVideosToStorage(nextVideos, isExiting || forceSave);
-      }
+      saveVideosToStorage(nextVideos, isExiting || forceSave);
       return nextVideos;
     });
     if (!isExiting) {
