@@ -1588,10 +1588,10 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       const subDuration = isRemote ? (isMkv ? 300 : 60) : 300;
 
       if (activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
-        if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 5) {
+        if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 15) {
           logger.player(`Playback crossed audio chunk boundary. Loading next chunk at ${currentTime}s.`);
           const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
-          loadAudioChunk(currentTime, activeAudioStreamIndex, activeStream?.codec || 'mp3');
+          loadAudioChunk(currentTime, activeAudioStreamIndex, activeStream?.codec || 'mp3', false);
         }
       }
 
@@ -1929,7 +1929,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   // Audio/subtitle segment chunk loading on demand
-  const loadAudioChunk = async (time: number, streamIndex: number, codec: string) => {
+  const loadAudioChunk = async (time: number, streamIndex: number, codec: string, isSeek = false) => {
     // Seek optimization: abort any active remote fetches
     if (audioAbortControllerRef.current) {
       audioAbortControllerRef.current.abort();
@@ -1937,23 +1937,24 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     audioAbortControllerRef.current = new AbortController();
     const signal = audioAbortControllerRef.current.signal;
 
-    // CRITICAL: Immediately silence old audio to prevent stale chunk playback
-    if (syncEngineRef.current) {
-      syncEngineRef.current.setSyncEnabled(false);
-    }
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute('src');
-      audioRef.current.load(); // Force browser to release old blob
-    }
-
-    // Pause video during extraction so user doesn't hear silence gap
-    const wasPlaying = videoRef.current ? !videoRef.current.paused : false;
-    if (wasPlaying && videoRef.current) {
-      videoRef.current.pause();
-    }
-
     setExtractingStreamIndex(streamIndex);
+
+    // If it's a seek or selection, immediately silence and pause old audio/video
+    if (isSeek) {
+      if (syncEngineRef.current) {
+        syncEngineRef.current.setSyncEnabled(false);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load(); // Force browser to release old blob
+      }
+      if (videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+      }
+    }
+
+    const wasPlaying = videoRef.current ? !videoRef.current.paused : false;
 
     try {
       if (!ffmpegService.isReady()) {
@@ -2027,7 +2028,17 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         audioUrl = result.url;
       }
 
-      if (audioUrl) {
+      if (audioUrl && !signal.aborted) {
+        // If background cross-boundary load, silence old audio only after extraction is done
+        if (!isSeek) {
+          if (syncEngineRef.current) {
+            syncEngineRef.current.setSyncEnabled(false);
+          }
+          if (audioRef.current) {
+            audioRef.current.pause();
+          }
+        }
+
         const newTrack: CustomAudioTrack = {
           id: `remote-aud-${streamIndex}-${offsetTime}`,
           name: `Remote Audio (${offsetTime.toFixed(0)}s)`,
@@ -2038,44 +2049,40 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         };
         setSelectedAudioTrack(newTrack);
 
-        // Auto-resume video after a short delay to let sync engine initialize
-        if (wasPlaying) {
-          // Wait for React to render the new src, then wait for canplay
+        // Sync engine initialization and resume
+        if (wasPlaying && videoRef.current) {
           setTimeout(() => {
             if (audioRef.current) {
               const tryResume = () => {
                 if (audioRef.current && audioRef.current.readyState >= 2 && videoRef.current) {
-                  // Sync audio time before resuming
                   const targetAudioTime = Math.max(0, videoRef.current.currentTime - offsetTime);
                   audioRef.current.currentTime = targetAudioTime;
-                  videoRef.current.play().catch(() => {});
-                } else if (videoRef.current) {
-                  // Audio not ready yet, try again shortly
+                  if (videoRef.current.paused) {
+                    videoRef.current.play().catch(() => {});
+                  }
+                } else if (videoRef.current && !videoRef.current.paused) {
                   setTimeout(tryResume, 100);
                 }
               };
               tryResume();
-            } else if (videoRef.current) {
+            } else if (videoRef.current && videoRef.current.paused) {
               videoRef.current.play().catch(() => {});
             }
           }, 50);
         }
-      } else if (wasPlaying && videoRef.current) {
-        // No audio URL produced, resume video anyway
+      } else if (isSeek && wasPlaying && videoRef.current) {
         videoRef.current.play().catch(() => {});
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
         logger.remote('Load aborted');
-        // Resume video if it was playing before
-        if (wasPlaying && videoRef.current) {
+        if (isSeek && wasPlaying && videoRef.current) {
           videoRef.current.play().catch(() => {});
         }
         return;
       }
-      logger.error('Failed to extract remote audio segment:', err);
-      // Resume video on error too
-      if (wasPlaying && videoRef.current) {
+      logger.error("loadAudioChunk error:", err);
+      if (isSeek && wasPlaying && videoRef.current) {
         videoRef.current.play().catch(() => {});
       }
     } finally {
@@ -2374,7 +2381,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       if (needLoad) {
         logger.player(`Seek detected to ${newTime}s outside current chunk range. Fetching new audio chunk.`);
         const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
-        await loadAudioChunk(newTime, activeAudioStreamIndex, activeStream?.codec || 'mp3');
+        await loadAudioChunk(newTime, activeAudioStreamIndex, activeStream?.codec || 'mp3', true);
       }
     }
 
@@ -2427,7 +2434,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     });
     syncAudioRef(null, streamIndex);
     if (!skipLoad) {
-      await loadAudioChunk(currentTime, streamIndex, codec);
+      await loadAudioChunk(currentTime, streamIndex, codec, false);
     }
   };
 
@@ -2759,7 +2766,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       audioDebounceTimeoutRef.current = setTimeout(async () => {
         audioDebounceTimeoutRef.current = null;
         if (currentAudioOptionIndexRef.current === nextIndex) {
-          await loadAudioChunk(videoRef.current ? videoRef.current.currentTime : currentTime, nextOpt.streamIndex, nextOpt.codec);
+          await loadAudioChunk(videoRef.current ? videoRef.current.currentTime : currentTime, nextOpt.streamIndex, nextOpt.codec, true);
         }
       }, 350);
     } else if (nextOpt.type === 'custom') {
