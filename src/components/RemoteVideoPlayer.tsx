@@ -11,11 +11,14 @@ import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSubPopover } from './AudioSubPopover';
 import { BookmarkPanel } from './BookmarkPanel';
 import { BookmarkModal } from './BookmarkModal';
-import { AudioSyncEngine } from '../utils/audioSync';
+import { AudioSyncEngine } from '../services/remote/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParser';
 import { ffmpegService } from '../services/ffmpeg';
-import { HttpByteSource, CachedByteSource, FileByteSource } from '../utils/remoteByteSource';
+import { HttpByteSource, CachedByteSource } from '../services/remote/remoteByteSource';
+import { FileByteSource } from '../services/local/localByteSource';
+import { extractLocalAudioSegment, extractLocalSubtitleTrack } from '../services/local/ffmpegLocal';
+import { extractRemoteAudioSegment, extractRemoteSubtitleSegment, extractHlsAudioSegment } from '../services/remote/ffmpegRemote';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
 
@@ -1978,7 +1981,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           setActiveAudioStartOffset(offsetTime);
           activeAudioStartOffsetRef.current = offsetTime;
 
-          const result = await ffmpegService.extractHlsAudioSegment(video.id, segment.uri, {
+          const result = await extractHlsAudioSegment(video.id, segment.uri, {
             index: streamIndex,
             codec: codec || 'aac'
           }, signal);
@@ -1993,7 +1996,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         setActiveAudioStartOffset(offsetTime);
         activeAudioStartOffsetRef.current = offsetTime;
 
-        const result = await ffmpegService.extractLocalAudioSegment(
+        const result = await extractLocalAudioSegment(
           video.id,
           video.file,
           offsetTime,
@@ -2013,7 +2016,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         setActiveAudioStartOffset(offsetTime);
         activeAudioStartOffsetRef.current = offsetTime;
 
-        const result = await ffmpegService.extractRemoteAudioSegment(
+        const result = await extractRemoteAudioSegment(
           video.id,
           cachedSource,
           startOffset,
@@ -2236,7 +2239,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         setActiveSubtitleStartOffset(offsetTime);
         activeSubtitleStartOffsetRef.current = offsetTime;
 
-        const subtitleText = await ffmpegService.extractLocalSubtitleTrack(
+        const subtitleText = await extractLocalSubtitleTrack(
           video.id,
           video.file,
           { index: streamIndex, codec }
@@ -2259,7 +2262,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         const subStream = subtitleStreams.find(s => s.index === streamIndex);
         const codec = subStream?.codec || 'srt';
         
-        const subtitleText = await ffmpegService.extractRemoteSubtitleSegment(
+        const subtitleText = await extractRemoteSubtitleSegment(
           video.id,
           cachedSource,
           startOffset,

@@ -11,11 +11,13 @@ import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSubPopover } from './AudioSubPopover';
 import { BookmarkPanel } from './BookmarkPanel';
 import { BookmarkModal } from './BookmarkModal';
-import { AudioSyncEngine } from '../utils/audioSync';
+import { AudioSyncEngine } from '../services/remote/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4 } from '../utils/containerParser';
 import { ffmpegService } from '../services/ffmpeg';
-import { HttpByteSource, CachedByteSource, FileByteSource } from '../utils/remoteByteSource';
+import { extractLocalSubtitleTrack } from '../services/local/ffmpegLocal';
+import { FileByteSource } from '../services/local/localByteSource';
+import { HttpByteSource, CachedByteSource } from '../services/remote/remoteByteSource';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
 
@@ -1934,8 +1936,40 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     // No-op for local files to ensure native speed and prevent auto-pause/resume
   };
 
-  const loadSubtitleChunk = async (_time: number, _streamIndex: number) => {
-    // No-op for local files to ensure native speed and prevent spinner overlay
+  const loadSubtitleChunk = async (_time: number, streamIndex: number) => {
+    try {
+      const subStream = subtitleStreams.find(s => s.index === streamIndex);
+      const codec = subStream?.codec || 'srt';
+      logger.player(`Local file: extracting entire subtitle track index ${streamIndex} (${codec})`);
+
+      const subtitleText = await extractLocalSubtitleTrack(
+        video.id,
+        video.file!,
+        { index: streamIndex, codec }
+      );
+      
+      const isAss = /ass|ssa/i.test(codec);
+      const isVtt = /webvtt/i.test(codec);
+      const formatExt = isAss ? 'ass' : (isVtt ? 'vtt' : 'srt');
+      
+      const cues = parseSubtitles(subtitleText, `subtitles.${formatExt}`);
+      const format = formatExt === 'vtt' ? 'vtt' : (formatExt === 'ass' ? 'ass' : 'srt');
+
+      if (cues && cues.length > 0) {
+        const newTrack: CustomSubtitleTrack = {
+          id: `remote-sub-${streamIndex}`,
+          name: `Subtitles`,
+          url: '',
+          cues,
+          isExtracted: true,
+          streamIndex,
+          format
+        };
+        setSelectedSubTrack(newTrack);
+      }
+    } catch (err) {
+      logger.error('Failed to extract local subtitles:', err);
+    }
   };
 
   const handleVideoError = () => {
