@@ -695,7 +695,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     if (hadTidbDataRef.current) return; // TIDB already has data
     
     const introOutroBookmarks = currentBookmarks.filter(
-      bm => bm.isIntro || bm.isOutro
+      bm => bm.isIntro || bm.isOutro || bm.category === 'Intro' || bm.category === 'Outro'
     );
     if (introOutroBookmarks.length === 0) return; // No intro/outro bookmarks to submit
     
@@ -3759,6 +3759,10 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           onError={handleVideoError}
           onEnded={() => {
             scrobbleToTrakt();
+            if (!ratingPromptedRef.current) {
+              setShowRatingPrompt(true);
+              ratingPromptedRef.current = true;
+            }
             // Auto-submit bookmarks to TheIntroDB when video finishes
             if (!hadTidbDataRef.current && bookmarks.length > 0) {
               logger.player('[TheIntroDB] Video ended. Auto-submitting existing bookmarks to TIDB...');
@@ -4345,9 +4349,11 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Bookmark Timeline Dots */}
                   {bookmarks.map((bm) => {
                     const percent = (bm.time / (duration || 1)) * 100;
-                    const isOutroWithoutEnd = bm.isOutro && (bm.endTime === undefined || bm.endTime === null);
+                    const isOutro = bm.isOutro || bm.category === 'Outro';
+                    const isIntro = bm.isIntro || bm.category === 'Intro';
+                    const isOutroWithoutEnd = isOutro && (bm.endTime === undefined || bm.endTime === null);
                     const effectiveEndTime = isOutroWithoutEnd ? duration : bm.endTime;
-                    const hasRange = (effectiveEndTime !== undefined && effectiveEndTime !== null && effectiveEndTime > bm.time) || bm.isOutro;
+                    const hasRange = (effectiveEndTime !== undefined && effectiveEndTime !== null && effectiveEndTime > bm.time) || isOutro;
                     const endPercent = hasRange ? ((effectiveEndTime || duration) / (duration || 1)) * 100 : percent;
                     const widthPercent = Math.max(0, endPercent - percent);
                     
@@ -4355,13 +4361,13 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
                       return (
                         <div 
                           key={bm.id}
-                          className={`timeline-bookmark-range ${bm.isIntro ? 'intro-range' : bm.isOutro ? 'outro-range' : ''}`}
+                          className={`timeline-bookmark-range ${isIntro ? 'intro-range' : isOutro ? 'outro-range' : ''}`}
                           style={{ 
                             left: `${percent}%`,
                             width: `${widthPercent}%`,
                             position: 'absolute',
                             height: '4px',
-                            background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : bm.category === 'Outro' ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
+                            background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : isOutro ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
                             borderRadius: '2px',
                             cursor: 'pointer',
                             zIndex: 4
@@ -4376,7 +4382,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
                           }}
                         >
                           <div className="timeline-bookmark-tooltip">
-                            <span className="tooltip-label">{bm.label} {bm.isOutro ? '(Outro)' : '(Range)'}</span>
+                            <span className="tooltip-label">{bm.label || (isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark')} {isOutro ? '(Outro)' : '(Range)'}</span>
                             <span className="tooltip-time">{formatTime(bm.time)} - {isOutroWithoutEnd ? 'End' : formatTime(effectiveEndTime!)}</span>
                           </div>
                         </div>
@@ -4392,7 +4398,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
                           position: 'absolute',
                           height: '100%',
                           width: '4px',
-                          background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : bm.category === 'Outro' ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
+                          background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : isOutro ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
                           borderRadius: '2px',
                           zIndex: 4,
                           cursor: 'pointer'
@@ -4407,7 +4413,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
                         }}
                       >
                         <div className="timeline-bookmark-tooltip">
-                          <span className="tooltip-label">{bm.label}</span>
+                          <span className="tooltip-label">{bm.label || (isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark')}</span>
                           <span className="tooltip-time">{formatTime(bm.time)}</span>
                         </div>
                       </div>
