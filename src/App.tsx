@@ -1889,14 +1889,8 @@ function App() {
   };
   const syncVideoToTraktHistory = async (video: VideoItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const savedSettings = localStorage.getItem('valor_settings');
-    if (!savedSettings) {
-      addToast("Trakt Sync: Settings not found", "error");
-      return;
-    }
     try {
-      const parsed = JSON.parse(savedSettings);
-      const token = parsed.traktAccessToken;
+      const token = settings.traktAccessToken;
       if (!token) {
         addToast("Trakt Sync: Please log in to Trakt.tv first", "warning");
         return;
