@@ -1979,6 +1979,63 @@ function App() {
         const resData = await res.json();
         addToast(`Trakt Sync: Added ${resData.added?.movies || resData.added?.episodes || 1} item to history`, "success");
         handleUpdateVideo((prev) => ({ ...prev, hasScrobbledTrakt: true }), false, video.id, true);
+
+        // Sync rating to Trakt if present
+        const userRating = video.rating;
+        if (userRating && userRating > 0) {
+          const ratingBody: any = {};
+          if (isTV) {
+            ratingBody.shows = [
+              {
+                ids: { tmdb: tmdbId },
+                seasons: [
+                  {
+                    number: seriesInfo.season || 1,
+                    episodes: [
+                      {
+                        number: seriesInfo.episode || 1,
+                        rating: userRating * 2,
+                        rated_at: nowIso
+                      }
+                    ]
+                  }
+                ]
+              }
+            ];
+          } else {
+            ratingBody.movies = [
+              {
+                title: seriesInfo.displayTitle || video.title,
+                rating: userRating * 2,
+                rated_at: nowIso,
+                ids: tmdbId ? { tmdb: tmdbId } : undefined
+              }
+            ];
+          }
+
+          console.log(`[Trakt Rating Sync] Syncing rating (${userRating * 2}/10) to Trakt.tv...`);
+          try {
+            const ratingRes = await fetch('https://api.trakt.tv/sync/ratings', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+                'trakt-api-version': '2'
+              },
+              body: JSON.stringify(ratingBody)
+            });
+
+            if (ratingRes.ok) {
+              console.log('[Trakt Rating Sync] Successfully synced rating to Trakt.tv!');
+              addToast(`Trakt Rating Sync: Rated ${userRating * 2}/10 successfully`, "success");
+            } else {
+              console.warn(`[Trakt Rating Sync] Trakt.tv rating sync failed with status: ${ratingRes.status}`);
+            }
+          } catch (ratingErr) {
+            console.error('[Trakt Rating Sync] Error syncing rating:', ratingErr);
+          }
+        }
       } else {
         const errText = await res.text();
         addToast(`Trakt Sync Failed: ${res.status} - ${errText.substring(0, 40)}`, "error");
@@ -2810,30 +2867,39 @@ function App() {
                                 </>
                               )}
                             </button>
-                            <button 
-                              className={`btn btn-sm ${video.hasScrobbledTrakt ? 'btn-secondary' : 'btn-outline-danger'}`}
-                              onClick={(e) => syncVideoToTraktHistory(video, e)}
-                              style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '4px',
-                                background: video.hasScrobbledTrakt ? 'rgba(255,255,255,0.05)' : 'rgba(229, 9, 20, 0.1)',
-                                color: video.hasScrobbledTrakt ? '#888' : '#e50914',
-                                border: video.hasScrobbledTrakt ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e50914',
-                                padding: '0.4rem 0.8rem',
-                                borderRadius: '6px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s',
-                                opacity: video.hasScrobbledTrakt ? 0.6 : 1
-                              }}
-                              title={video.hasScrobbledTrakt ? "Already Synced to Trakt.tv" : "Sync watched status to Trakt.tv"}
-                              disabled={video.hasScrobbledTrakt}
-                            >
-                              <Film size={12} fill={video.hasScrobbledTrakt ? "#888" : "none"} />
-                              <span>Trakt</span>
-                            </button>
+                            {(() => {
+                              const durationSec = typeof video.duration === 'number' ? video.duration : parseDurationToSeconds(video.duration);
+                              const isCompleted = !!(video.timeToFinish || (durationSec > 0 && video.currentTime && video.currentTime >= durationSec - 15));
+                              
+                              if (!isCompleted && !video.hasScrobbledTrakt) return null;
+                              
+                              return (
+                                <button 
+                                  className={`btn btn-sm ${video.hasScrobbledTrakt ? 'btn-secondary' : 'btn-outline-danger'}`}
+                                  onClick={(e) => syncVideoToTraktHistory(video, e)}
+                                  style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '4px',
+                                    background: video.hasScrobbledTrakt ? 'rgba(255,255,255,0.05)' : 'rgba(229, 9, 20, 0.1)',
+                                    color: video.hasScrobbledTrakt ? '#888' : '#e50914',
+                                    border: video.hasScrobbledTrakt ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e50914',
+                                    padding: '0.4rem 0.8rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    opacity: video.hasScrobbledTrakt ? 0.6 : 1
+                                  }}
+                                  title={video.hasScrobbledTrakt ? "Already Synced to Trakt.tv" : "Sync watched status to Trakt.tv"}
+                                  disabled={video.hasScrobbledTrakt}
+                                >
+                                  <Film size={12} fill={video.hasScrobbledTrakt ? "#888" : "none"} />
+                                  <span>Trakt</span>
+                                </button>
+                              );
+                            })()}
                             <button 
                               className="btn-remove-history" 
                               onClick={(e) => handleRemoveVideo(video.id, e)} 
