@@ -15,7 +15,7 @@ import { AudioSyncEngine } from '../services/remote/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4 } from '../utils/containerParser';
 import { ffmpegService } from '../services/ffmpeg';
-import { extractLocalAudioSegment, extractLocalSubtitleTrack } from '../services/local/ffmpegLocal';
+import { extractLocalSubtitleTrack } from '../services/local/ffmpegLocal';
 import { FileByteSource } from '../services/local/localByteSource';
 import { HttpByteSource, CachedByteSource } from '../services/remote/remoteByteSource';
 import { logger } from '../utils/logger';
@@ -1579,15 +1579,25 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   // Load next chunk during normal playback when crossing chunk boundaries
   useEffect(() => {
     if (isPlaying) {
-      const audioDuration = 120;
+      const isRemote = video.isRemote;
+      const audioDuration = 30;
       
+      const containerType = (video.containerType || '').toLowerCase();
+      const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
+      const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
 
-
-      if (activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
+      if (video.isRemote && activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
         if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 5) {
           logger.player(`Playback crossed audio chunk boundary. Loading next chunk at ${currentTime}s.`);
           const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
           loadAudioChunk(currentTime, activeAudioStreamIndex, activeStream?.codec || 'mp3');
+        }
+      }
+
+      if (activeSubStreamIndex !== null && (isRemote || isMkv) && selectedSubTrack && selectedSubTrack.streamIndex === activeSubStreamIndex && (selectedSubTrack.url || selectedSubTrack.cues.length > 0)) {
+        if (currentTime - activeSubtitleStartOffsetRef.current > subDuration - 10) {
+          logger.player(`Playback crossed subtitle chunk boundary. Loading next subtitles at ${currentTime}s.`);
+          loadSubtitleChunk(currentTime, activeSubStreamIndex);
         }
       }
     }
@@ -1922,45 +1932,8 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   }
 
   // Audio/subtitle segment chunk loading on demand
-  const loadAudioChunk = async (time: number, streamIndex: number, codec: string) => {
-    if (audioAbortControllerRef.current) {
-      audioAbortControllerRef.current.abort();
-    }
-    audioAbortControllerRef.current = new AbortController();
-    const signal = audioAbortControllerRef.current.signal;
-
-    try {
-      const audioDuration = 120;
-      const offsetTime = Math.max(0, time - 5);
-      logger.player(`Local file load audio chunk starting at ${offsetTime}s`);
-      
-      setActiveAudioStartOffset(offsetTime);
-      activeAudioStartOffsetRef.current = offsetTime;
-
-      const result = await extractLocalAudioSegment(
-        video.id,
-        video.file!,
-        offsetTime,
-        audioDuration,
-        { index: streamIndex, codec },
-        signal
-      );
-      
-      if (result.url && !signal.aborted) {
-        const newTrack: CustomAudioTrack = {
-          id: `remote-aud-${streamIndex}-${offsetTime}`,
-          name: `Audio (${offsetTime.toFixed(0)}s)`,
-          url: result.url,
-          isExtracted: true,
-          streamIndex,
-          codec
-        };
-        setSelectedAudioTrack(newTrack);
-      }
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
-      logger.error('Failed to extract local audio segment:', err);
-    }
+  const loadAudioChunk = async (_time: number, _streamIndex: number, _codec: string) => {
+    // No-op for local files to ensure native speed and prevent auto-pause/resume
   };
 
   const loadSubtitleChunk = async (_time: number, streamIndex: number) => {
@@ -2046,13 +2019,54 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       currentTime: newTime
     });
 
-    // Chunk-based dynamic loading on seek
-    if (activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
-      const audioDuration = 120;
-      if (newTime < activeAudioStartOffsetRef.current || newTime > activeAudioStartOffsetRef.current + audioDuration - 2) {
+    // Chunk-based dynamic loading on seek (only for remote link plays)
+    if (video.isRemote && activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
+      let needLoad = false;
+      if (video.containerType === 'hls' && video.hlsPlaylist) {
+        const segments = video.hlsPlaylist.segments || [];
+        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeAudioStartOffsetRef.current && activeAudioStartOffsetRef.current < s.startTime + s.duration);
+        const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
+        if (oldSegIdx !== newSegIdx) {
+          needLoad = true;
+        }
+      } else {
+        const isRemote = video.isRemote;
+        const audioDuration = isRemote ? 30 : 120;
+        if (newTime < activeAudioStartOffsetRef.current || newTime > activeAudioStartOffsetRef.current + audioDuration - 2) {
+          needLoad = true;
+        }
+      }
+
+      if (needLoad) {
         logger.player(`Seek detected to ${newTime}s outside current chunk range. Fetching new audio chunk.`);
         const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
         await loadAudioChunk(newTime, activeAudioStreamIndex, activeStream?.codec || 'mp3');
+      }
+    }
+
+    const containerType = (video.containerType || '').toLowerCase();
+    const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
+
+    if (activeSubStreamIndex !== null && (video.isRemote || isMkv) && !subDebounceTimeoutRef.current) {
+      let needLoad = false;
+      if (video.containerType === 'hls' && video.hlsPlaylist) {
+        const segments = video.hlsPlaylist.segments || [];
+        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeSubtitleStartOffsetRef.current && activeSubtitleStartOffsetRef.current < s.startTime + s.duration);
+        const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
+        if (oldSegIdx !== newSegIdx) {
+          needLoad = true;
+        }
+      } else {
+        const isRemote = video.isRemote;
+        const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
+        if (newTime < activeSubtitleStartOffsetRef.current || newTime > activeSubtitleStartOffsetRef.current + subDuration - 5) {
+          needLoad = true;
+        }
+      }
+
+      if (needLoad) {
+        logger.player(`Seek detected to ${newTime}s outside current subtitle range. Fetching new subtitles.`);
+        await loadSubtitleChunk(newTime, activeSubStreamIndex);
       }
     }
   };
