@@ -190,12 +190,23 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1, marginRight: '12px' }}>
               <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
                 Mark Scene
               </h2>
               {videoTitle && (
-                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+                <span 
+                  style={{ 
+                    fontSize: '0.75rem', 
+                    color: 'rgba(255,255,255,0.4)', 
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: 'block'
+                  }}
+                  title={videoTitle}
+                >
                   {videoTitle}
                 </span>
               )}

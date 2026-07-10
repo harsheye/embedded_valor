@@ -26,21 +26,22 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
 
   return (
     <div 
-      className="animate-slide-in-left"
+      className="animate-fade-in"
       onClick={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
-        left: '24px',
-        bottom: '80px',
+        bottom: '50px',
+        left: '50%',
+        transform: 'translateX(-50%)',
         zIndex: 150,
         width: '380px',
-        maxHeight: 'calc(100% - 120px)',
-        background: 'rgba(20, 20, 22, 0.95)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '16px',
-        boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
+        maxHeight: '400px',
+        background: 'rgba(18, 18, 18, 0.88)',
+        backdropFilter: 'blur(25px)',
+        WebkitBackdropFilter: 'blur(25px)',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: '12px',
+        boxShadow: '0 15px 40px rgba(0,0,0,0.7)',
         display: 'flex',
         flexDirection: 'column',
         color: 'white',
@@ -48,6 +49,8 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
         overflow: 'hidden'
       }}
     >
+      {/* Hover bridge spacer to keep popover open when cursor moves from button to popover */}
+      <div style={{ position: 'absolute', bottom: '-25px', left: 0, right: 0, height: '25px', background: 'transparent', pointerEvents: 'auto' }} />
       <div style={{ padding: '32px 24px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <BookmarkIcon size={22} color="#e50914" />
@@ -106,14 +109,12 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
                 gap: '12px'
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                e.currentTarget.style.transform = 'none';
-                e.currentTarget.style.boxShadow = 'none';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
