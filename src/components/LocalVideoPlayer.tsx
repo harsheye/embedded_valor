@@ -1585,9 +1585,9 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       
       const containerType = (video.containerType || '').toLowerCase();
       const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
-      const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
+      const subDuration = isRemote ? (isMkv ? 300 : 60) : 300;
 
-      if (video.isRemote && activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
+      if (activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
         if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 5) {
           logger.player(`Playback crossed audio chunk boundary. Loading next chunk at ${currentTime}s.`);
           const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
@@ -1595,7 +1595,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       }
 
-      if (activeSubStreamIndex !== null && (isRemote || isMkv) && selectedSubTrack && selectedSubTrack.streamIndex === activeSubStreamIndex && (selectedSubTrack.url || selectedSubTrack.cues.length > 0)) {
+      if (activeSubStreamIndex !== null && selectedSubTrack && selectedSubTrack.streamIndex === activeSubStreamIndex && (selectedSubTrack.url || selectedSubTrack.cues.length > 0)) {
         if (currentTime - activeSubtitleStartOffsetRef.current > subDuration - 10) {
           logger.player(`Playback crossed subtitle chunk boundary. Loading next subtitles at ${currentTime}s.`);
           loadSubtitleChunk(currentTime, activeSubStreamIndex);
@@ -2354,8 +2354,8 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       currentTime: newTime
     });
 
-    // Chunk-based dynamic loading on seek (only for remote link plays)
-    if (video.isRemote && activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
+    // Chunk-based dynamic loading on seek
+    if (activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
@@ -2365,8 +2365,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           needLoad = true;
         }
       } else {
-        const isRemote = video.isRemote;
-        const audioDuration = isRemote ? 30 : 120;
+        const audioDuration = 30;
         if (newTime < activeAudioStartOffsetRef.current || newTime > activeAudioStartOffsetRef.current + audioDuration - 2) {
           needLoad = true;
         }
@@ -2382,7 +2381,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     const containerType = (video.containerType || '').toLowerCase();
     const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
 
-    if (activeSubStreamIndex !== null && (video.isRemote || isMkv) && !subDebounceTimeoutRef.current) {
+    if (activeSubStreamIndex !== null && !subDebounceTimeoutRef.current) {
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
@@ -2393,7 +2392,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       } else {
         const isRemote = video.isRemote;
-        const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
+        const subDuration = isRemote ? (isMkv ? 300 : 60) : 300;
         if (newTime < activeSubtitleStartOffsetRef.current || newTime > activeSubtitleStartOffsetRef.current + subDuration - 5) {
           needLoad = true;
         }
