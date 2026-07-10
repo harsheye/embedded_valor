@@ -384,12 +384,8 @@ export class PacketCache {
   }
 
   get(time: number): AudioPacket | null {
-    for (const packet of this.cache.values()) {
-      if (time >= packet.startTime && time < packet.endTime) {
-        return packet;
-      }
-    }
-    return null;
+    const key = Math.floor(time);
+    return this.cache.get(key) || null;
   }
 
   getAllPackets(): AudioPacket[] {
@@ -843,9 +839,6 @@ export class PlaybackQueue {
   ) {}
 
   update(currentTime: number, playbackRate: number): void {
-    const bufferedRanges = this.cache.getAllPackets().map(p => `${p.startTime}-${p.endTime.toFixed(1)}`).join(', ');
-    console.log(`[PlaybackQueue-${this.instanceId}] Buffered Ranges:`, bufferedRanges || 'none');
-    console.log(`[PlaybackQueue-${this.instanceId}] Audio Queue Size:`, this.scheduledTimes.size);
 
     // Reschedule any cached packets that fall within the upcoming 50-second window and are not yet scheduled
     const highWaterTarget = currentTime + 50;
@@ -1039,6 +1032,7 @@ export class PlaybackController {
   private heartbeatTickCount = 0;
 
   private runSchedulerCycle(callerName: string): void {
+    if (this.abortController.signal.aborted) return;
     if (!this.videoEl) return;
     const currentTime = this.videoEl.currentTime;
 
@@ -1050,7 +1044,7 @@ export class PlaybackController {
 
     if (callerName === 'heartbeat') {
       this.heartbeatTickCount++;
-      if (this.heartbeatTickCount % 4 === 0) {
+      if (this.heartbeatTickCount % 20 === 0) {
         const bufferedRanges = this.bufferManager.getCache().getAllPackets()
           .map(p => `${p.startTime}-${p.endTime.toFixed(1)}`).join(', ');
         console.log(`[PlaybackController-${this.instanceId}] Video Time: ${currentTime.toFixed(2)}, AudioContext Time: ${this.audioCtx.currentTime.toFixed(2)}, Queue Size: ${this.playbackQueue.getQueueSize()}, Buffered: [${bufferedRanges || 'none'}]`);
@@ -1148,6 +1142,7 @@ export class PlaybackController {
   }
 
   async play(): Promise<void> {
+    if (this.abortController.signal.aborted) return;
     if (!this.videoEl) return;
     if (this.isTransitioningState) return;
     this.isTransitioningState = true;
@@ -1160,6 +1155,11 @@ export class PlaybackController {
       this.scheduler.reset();
       this.playbackQueue.clear();
       this.manifest.clear();
+      // Sync manifest from cache
+      for (const packet of this.bufferManager.getCache().getAllPackets()) {
+        const chunkKey = Math.floor(packet.startTime / 10) * 10;
+        this.manifest.transitionTo(chunkKey, 'CACHED');
+      }
       this.fetchingKeys.clear();
       const currentTime = this.videoEl.currentTime;
       await this.fillBufferWindow(currentTime, 'play');
@@ -1173,6 +1173,7 @@ export class PlaybackController {
   }
 
   pause(): void {
+    if (this.abortController.signal.aborted) return;
     if (this.isTransitioningState) return;
     this.isTransitioningState = true;
 
@@ -1190,6 +1191,7 @@ export class PlaybackController {
   }
 
   async seek(time: number): Promise<void> {
+    if (this.abortController.signal.aborted) return;
     this.fetchingKeys.clear();
     this.playbackQueue.clear();
     this.manifest.clear();
@@ -1220,6 +1222,7 @@ export class PlaybackController {
   }
 
   async switchAudioTrack(streamIndex: number | null): Promise<void> {
+    if (this.abortController.signal.aborted) return;
     this.activeStreamIndex = typeof streamIndex === 'number' ? streamIndex : -1;
     console.log(`[PlaybackController-${this.instanceId}] switchAudioTrack called. streamIndex=${this.activeStreamIndex}`);
     this.fetchingKeys.clear();

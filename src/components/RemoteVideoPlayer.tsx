@@ -1763,7 +1763,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       localStorage.removeItem('valor_muted');
     }
 
-    const hasAlternateAudio = activeAudioStreamIndex !== null;
+    const hasAlternateAudio = audioStreams.length > 0 || audioTracks.length > 0;
 
     if (videoRef.current) {
       videoRef.current.volume = hasAlternateAudio ? 0 : volume;
