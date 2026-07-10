@@ -1887,6 +1887,113 @@ function App() {
       isPickerOpenRef.current = false;
     }
   };
+  const syncVideoToTraktHistory = async (video: VideoItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const savedSettings = localStorage.getItem('valor_settings');
+    if (!savedSettings) {
+      addToast("Trakt Sync: Settings not found", "error");
+      return;
+    }
+    try {
+      const parsed = JSON.parse(savedSettings);
+      const token = parsed.traktAccessToken;
+      if (!token) {
+        addToast("Trakt Sync: Please log in to Trakt.tv first", "warning");
+        return;
+      }
+
+      const seriesInfo = classifyVideoTitle(video.title);
+      const isTV = seriesInfo.type === 'series';
+      
+      let tmdbId = video.tmdbId;
+
+      if (!tmdbId) {
+        const tmdbToken = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
+        let searchUrl = "";
+        if (isTV && seriesInfo.seriesTitle) {
+          searchUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(seriesInfo.seriesTitle)}&include_adult=false`;
+        } else {
+          searchUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(seriesInfo.displayTitle || video.title)}&include_adult=false`;
+        }
+
+        const searchRes = await fetch(searchUrl, {
+          headers: {
+            'Authorization': `Bearer ${tmdbToken}`,
+            'accept': 'application/json'
+          }
+        });
+
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          if (searchData.results && searchData.results.length > 0) {
+            tmdbId = searchData.results[0].id;
+            handleUpdateVideo((prev) => ({ ...prev, tmdbId }), false, video.id, true);
+          }
+        }
+      }
+
+      const nowIso = new Date().toISOString();
+      const body: any = {};
+      if (isTV) {
+        if (!tmdbId) {
+          addToast("Trakt Sync: No TMDB ID resolved for series", "error");
+          return;
+        }
+        body.shows = [
+          {
+            ids: { tmdb: tmdbId },
+            seasons: [
+              {
+                number: seriesInfo.season || 1,
+                episodes: [
+                  {
+                    number: seriesInfo.episode || 1,
+                    watched_at: nowIso
+                  }
+                ]
+              }
+            ]
+          }
+        ];
+      } else {
+        body.movies = [
+          {
+            title: seriesInfo.displayTitle || video.title,
+            watched_at: nowIso,
+            ids: tmdbId ? { tmdb: tmdbId } : undefined
+          }
+        ];
+        if (!tmdbId && !seriesInfo.displayTitle) {
+          addToast("Trakt Sync: No title or TMDB ID resolved", "error");
+          return;
+        }
+      }
+
+      addToast("Syncing watch history to Trakt.tv...", "success");
+      const res = await fetch('https://api.trakt.tv/sync/history', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+          'trakt-api-version': '2'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        addToast(`Trakt Sync: Added ${resData.added?.movies || resData.added?.episodes || 1} item to history`, "success");
+        handleUpdateVideo((prev) => ({ ...prev, hasScrobbledTrakt: true }), false, video.id, true);
+      } else {
+        const errText = await res.text();
+        addToast(`Trakt Sync Failed: ${res.status} - ${errText.substring(0, 40)}`, "error");
+      }
+    } catch (err) {
+      console.error(err);
+      addToast("Trakt Sync Error: Connection failed", "error");
+    }
+  };
 
   const handleRemoveVideo = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2708,6 +2815,30 @@ function App() {
                                   <span>Select Media</span>
                                 </>
                               )}
+                            </button>
+                            <button 
+                              className={`btn btn-sm ${video.hasScrobbledTrakt ? 'btn-secondary' : 'btn-outline-danger'}`}
+                              onClick={(e) => syncVideoToTraktHistory(video, e)}
+                              style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '4px',
+                                background: video.hasScrobbledTrakt ? 'rgba(255,255,255,0.05)' : 'rgba(229, 9, 20, 0.1)',
+                                color: video.hasScrobbledTrakt ? '#888' : '#e50914',
+                                border: video.hasScrobbledTrakt ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e50914',
+                                padding: '0.4rem 0.8rem',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                opacity: video.hasScrobbledTrakt ? 0.6 : 1
+                              }}
+                              title={video.hasScrobbledTrakt ? "Already Synced to Trakt.tv" : "Sync watched status to Trakt.tv"}
+                              disabled={video.hasScrobbledTrakt}
+                            >
+                              <Film size={12} fill={video.hasScrobbledTrakt ? "#888" : "none"} />
+                              <span>Trakt</span>
                             </button>
                             <button 
                               className="btn-remove-history" 

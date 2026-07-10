@@ -51,6 +51,7 @@ export interface VideoItem {
   timeToFinish?: number;
   bookmarks?: Bookmark[];
   tmdbId?: number;
+  hasScrobbledTrakt?: boolean;
 }
 
 export interface Bookmark {
