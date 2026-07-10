@@ -2448,7 +2448,10 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Helper to compile audio options
   const getAudioOptions = () => {
-    const list: any[] = [{ type: 'original', name: 'Original', track: null }];
+    const list: any[] = [];
+    if (audioStreams.length === 0 && audioTracks.length === 0) {
+      list.push({ type: 'original', name: 'Original', track: null });
+    }
     audioStreams.forEach((s) => {
       const label = getLangLabel(s.language, `Track #${s.index}`);
       list.push({
@@ -3236,8 +3239,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         const targetAudio = settings.defaultAudio || 'ENG';
         const targetSub = settings.defaultSub || 'ENG';
 
-        // Auto-select audio stream (only for remote link plays)
-        if (video.isRemote && targetAudio !== 'Original' && !selectedAudioTrack) {
+        // Auto-select audio stream (for both local and remote)
+        if (targetAudio !== 'Original' && !selectedAudioTrack) {
           const stream = audioStreams.find(s => (
             targetAudio === 'ENG' ? (s.language?.toLowerCase() === 'eng' || s.language?.toLowerCase() === 'en') :
             targetAudio === 'JAP' ? (s.language?.toLowerCase() === 'jpn' || s.language?.toLowerCase() === 'ja') :
@@ -3250,9 +3253,9 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         }
 
-        // Always auto-select the first audio track when available (only for remote link plays)
+        // Always auto-select the first audio track when available (for both local and remote)
         // Browser native decoding from MKV container is unreliable, so always extract via FFmpeg
-        if (video.isRemote && !selectedAudioTrack && audioStreams.length > 0) {
+        if (!selectedAudioTrack && audioStreams.length > 0) {
           const firstAudio = audioStreams[0];
           logger.player(`Auto-selecting first audio track: ${firstAudio.language || 'unknown'} (${firstAudio.codec})`);
           handleSelectEmbeddedAudio(firstAudio.index, firstAudio.codec, firstAudio.language);

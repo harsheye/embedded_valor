@@ -346,6 +346,16 @@ export class PacketReader {
     
     // Web Audio decoding
     const buffer = await this.audioCtx.decodeAudioData(wavBytes.buffer.slice(0));
+
+    // Print first 10 non-zero samples from channel 0 to verify data
+    const channelData = buffer.getChannelData(0);
+    const nonZeroSamples: number[] = [];
+    for (let i = 0; i < channelData.length && nonZeroSamples.length < 10; i++) {
+      if (channelData[i] !== 0) {
+        nonZeroSamples.push(channelData[i]);
+      }
+    }
+    console.log(`[PacketReader] First non-zero samples for chunk ${startTime}s: [${nonZeroSamples.join(', ')}]`);
     
     return {
       startTime,
@@ -685,6 +695,7 @@ export type ChunkState =
   | 'COOLDOWN';
 
 export class ChunkManifest {
+  public readonly instanceId = Math.random().toString(36).substring(7);
   private states = new Map<number, ChunkState>();
 
   private static LEGAL_TRANSITIONS: Record<ChunkState, ChunkState[]> = {
@@ -692,7 +703,7 @@ export class ChunkManifest {
     FETCHING: ['DECODED', 'FAILED'],
     DECODED: ['CACHED'],
     CACHED: ['QUEUED', 'EVICTABLE', 'EMPTY'],
-    QUEUED: ['PLAYING', 'EVICTABLE', 'EMPTY'],
+    QUEUED: ['PLAYING', 'EVICTABLE', 'EMPTY', 'PLAYED'],
     PLAYING: ['PLAYED', 'EVICTABLE', 'EMPTY'],
     PLAYED: ['EVICTABLE', 'EMPTY'],
     EVICTABLE: ['REMOVED', 'EMPTY'],
@@ -712,11 +723,11 @@ export class ChunkManifest {
     const allowed = ChunkManifest.LEGAL_TRANSITIONS[currentState];
     if (!allowed || !allowed.includes(nextState)) {
       console.warn(
-        `[ChunkManifest] Invalid chunk state transition: chunk ${chunkKey}s, ${currentState} -> ${nextState}`
+        `[ChunkManifest-${this.instanceId}] Invalid chunk state transition: chunk ${chunkKey}s, ${currentState} -> ${nextState}`
       );
     }
 
-    console.log(`[ChunkManifest] Chunk ${chunkKey}s: ${currentState} -> ${nextState}`);
+    console.log(`[ChunkManifest-${this.instanceId}] Chunk ${chunkKey}s: ${currentState} -> ${nextState}`);
     this.states.set(chunkKey, nextState);
   }
 
@@ -726,6 +737,7 @@ export class ChunkManifest {
 }
 
 export class AudioScheduler {
+  public readonly instanceId = Math.random().toString(36).substring(7);
   private activeNodes: { node: AudioBufferSourceNode; startTime: number; endTime: number }[] = [];
 
   constructor(private audioCtx: AudioContext, private gainNode: GainNode) {}
@@ -742,7 +754,7 @@ export class AudioScheduler {
     source.buffer = packet.buffer;
     source.playbackRate.value = playbackRate;
     source.connect(this.gainNode);
-    console.log(`[AudioScheduler] Created new AudioBufferSourceNode for chunk starting at ${packet.startTime}s: YES`);
+    console.log(`[AudioScheduler-${this.instanceId}] Created new AudioBufferSourceNode for chunk starting at ${packet.startTime}s: YES`);
 
     // Math: when to start audio source relative to AudioContext.currentTime
     const timeDelta = packet.startTime - currentTime;
@@ -750,6 +762,7 @@ export class AudioScheduler {
     const audioStartTime = this.audioCtx.currentTime + (timeDelta > 0 ? timeDelta / playbackRate : 0);
 
     console.log({
+      instanceId: this.instanceId,
       chunk: packet.startTime,
       audioContextState: this.audioCtx.state,
       currentAudioTime: this.audioCtx.currentTime,
@@ -759,7 +772,7 @@ export class AudioScheduler {
     });
 
     source.onended = () => {
-      console.log("Chunk ended:", packet.startTime);
+      console.log(`[AudioScheduler-${this.instanceId}] Chunk ended:`, packet.startTime);
     };
 
     source.start(audioStartTime, playOffset);
@@ -769,21 +782,21 @@ export class AudioScheduler {
       startTime: packet.startTime,
       endTime: packet.endTime
     });
-    console.log(`[AudioScheduler] Active Sources: ${this.activeNodes.length}`);
+    console.log(`[AudioScheduler-${this.instanceId}] Active Sources: ${this.activeNodes.length}`);
   }
 
   stopAll(): void {
-    console.log(`[AudioScheduler] stopAll called. Stopping ${this.activeNodes.length} active nodes.`);
+    console.log(`[AudioScheduler-${this.instanceId}] stopAll called. Stopping ${this.activeNodes.length} active nodes.`);
     for (const active of this.activeNodes) {
       try {
-        console.log(`[AudioScheduler] source.stop() called for chunk starting at ${active.startTime}s: YES`);
+        console.log(`[AudioScheduler-${this.instanceId}] source.stop() called for chunk starting at ${active.startTime}s: YES`);
         active.node.stop();
       } catch (e: any) {
-        console.log(`[AudioScheduler] source.stop() failed or already stopped for chunk starting at ${active.startTime}s: ${e.message}`);
+        console.log(`[AudioScheduler-${this.instanceId}] source.stop() failed or already stopped for chunk starting at ${active.startTime}s: ${e.message}`);
       }
     }
     this.activeNodes = [];
-    console.log(`[AudioScheduler] Active Sources: 0`);
+    console.log(`[AudioScheduler-${this.instanceId}] Active Sources: 0`);
   }
 
   evictPlayed(currentTime: number): number[] {
@@ -820,6 +833,7 @@ export class AudioScheduler {
 }
 
 export class PlaybackQueue {
+  public readonly instanceId = Math.random().toString(36).substring(7);
   private scheduledTimes = new Set<number>();
 
   constructor(
@@ -830,22 +844,22 @@ export class PlaybackQueue {
 
   update(currentTime: number, playbackRate: number): void {
     const bufferedRanges = this.cache.getAllPackets().map(p => `${p.startTime}-${p.endTime.toFixed(1)}`).join(', ');
-    console.log("Buffered Ranges:", bufferedRanges || 'none');
-    console.log("Audio Queue Size:", this.scheduledTimes.size);
+    console.log(`[PlaybackQueue-${this.instanceId}] Buffered Ranges:`, bufferedRanges || 'none');
+    console.log(`[PlaybackQueue-${this.instanceId}] Audio Queue Size:`, this.scheduledTimes.size);
 
     // Reschedule any cached packets that fall within the upcoming 50-second window and are not yet scheduled
     const highWaterTarget = currentTime + 50;
     const cachedPackets = this.cache.getAllPackets();
     for (const packet of cachedPackets) {
-      if (packet.startTime >= currentTime - 2 && packet.startTime < highWaterTarget) {
+      if (packet.endTime > currentTime && packet.startTime < highWaterTarget) {
         const chunkKey = Math.floor(packet.startTime / 10) * 10;
         if (!this.scheduledTimes.has(chunkKey)) {
           this.scheduledTimes.add(chunkKey);
           
           this.manifest.transitionTo(chunkKey, 'QUEUED');
-          console.log("Scheduling Audio:", chunkKey);
+          console.log(`[PlaybackQueue-${this.instanceId}] Scheduling Audio:`, chunkKey);
           this.audioScheduler.schedule(packet, currentTime, playbackRate);
-          console.log(`[PlaybackQueue] Scheduled cached chunk ${chunkKey}s on-the-fly.`);
+          console.log(`[PlaybackQueue-${this.instanceId}] Scheduled cached chunk ${chunkKey}s on-the-fly.`);
         }
       }
     }
@@ -920,6 +934,8 @@ export class PlaybackController {
   private sessionId = '';
   private heartbeatIntervalId: any = null;
   private isTransitioningState = false;
+  private listenersBound = false;
+  public readonly instanceId = Math.random().toString(36).substring(7);
 
   private onBufferingChange: ((buffering: boolean) => void) | null = null;
   private gainNode: GainNode;
@@ -932,6 +948,7 @@ export class PlaybackController {
     this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     this.packetReader = new PacketReader(this.demuxMgr, this.audioCtx);
     this.bufferManager = new BufferManager(this.packetReader, (buffering) => {
+      console.log(`[PlaybackController-${this.instanceId}] BufferManager callback triggered: buffering=${buffering}`);
       if (this.onBufferingChange) {
         this.onBufferingChange(buffering);
       }
@@ -942,6 +959,7 @@ export class PlaybackController {
 
     this.audioScheduler = new AudioScheduler(this.audioCtx, this.gainNode);
     this.playbackQueue = new PlaybackQueue(this.bufferManager.getCache(), this.audioScheduler, this.manifest);
+    console.log(`[PlaybackController-${this.instanceId}] Created controller instance.`);
   }
 
   getBufferManager(): BufferManager {
@@ -958,32 +976,39 @@ export class PlaybackController {
     this.activeStreamIndex = typeof streamIndex === 'number' ? streamIndex : -1;
     this.bufferManager.resetFailures();
     this.sessionId = Math.random().toString(36).substring(7);
+    console.log(`[PlaybackController-${this.instanceId}] Initializing controller. session=${this.sessionId}, track=${this.activeStreamIndex}`);
 
     this.ff = await this.ffmpegMgr.load();
     if (this.abortController.signal.aborted) {
-      console.log(`[PlaybackController] Init aborted during ffmpeg load.`);
+      console.log(`[PlaybackController-${this.instanceId}] Init aborted during ffmpeg load.`);
       return;
     }
 
     await this.demuxMgr.getMountedInputPath(this.ff);
     if (this.abortController.signal.aborted) {
-      console.log(`[PlaybackController] Init aborted during demux mount.`);
+      console.log(`[PlaybackController-${this.instanceId}] Init aborted during demux mount.`);
       return;
     }
 
-    // Bind event listeners
-    this.videoEl.addEventListener('timeupdate', this.onTimeUpdate);
-    this.videoEl.addEventListener('play', this.onPlayEvent);
-    this.videoEl.addEventListener('pause', this.onPauseEvent);
+    // Bind event listeners only if we are still active
+    if (!this.abortController.signal.aborted) {
+      this.videoEl.addEventListener('timeupdate', this.onTimeUpdate);
+      this.videoEl.addEventListener('play', this.onPlayEvent);
+      this.videoEl.addEventListener('pause', this.onPauseEvent);
+      this.listenersBound = true;
+      console.log(`[PlaybackController-${this.instanceId}] Event listeners bound to video element.`);
+    }
   }
 
   setBufferingCallback(cb: (buffering: boolean) => void): void {
+    console.log(`[PlaybackController-${this.instanceId}] setBufferingCallback registered.`);
     this.onBufferingChange = cb;
     this.bufferManager.setBufferingCallback(cb);
   }
 
   private startHeartbeat(): void {
     if (this.heartbeatIntervalId) return;
+    console.log(`[PlaybackController-${this.instanceId}] Starting heartbeat safety net timer.`);
     this.heartbeatIntervalId = setInterval(() => {
       this.runSchedulerCycle('heartbeat');
     }, 250);
@@ -991,6 +1016,7 @@ export class PlaybackController {
 
   private stopHeartbeat(): void {
     if (this.heartbeatIntervalId) {
+      console.log(`[PlaybackController-${this.instanceId}] Stopping heartbeat safety net timer.`);
       clearInterval(this.heartbeatIntervalId);
       this.heartbeatIntervalId = null;
     }
@@ -1001,12 +1027,12 @@ export class PlaybackController {
   };
 
   private onPlayEvent = () => {
-    console.log("[PlaybackController] Native play event detected.");
+    console.log(`[PlaybackController-${this.instanceId}] Native play event detected.`);
     this.play().catch(console.error);
   };
 
   private onPauseEvent = () => {
-    console.log("[PlaybackController] Native pause event detected.");
+    console.log(`[PlaybackController-${this.instanceId}] Native pause event detected.`);
     this.pause();
   };
 
@@ -1027,7 +1053,7 @@ export class PlaybackController {
       if (this.heartbeatTickCount % 4 === 0) {
         const bufferedRanges = this.bufferManager.getCache().getAllPackets()
           .map(p => `${p.startTime}-${p.endTime.toFixed(1)}`).join(', ');
-        console.log(`Video Time: ${currentTime.toFixed(2)}, AudioContext Time: ${this.audioCtx.currentTime.toFixed(2)}, Queue Size: ${this.playbackQueue.getQueueSize()}, Buffered: [${bufferedRanges || 'none'}]`);
+        console.log(`[PlaybackController-${this.instanceId}] Video Time: ${currentTime.toFixed(2)}, AudioContext Time: ${this.audioCtx.currentTime.toFixed(2)}, Queue Size: ${this.playbackQueue.getQueueSize()}, Buffered: [${bufferedRanges || 'none'}]`);
       }
     }
 
@@ -1048,7 +1074,7 @@ export class PlaybackController {
     // PROXIMITY SORTING: nearest chunks to current playback time have highest priority
     missing.sort((a, b) => Math.abs(a - currentTime) - Math.abs(b - currentTime));
 
-    console.log(`[PlaybackController] [${new Date().toISOString()}] fillBufferWindow called by '${callerName}'. Missing targets: [${missing.join(', ')}]`);
+    console.log(`[PlaybackController-${this.instanceId}] [${new Date().toISOString()}] fillBufferWindow called by '${callerName}'. Missing targets: [${missing.join(', ')}]`);
 
     const chunkSize = 10;
     const activeSession = this.sessionId;
@@ -1069,7 +1095,7 @@ export class PlaybackController {
       this.manifest.transitionTo(target, 'FETCHING');
 
       try {
-        console.log(`[PlaybackController] Requesting chunk starting at ${target}s`);
+        console.log(`[PlaybackController-${this.instanceId}] Requesting chunk starting at ${target}s`);
         const packet = await this.bufferManager.getOrFetchPacket(
           this.ff!,
           this.activeStreamIndex,
@@ -1080,8 +1106,9 @@ export class PlaybackController {
         );
 
         // Discard result if session changed during async await
+        // Discard result if session changed during async await
         if (this.sessionId !== activeSession || this.abortController.signal.aborted) {
-          console.log(`[PlaybackController] Discarding fetched chunk ${target}s due to session ID change.`);
+          console.log(`[PlaybackController-${this.instanceId}] Discarding fetched chunk ${target}s due to session ID change.`);
           return;
         }
 
@@ -1098,7 +1125,7 @@ export class PlaybackController {
           this.playbackQueue.update(this.videoEl.currentTime, this.playbackRate);
         }
       } catch (err: any) {
-        console.warn(`[PlaybackController] Buffering chunk ${target} failed: ${err?.message || err}`);
+        console.warn(`[PlaybackController-${this.instanceId}] Buffering chunk ${target} failed: ${err?.message || err}`);
         
         this.manifest.transitionTo(target, 'FAILED');
         this.manifest.transitionTo(target, 'COOLDOWN');
@@ -1126,7 +1153,7 @@ export class PlaybackController {
     this.isTransitioningState = true;
 
     try {
-      console.log("[PlaybackController] Playback State: PLAYING");
+      console.log(`[PlaybackController-${this.instanceId}] Playback State: PLAYING`);
       await this.audioScheduler.resume();
 
       this.bufferManager.resetFailures();
@@ -1150,7 +1177,7 @@ export class PlaybackController {
     this.isTransitioningState = true;
 
     try {
-      console.log("[PlaybackController] Playback State: PAUSED");
+      console.log(`[PlaybackController-${this.instanceId}] Playback State: PAUSED`);
       if (this.videoEl) {
         this.videoEl.pause();
       }
@@ -1194,6 +1221,7 @@ export class PlaybackController {
 
   async switchAudioTrack(streamIndex: number | null): Promise<void> {
     this.activeStreamIndex = typeof streamIndex === 'number' ? streamIndex : -1;
+    console.log(`[PlaybackController-${this.instanceId}] switchAudioTrack called. streamIndex=${this.activeStreamIndex}`);
     this.fetchingKeys.clear();
     this.playbackQueue.clear();
     this.manifest.clear();
@@ -1209,12 +1237,15 @@ export class PlaybackController {
   }
 
   async destroy(): Promise<void> {
+    console.log(`[PlaybackController-${this.instanceId}] destroy called.`);
     this.abortController.abort();
     this.stopHeartbeat();
-    if (this.videoEl) {
+    if (this.videoEl && this.listenersBound) {
       this.videoEl.removeEventListener('timeupdate', this.onTimeUpdate);
       this.videoEl.removeEventListener('play', this.onPlayEvent);
       this.videoEl.removeEventListener('pause', this.onPauseEvent);
+      this.listenersBound = false;
+      console.log(`[PlaybackController-${this.instanceId}] Event listeners removed from video element.`);
     }
     this.fetchingKeys.clear();
     this.playbackQueue.clear();
