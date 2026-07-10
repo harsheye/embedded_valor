@@ -749,6 +749,19 @@ export class AudioScheduler {
     const playOffset = Math.max(0, currentTime - packet.startTime);
     const audioStartTime = this.audioCtx.currentTime + (timeDelta > 0 ? timeDelta / playbackRate : 0);
 
+    console.log({
+      chunk: packet.startTime,
+      audioContextState: this.audioCtx.state,
+      currentAudioTime: this.audioCtx.currentTime,
+      scheduledStartTime: audioStartTime,
+      bufferDuration: packet.buffer.duration,
+      gain: this.gainNode.gain.value
+    });
+
+    source.onended = () => {
+      console.log("Chunk ended:", packet.startTime);
+    };
+
     source.start(audioStartTime, playOffset);
 
     this.activeNodes.push({
@@ -906,6 +919,7 @@ export class PlaybackController {
   private manifest = new ChunkManifest();
   private sessionId = '';
   private heartbeatIntervalId: any = null;
+  private isTransitioningState = false;
 
   private onBufferingChange: ((buffering: boolean) => void) | null = null;
   private gainNode: GainNode;
@@ -959,6 +973,8 @@ export class PlaybackController {
 
     // Bind event listeners
     this.videoEl.addEventListener('timeupdate', this.onTimeUpdate);
+    this.videoEl.addEventListener('play', this.onPlayEvent);
+    this.videoEl.addEventListener('pause', this.onPauseEvent);
   }
 
   setBufferingCallback(cb: (buffering: boolean) => void): void {
@@ -982,6 +998,16 @@ export class PlaybackController {
 
   private onTimeUpdate = () => {
     this.runSchedulerCycle('timeupdate');
+  };
+
+  private onPlayEvent = () => {
+    console.log("[PlaybackController] Native play event detected.");
+    this.play().catch(console.error);
+  };
+
+  private onPauseEvent = () => {
+    console.log("[PlaybackController] Native pause event detected.");
+    this.pause();
   };
 
   private heartbeatTickCount = 0;
@@ -1096,31 +1122,44 @@ export class PlaybackController {
 
   async play(): Promise<void> {
     if (!this.videoEl) return;
+    if (this.isTransitioningState) return;
+    this.isTransitioningState = true;
 
-    console.log("[PlaybackController] Playback State: PLAYING");
-    await this.audioScheduler.resume();
+    try {
+      console.log("[PlaybackController] Playback State: PLAYING");
+      await this.audioScheduler.resume();
 
-    this.bufferManager.resetFailures();
-    this.scheduler.reset();
-    this.playbackQueue.clear();
-    this.manifest.clear();
-    this.fetchingKeys.clear();
-    const currentTime = this.videoEl.currentTime;
-    await this.fillBufferWindow(currentTime, 'play');
-    this.playbackQueue.update(currentTime, this.playbackRate);
-    this.startHeartbeat();
+      this.bufferManager.resetFailures();
+      this.scheduler.reset();
+      this.playbackQueue.clear();
+      this.manifest.clear();
+      this.fetchingKeys.clear();
+      const currentTime = this.videoEl.currentTime;
+      await this.fillBufferWindow(currentTime, 'play');
+      this.playbackQueue.update(currentTime, this.playbackRate);
+      this.startHeartbeat();
 
-    await this.videoEl.play();
+      await this.videoEl.play();
+    } finally {
+      this.isTransitioningState = false;
+    }
   }
 
   pause(): void {
-    console.log("[PlaybackController] Playback State: PAUSED");
-    if (this.videoEl) {
-      this.videoEl.pause();
+    if (this.isTransitioningState) return;
+    this.isTransitioningState = true;
+
+    try {
+      console.log("[PlaybackController] Playback State: PAUSED");
+      if (this.videoEl) {
+        this.videoEl.pause();
+      }
+      this.stopHeartbeat();
+      this.playbackQueue.clear();
+      this.audioScheduler.suspend().catch(console.error);
+    } finally {
+      this.isTransitioningState = false;
     }
-    this.stopHeartbeat();
-    this.playbackQueue.clear();
-    this.audioScheduler.suspend().catch(console.error);
   }
 
   async seek(time: number): Promise<void> {
@@ -1174,6 +1213,8 @@ export class PlaybackController {
     this.stopHeartbeat();
     if (this.videoEl) {
       this.videoEl.removeEventListener('timeupdate', this.onTimeUpdate);
+      this.videoEl.removeEventListener('play', this.onPlayEvent);
+      this.videoEl.removeEventListener('pause', this.onPauseEvent);
     }
     this.fetchingKeys.clear();
     this.playbackQueue.clear();
