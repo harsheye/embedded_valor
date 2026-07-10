@@ -3196,7 +3196,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Periodically save current playback position to parent state
   useEffect(() => {
-    const intervalMs = (historySaveInterval || 5) * 1000;
+    const intervalMs = Math.max(5, historySaveInterval || 5) * 1000;
     const interval = setInterval(() => {
       if (videoRef.current && !videoRef.current.paused) {
         const exitTime = Date.now();

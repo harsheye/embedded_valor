@@ -996,7 +996,14 @@ export class PlaybackController {
   setBufferingCallback(cb: (buffering: boolean) => void): void {
     console.log(`[PlaybackController-${this.instanceId}] setBufferingCallback registered.`);
     this.onBufferingChange = cb;
-    this.bufferManager.setBufferingCallback(cb);
+    this.bufferManager.setBufferingCallback((bmBuffering) => {
+      if (!this.videoEl) {
+        cb(bmBuffering);
+        return;
+      }
+      const needsBuffering = bmBuffering && this.scheduler.shouldBuffer(this.videoEl.currentTime);
+      cb(needsBuffering);
+    });
   }
 
   private startHeartbeat(): void {

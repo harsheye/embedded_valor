@@ -694,6 +694,7 @@ function App() {
   const isPickerOpenRef = useRef(false);
   const lastHistorySyncTimeRef = useRef<number>(0);
   const historySyncTimeoutRef = useRef<any>(null);
+  const saveTimeoutRef = useRef<any>(null);
   const loadedVideosUserIdRef = useRef<string | null>(localStorage.getItem('valor_active_user_id') || 'local');
 
   const defaultSettings = {
@@ -1275,129 +1276,142 @@ function App() {
     }
   }, [videos, settings.historyLimit]);
 
-  const saveVideosToStorage = async (videoList: VideoItem[], forceSync = false) => {
-    try {
-      const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
-      console.log('[VALOR HISTORY SAVE] saveVideosToStorage called. videosKey:', videosKey, 'videosLength:', videoList.length, 'saveHistorySetting:', settings.saveHistory, 'loadedVideosUserId:', loadedVideosUserIdRef.current, 'activeSettingsUserId:', settings.userId);
-      if (loadedVideosUserIdRef.current !== settings.userId) {
-        console.log('[VALOR HISTORY SAVE] Aborting save. loadedVideosUserIdRef:', loadedVideosUserIdRef.current, 'does not match active settings.userId:', settings.userId);
-        return;
-      }
-      if (!settings.saveHistory) {
-        localStorage.removeItem(videosKey);
-        localStorage.removeItem('valor_last_playing_id');
-        return;
-      }
+  const saveVideosToStorage = (videoList: VideoItem[], forceSync = false) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
 
-      const limit = settings.historyLimit;
-      let targetVideos = videoList;
-      if (limit !== 'Infinite' && typeof limit === 'number') {
-        targetVideos = videoList.slice(0, limit);
-      }
-      const serialized = targetVideos.map(v => ({
-        id: v.id,
-        title: v.title,
-        url: v.type === 'url' ? v.url : '',
-        type: v.type,
-        fileName: v.file ? v.file.name : (v as any).fileName,
-        duration: v.duration,
-        format: v.format,
-        streams: v.streams,
-        audioTracks: (v.audioTracks || []).map(t => ({
-          id: t.id,
-          name: t.name,
-          url: t.isExtracted ? '' : t.url,
-          isExtracted: t.isExtracted,
-          streamIndex: t.streamIndex,
-          language: t.language,
-          codec: t.codec
-        })),
-        subtitleTracks: (v.subtitleTracks || []).map(t => ({
-          id: t.id,
-          name: t.name,
-          url: t.isExtracted ? '' : t.url,
-          cues: [],
-          isExtracted: t.isExtracted,
-          streamIndex: t.streamIndex,
-          language: t.language,
-          format: t.format
-        })),
-        currentTime: v.currentTime || 0,
-        lastPlayedDate: v.lastPlayedDate,
-        totalTimeWatched: (v as any).totalTimeWatched,
-        rating: (v as any).rating,
-        timeToFinish: (v as any).timeToFinish,
-        localFilePath: v.localFilePath,
-        playedDates: v.playedDates,
-        bookmarks: v.bookmarks || [],
-        tmdbId: v.tmdbId,
-        hasScrobbledTrakt: v.hasScrobbledTrakt
-      }));
+    const performSave = async () => {
+      try {
+        const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
+        console.log('[VALOR HISTORY SAVE] saveVideosToStorage called. videosKey:', videosKey, 'videosLength:', videoList.length, 'saveHistorySetting:', settings.saveHistory, 'loadedVideosUserId:', loadedVideosUserIdRef.current, 'activeSettingsUserId:', settings.userId);
+        if (loadedVideosUserIdRef.current !== settings.userId) {
+          console.log('[VALOR HISTORY SAVE] Aborting save. loadedVideosUserIdRef:', loadedVideosUserIdRef.current, 'does not match active settings.userId:', settings.userId);
+          return;
+        }
+        if (!settings.saveHistory) {
+          localStorage.removeItem(videosKey);
+          localStorage.removeItem('valor_last_playing_id');
+          return;
+        }
 
-      // Sync to backend file if storageMode is file
-      if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
-        const saveHistoryMut = `
-          mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
-            saveHistory(userId: $userId, history: $history) {
-              success
+        const limit = settings.historyLimit;
+        let targetVideos = videoList;
+        if (limit !== 'Infinite' && typeof limit === 'number') {
+          targetVideos = videoList.slice(0, limit);
+        }
+        const serialized = targetVideos.map(v => ({
+          id: v.id,
+          title: v.title,
+          url: v.type === 'url' ? v.url : '',
+          type: v.type,
+          fileName: v.file ? v.file.name : (v as any).fileName,
+          duration: v.duration,
+          format: v.format,
+          streams: v.streams,
+          audioTracks: (v.audioTracks || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            url: t.isExtracted ? '' : t.url,
+            isExtracted: t.isExtracted,
+            streamIndex: t.streamIndex,
+            language: t.language,
+            codec: t.codec
+          })),
+          subtitleTracks: (v.subtitleTracks || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            url: t.isExtracted ? '' : t.url,
+            cues: [],
+            isExtracted: t.isExtracted,
+            streamIndex: t.streamIndex,
+            language: t.language,
+            format: t.format
+          })),
+          currentTime: v.currentTime || 0,
+          lastPlayedDate: v.lastPlayedDate,
+          totalTimeWatched: (v as any).totalTimeWatched,
+          rating: (v as any).rating,
+          timeToFinish: (v as any).timeToFinish,
+          localFilePath: v.localFilePath,
+          playedDates: v.playedDates,
+          bookmarks: v.bookmarks || [],
+          tmdbId: v.tmdbId,
+          hasScrobbledTrakt: v.hasScrobbledTrakt
+        }));
+
+        // Sync to backend file if storageMode is file
+        if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
+          const saveHistoryMut = `
+            mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
+              saveHistory(userId: $userId, history: $history) {
+                success
+              }
             }
-          }
-        `;
+          `;
 
-        if (forceSync) {
-          if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-          lastHistorySyncTimeRef.current = Date.now();
-          gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-            .catch(err => console.error('Failed to force sync history via GraphQL:', err));
-        } else {
-          const now = Date.now();
-          if (now - lastHistorySyncTimeRef.current > 10000) {
-            lastHistorySyncTimeRef.current = now;
+          if (forceSync) {
             if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
+            lastHistorySyncTimeRef.current = Date.now();
             gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-              .catch(err => console.error('Failed to sync history via GraphQL:', err));
+              .catch(err => console.error('Failed to force sync history via GraphQL:', err));
           } else {
-            if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-            historySyncTimeoutRef.current = setTimeout(() => {
-              lastHistorySyncTimeRef.current = Date.now();
+            const now = Date.now();
+            if (now - lastHistorySyncTimeRef.current > 10000) {
+              lastHistorySyncTimeRef.current = now;
+              if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
               gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
                 .catch(err => console.error('Failed to sync history via GraphQL:', err));
-            }, 10000);
-          }
-        }
-      }
-
-      try {
-        localStorage.setItem(videosKey, JSON.stringify(serialized));
-      } catch (err: any) {
-        if (err.name === 'QuotaExceededError' || err.code === 22) {
-          console.warn('LocalStorage quota exceeded. Evicting older video history...');
-          let currentList = [...serialized];
-          while (currentList.length > 1) {
-            currentList.pop();
-            try {
-              localStorage.setItem(videosKey, JSON.stringify(currentList));
-              if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
-                const saveHistoryMut = `
-                  mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
-                    saveHistory(userId: $userId, history: $history) {
-                      success
-                    }
-                  }
-                `;
-                gqlFetch(saveHistoryMut, { userId: settings.userId, history: currentList }).catch(() => {});
-              }
-              break;
-            } catch (retryErr) {
-              // keep popping
+            } else {
+              if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
+              historySyncTimeoutRef.current = setTimeout(() => {
+                lastHistorySyncTimeRef.current = Date.now();
+                gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
+                  .catch(err => console.error('Failed to sync history via GraphQL:', err));
+              }, 10000);
             }
           }
-        } else {
-          console.error('Failed to save videos to localStorage:', err);
         }
+
+        try {
+          localStorage.setItem(videosKey, JSON.stringify(serialized));
+        } catch (err: any) {
+          if (err.name === 'QuotaExceededError' || err.code === 22) {
+            console.warn('LocalStorage quota exceeded. Evicting older video history...');
+            let currentList = [...serialized];
+            while (currentList.length > 1) {
+              currentList.pop();
+              try {
+                localStorage.setItem(videosKey, JSON.stringify(currentList));
+                if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
+                  const saveHistoryMut = `
+                    mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
+                      saveHistory(userId: $userId, history: $history) {
+                        success
+                      }
+                    }
+                  `;
+                  gqlFetch(saveHistoryMut, { userId: settings.userId, history: currentList }).catch(() => {});
+                }
+                break;
+              } catch (retryErr) {
+                // keep popping
+              }
+            }
+          } else {
+            console.error('Failed to save videos to localStorage:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to serialize videos for localStorage:', err);
       }
-    } catch (err) {
-      console.error('Failed to serialize videos for localStorage:', err);
+    };
+
+    if (forceSync) {
+      performSave();
+    } else {
+      saveTimeoutRef.current = setTimeout(performSave, 500);
     }
   };
 
