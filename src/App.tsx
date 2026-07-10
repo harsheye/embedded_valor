@@ -848,6 +848,10 @@ function App() {
   const [removeTargetProfile, setRemoveTargetProfile] = useState<any | null>(null);
   const [removePasswordText, setRemovePasswordText] = useState('');
   const [removeError, setRemoveError] = useState('');
+
+  // Rewatch Confirmation Modal state
+  const [isRewatchModalOpen, setIsRewatchModalOpen] = useState(false);
+  const [rewatchVideoTarget, setRewatchVideoTarget] = useState<VideoItem | null>(null);
   const [hiddenProfileIds, setHiddenProfileIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('valor_hidden_profile_ids');
@@ -1325,7 +1329,9 @@ function App() {
         timeToFinish: (v as any).timeToFinish,
         localFilePath: v.localFilePath,
         playedDates: v.playedDates,
-        bookmarks: v.bookmarks || []
+        bookmarks: v.bookmarks || [],
+        tmdbId: v.tmdbId,
+        hasScrobbledTrakt: v.hasScrobbledTrakt
       }));
 
       // Sync to backend file if storageMode is file
@@ -1885,8 +1891,13 @@ function App() {
       isPickerOpenRef.current = false;
     }
   };
-  const syncVideoToTraktHistory = async (video: VideoItem, e?: React.MouseEvent) => {
+  const syncVideoToTraktHistory = async (video: VideoItem, e?: React.MouseEvent, ignoreCheck = false) => {
     if (e) e.stopPropagation();
+    if (video.hasScrobbledTrakt && !ignoreCheck) {
+      setRewatchVideoTarget(video);
+      setIsRewatchModalOpen(true);
+      return;
+    }
     try {
       const token = settings.traktAccessToken;
       if (!token) {
@@ -7649,6 +7660,124 @@ function App() {
                   color: '#fff',
                   padding: '10px 16px',
                   fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Trakt Rewatch Confirmation Modal */}
+      {isRewatchModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(12px)',
+          zIndex: 9990,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '420px',
+            background: 'rgba(22,22,22,0.95)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)',
+            overflow: 'hidden',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            position: 'relative',
+            animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          }}>
+            {/* Close Button X at Top Right */}
+            <button
+              onClick={() => {
+                setIsRewatchModalOpen(false);
+                setRewatchVideoTarget(null);
+              }}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'rgba(255,255,255,0.05)',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                borderRadius: '50%',
+                width: '28px',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'background 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+            >
+              <X size={14} />
+            </button>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '24px' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#ff7a00' }}>
+                Sync Another Watch?
+              </span>
+              <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>
+                {rewatchVideoTarget?.title}
+              </span>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.4, marginTop: '8px' }}>
+                You have already synced this media to your Trakt.tv watch history. Did you rewatch this media and want to push another watch history record?
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (rewatchVideoTarget) {
+                    syncVideoToTraktHistory(rewatchVideoTarget, undefined, true);
+                  }
+                  setIsRewatchModalOpen(false);
+                  setRewatchVideoTarget(null);
+                }}
+                style={{
+                  flex: 1,
+                  background: '#ff7a00',
+                  border: 'none',
+                  color: '#ffffff',
+                  padding: '10px 16px',
+                  fontSize: '0.85rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                Submit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRewatchModalOpen(false);
+                  setRewatchVideoTarget(null);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '10px 16px',
+                  fontSize: '0.85rem',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   fontWeight: 600
