@@ -11,7 +11,7 @@ interface BookmarkPanelProps {
   onClose: () => void;
 }
 
-export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd, onClose }) => {
+export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump, onEdit, onDelete, onAdd }) => {
   const sortedBookmarks = useMemo(() => {
     return [...bookmarks].sort((a, b) => a.time - b.time);
   }, [bookmarks]);
