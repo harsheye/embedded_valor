@@ -1584,7 +1584,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
       const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
 
-      if (activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
+      if (video.isRemote && activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
         if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 5) {
           logger.player(`Playback crossed audio chunk boundary. Loading next chunk at ${currentTime}s.`);
           const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
@@ -2347,8 +2347,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       currentTime: newTime
     });
 
-    // Chunk-based dynamic loading on seek
-    if (activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
+    // Chunk-based dynamic loading on seek (only for remote link plays)
+    if (video.isRemote && activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
@@ -3326,8 +3326,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const targetAudio = settings.defaultAudio || 'ENG';
         const targetSub = settings.defaultSub || 'ENG';
 
-        // Auto-select audio stream
-        if (targetAudio !== 'Original' && !selectedAudioTrack) {
+        // Auto-select audio stream (only for remote link plays)
+        if (video.isRemote && targetAudio !== 'Original' && !selectedAudioTrack) {
           const stream = audioStreams.find(s => (
             targetAudio === 'ENG' ? (s.language?.toLowerCase() === 'eng' || s.language?.toLowerCase() === 'en') :
             targetAudio === 'JAP' ? (s.language?.toLowerCase() === 'jpn' || s.language?.toLowerCase() === 'ja') :
@@ -3340,9 +3340,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         }
 
-        // Always auto-select the first audio track when available
+        // Always auto-select the first audio track when available (only for remote link plays)
         // Browser native decoding from MKV container is unreliable, so always extract via FFmpeg
-        if (!selectedAudioTrack && audioStreams.length > 0) {
+        if (video.isRemote && !selectedAudioTrack && audioStreams.length > 0) {
           const firstAudio = audioStreams[0];
           logger.player(`Auto-selecting first audio track: ${firstAudio.language || 'unknown'} (${firstAudio.codec})`);
           handleSelectEmbeddedAudio(firstAudio.index, firstAudio.codec, firstAudio.language);
