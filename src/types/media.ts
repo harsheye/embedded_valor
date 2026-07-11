@@ -41,6 +41,7 @@ export interface VideoItem {
   hlsPlaylist?: any;
   thumbnailUrl?: string;
   currentTime?: number;
+  resumeTime?: number;
   probingError?: string;
   playbackMode?: 'advanced' | 'native';
   lastPlayedDate?: string;

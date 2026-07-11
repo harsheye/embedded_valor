@@ -219,6 +219,15 @@ export class DemuxManager {
     return { duration, streams };
   }
 
+  private getMkvHeaderOnly(bytes: Uint8Array): Uint8Array {
+    for (let i = 0; i <= bytes.length - 4; i++) {
+      if (bytes[i] === 0x1f && bytes[i + 1] === 0x43 && bytes[i + 2] === 0xb6 && bytes[i + 3] === 0x75) {
+        return bytes.subarray(0, i);
+      }
+    }
+    return bytes;
+  }
+
   /**
    * Slice a short segment of audio into WAV bytes
    */
@@ -230,16 +239,22 @@ export class DemuxManager {
     seekMap?: any[],
     signal?: AbortSignal
   ): Promise<Uint8Array> {
-    const inputPath = await this.getMountedInputPath(ff);
+    const mountedInputPath = await this.getMountedInputPath(ff);
     const tempOutFile = `slice_${streamIndex}_${startTime}.wav`;
+    const isRemoteSource = !(this.videoFileOrSource instanceof File);
+    const inputPath = isRemoteSource
+      ? `remote_input_${this.uniqueId}_${streamIndex}_${Math.floor(startTime * 1000)}_${Math.random().toString(36).substring(2, 7)}.mkv`
+      : mountedInputPath;
+    let ffmpegSeekTime = startTime;
 
-    if (!(this.videoFileOrSource instanceof File)) {
+    if (isRemoteSource) {
       // Remote chunk: resolve byte range and write chunk
       const source = this.videoFileOrSource as ByteSource;
       const seekList = seekMap || [];
       
       let startOffset = 0;
       let endOffset = 8 * 1024 * 1024;
+      let offsetTime = 0;
       const fileSize = await source.getSize();
 
       const matchedStart = seekList.reduce((prev: any, curr: any) => {
@@ -248,21 +263,26 @@ export class DemuxManager {
 
       if (matchedStart) {
         startOffset = matchedStart.offset;
+        offsetTime = matchedStart.time || 0;
+        const targetEndTime = startTime + duration + 30;
         const matchedEnd = seekList.reduce((prev: any, curr: any) => {
-          return curr.time <= startTime + duration ? curr : prev;
+          return curr.time <= targetEndTime ? curr : prev;
         }, matchedStart);
-        endOffset = matchedEnd ? matchedEnd.offset + 1024 * 1024 : startOffset + 8 * 1024 * 1024;
+        endOffset = matchedEnd ? matchedEnd.offset + 8 * 1024 * 1024 : startOffset + 24 * 1024 * 1024;
       } else {
         // Linear fallback
         const size = await source.getSize();
         startOffset = Math.floor((startTime / 3600) * size);
-        endOffset = Math.min(startOffset + 8 * 1024 * 1024, size);
+        endOffset = Math.min(startOffset + 24 * 1024 * 1024, size);
+        offsetTime = startTime;
       }
 
       endOffset = Math.min(endOffset, fileSize - 1);
+      ffmpegSeekTime = Math.max(0, startTime - offsetTime);
 
       // Fetch chunk
-      const headerBytes = await source.read(0, Math.min(1024 * 1024, fileSize - 1), signal);
+      const headerProbeBytes = await source.read(0, Math.min(2 * 1024 * 1024, fileSize - 1), signal);
+      const headerBytes = this.getMkvHeaderOnly(headerProbeBytes);
       const chunkBytes = await source.read(startOffset, endOffset, signal);
 
       const concatenated = new Uint8Array(headerBytes.length + chunkBytes.length);
@@ -270,37 +290,54 @@ export class DemuxManager {
       concatenated.set(chunkBytes, headerBytes.length);
 
       await ff.writeFile(inputPath, concatenated);
+      console.log(
+        `[DemuxManager] Remote audio slice start=${startTime}s offset=${offsetTime}s ffmpegSeek=${ffmpegSeekTime}s header=${headerBytes.length} bytes=${startOffset}-${endOffset}`
+      );
     }
 
     try {
-      const args = [
-        '-ss', startTime.toString(),
-        '-i', inputPath,
-        '-t', duration.toString(),
-        '-map', `0:${streamIndex}`,
-        '-vn',
-        '-acodec', 'pcm_s16le',
-        '-ac', '2',
-        '-ar', '44100',
-        '-f', 'wav',
-        tempOutFile
-      ];
+      const runSlice = async (seekSeconds: number): Promise<Uint8Array> => {
+        const args = [
+          '-ss', seekSeconds.toString(),
+          '-i', inputPath,
+          '-t', duration.toString(),
+          '-map', `0:${streamIndex}`,
+          '-vn',
+          '-acodec', 'pcm_s16le',
+          '-ac', '2',
+          '-ar', '44100',
+          '-f', 'wav',
+          tempOutFile
+        ];
 
-      console.log(`[FFmpeg Command] ffmpeg ${args.join(" ")}`);
-      const startTimeMs = performance.now();
-      const code = await ff.exec(args);
-      const durationMs = performance.now() - startTimeMs;
-      console.log(`[FFmpeg Status] Exit code: ${code}, Duration: ${durationMs.toFixed(2)}ms`);
-      if (code !== 0) {
-        throw new Error(`FFmpeg slicing returned exit code ${code}`);
+        console.log(`[FFmpeg Command] ffmpeg ${args.join(" ")}`);
+        const startTimeMs = performance.now();
+        const code = await ff.exec(args);
+        const durationMs = performance.now() - startTimeMs;
+        console.log(`[FFmpeg Status] Exit code: ${code}, Duration: ${durationMs.toFixed(2)}ms`);
+        if (code !== 0) {
+          throw new Error(`FFmpeg slicing returned exit code ${code}`);
+        }
+
+        const outputData = await ff.readFile(tempOutFile);
+        return outputData as Uint8Array;
+      };
+
+      let outputData = await runSlice(ffmpegSeekTime);
+      if (isRemoteSource && outputData.byteLength <= 512 && ffmpegSeekTime > 0) {
+        console.warn(
+          `[DemuxManager] Remote audio slice was empty at seek ${ffmpegSeekTime}s; retrying from start of byte window.`
+        );
+        try {
+          await ff.deleteFile(tempOutFile);
+        } catch {}
+        outputData = await runSlice(0);
       }
-
-      const outputData = await ff.readFile(tempOutFile);
-      return outputData as Uint8Array;
+      return outputData;
     } finally {
       try {
         await ff.deleteFile(tempOutFile);
-        if (!(this.videoFileOrSource instanceof File)) {
+        if (isRemoteSource) {
           await ff.deleteFile(inputPath);
         }
       } catch {}
@@ -378,18 +415,46 @@ export class PacketCache {
     private keepAhead = 90   // seconds to keep ahead currentTime
   ) {}
 
-  add(packet: AudioPacket): void {
-    const key = Math.floor(packet.startTime);
+  add(packet: AudioPacket, keyStartTime = packet.startTime): void {
+    const key = Math.floor(keyStartTime / 10) * 10;
     this.cache.set(key, packet);
   }
 
   get(time: number): AudioPacket | null {
     const key = Math.floor(time);
-    return this.cache.get(key) || null;
+    const exact = this.cache.get(key);
+    if (exact && time >= exact.startTime && time < exact.endTime) {
+      return exact;
+    }
+
+    return Array.from(this.cache.values()).find(packet => time >= packet.startTime && time < packet.endTime) || null;
+  }
+
+  hasChunk(startTime: number): boolean {
+    const chunkKey = Math.floor(startTime / 10) * 10;
+    return this.cache.has(chunkKey);
+  }
+
+  hasCoverage(startTime: number, endTime: number): boolean {
+    const packets = this.getAllPackets().sort((a, b) => a.startTime - b.startTime);
+    let coveredUntil = startTime;
+
+    for (const packet of packets) {
+      if (packet.endTime <= coveredUntil) continue;
+      if (packet.startTime > coveredUntil + 0.15) continue;
+      coveredUntil = Math.max(coveredUntil, packet.endTime);
+      if (coveredUntil >= endTime - 0.15) return true;
+    }
+
+    return false;
   }
 
   getAllPackets(): AudioPacket[] {
     return Array.from(this.cache.values());
+  }
+
+  getEntries(): { chunkKey: number; packet: AudioPacket }[] {
+    return Array.from(this.cache.entries()).map(([chunkKey, packet]) => ({ chunkKey, packet }));
   }
 
   evict(currentTime: number): void {
@@ -471,7 +536,11 @@ export class BufferScheduler {
     const limit = startChunk + this.highWaterMark;
     for (let t = startChunk; t < limit; t += this.chunkSize) {
       const state = this.manifest.getState(t);
-      if (state === 'EMPTY') {
+      const requiredStart = Math.max(t, currentTime);
+      const requiredEnd = t + this.chunkSize;
+      const hasCoverage = this.cache.hasCoverage(requiredStart, requiredEnd);
+      const hasChunk = this.cache.hasChunk(t);
+      if (!hasChunk && (!hasCoverage || state === 'EMPTY')) {
         missing.push(t);
       }
     }
@@ -549,14 +618,21 @@ export class BufferManager {
     startTime: number,
     duration: number,
     seekMap?: any[],
+<<<<<<< Updated upstream
     signal?: AbortSignal
+=======
+    signal?: AbortSignal,
+    showBuffering = false,
+    cacheKeyStartTime = startTime
+>>>>>>> Stashed changes
   ): Promise<AudioPacket> {
     // Critical validation
     if (streamIndex === null || streamIndex === undefined || streamIndex === -1 || isNaN(streamIndex)) {
       throw new Error(`Invalid audio stream selection streamIndex: ${streamIndex}`);
     }
 
-    const key = `audio_${streamIndex}_${Math.floor(startTime)}`;
+    const chunkKey = Math.floor(cacheKeyStartTime / 10) * 10;
+    const key = `audio_${streamIndex}_${chunkKey}`;
 
     // Check Cooldown/Failure
     if (this.isFailedOrInCooldown(key)) {
@@ -576,8 +652,8 @@ export class BufferManager {
       console.log(`[BufferManager] [${new Date().toISOString()}] Launching single-flight audio request for: ${key}`);
       promise = this.packetReader.readAudioPacket(ff, streamIndex, startTime, duration, seekMap, signal)
         .then((packet) => {
-          console.log("Cache Insert:", startTime);
-          this.packetCache.add(packet);
+          console.log("Cache Insert:", chunkKey, "packetStart:", packet.startTime, "duration:", packet.duration);
+          this.packetCache.add(packet, chunkKey);
           return packet;
         })
         .catch((err) => {
@@ -842,10 +918,17 @@ export class PlaybackQueue {
 
     // Reschedule any cached packets that fall within the upcoming 50-second window and are not yet scheduled
     const highWaterTarget = currentTime + 50;
-    const cachedPackets = this.cache.getAllPackets();
-    for (const packet of cachedPackets) {
+    const cachedPackets = this.cache.getEntries()
+      .filter(({ packet }) => packet.endTime > currentTime && packet.startTime < highWaterTarget)
+      .sort((a, b) => {
+        const aCoversPlayhead = currentTime >= a.packet.startTime && currentTime < a.packet.endTime;
+        const bCoversPlayhead = currentTime >= b.packet.startTime && currentTime < b.packet.endTime;
+        if (aCoversPlayhead !== bCoversPlayhead) return aCoversPlayhead ? -1 : 1;
+        return a.packet.startTime - b.packet.startTime;
+      });
+
+    for (const { chunkKey, packet } of cachedPackets) {
       if (packet.endTime > currentTime && packet.startTime < highWaterTarget) {
-        const chunkKey = Math.floor(packet.startTime / 10) * 10;
         if (!this.scheduledTimes.has(chunkKey)) {
           this.scheduledTimes.add(chunkKey);
           
@@ -927,6 +1010,7 @@ export class PlaybackController {
   private sessionId = '';
   private heartbeatIntervalId: any = null;
   private isTransitioningState = false;
+  private maintenanceFrozen = false;
   private listenersBound = false;
   public readonly instanceId = Math.random().toString(36).substring(7);
 
@@ -1038,13 +1122,66 @@ export class PlaybackController {
 
   private heartbeatTickCount = 0;
 
+<<<<<<< Updated upstream
+=======
+  private startNewPlaybackGeneration(reason: string): number {
+    this.playbackGeneration++;
+    this.sessionId = Math.random().toString(36).substring(7);
+    this.chunkAbortController.abort();
+    this.chunkAbortController = new AbortController();
+    this.fetchingKeys.clear();
+    this.bufferManager.clearActiveFills();
+    console.log(
+      `[PlaybackController-${this.instanceId}] New playback generation ${this.playbackGeneration} (${reason}). session=${this.sessionId}`
+    );
+    return this.playbackGeneration;
+  }
+
+  private resetQueueAndTimeline(): void {
+    this.playbackQueue.clear();
+    this.manifest.clear();
+    this.scheduler.reset();
+  }
+
+  beginSeekTransaction(reason = 'external'): number {
+    this.maintenanceFrozen = true;
+    this.stopHeartbeat();
+    console.log(`[PlaybackController-${this.instanceId}] Seek transaction started (${reason}).`);
+    return this.playbackGeneration;
+  }
+
+  endSeekTransaction(reason = 'external'): void {
+    this.maintenanceFrozen = false;
+    console.log(`[PlaybackController-${this.instanceId}] Seek transaction ended (${reason}).`);
+  }
+
+  private hydrateManifestFromCache(): void {
+    for (const packet of this.bufferManager.getCache().getAllPackets()) {
+      const chunkKey = Math.floor(packet.startTime / 10) * 10;
+      const state = this.manifest.getState(chunkKey);
+      if (state === 'EMPTY') {
+        this.manifest.transitionTo(chunkKey, 'FETCHING');
+        this.manifest.transitionTo(chunkKey, 'DECODED');
+      } else if (state === 'FETCHING') {
+        this.manifest.transitionTo(chunkKey, 'DECODED');
+      }
+      if (this.manifest.getState(chunkKey) !== 'CACHED') {
+        this.manifest.transitionTo(chunkKey, 'CACHED');
+      }
+    }
+  }
+
+>>>>>>> Stashed changes
   private runSchedulerCycle(callerName: string): void {
     if (this.abortController.signal.aborted) return;
+    if (this.maintenanceFrozen) return;
     if (!this.videoEl) return;
     const currentTime = this.videoEl.currentTime;
 
     // Evict old cache items via bufferManager cache
     this.bufferManager.getCache().evict(currentTime);
+
+    if (this.videoEl.paused) return;
 
     // Update queue to schedule cached chunks and prune completed
     this.playbackQueue.update(currentTime, this.playbackRate);
@@ -1065,6 +1202,11 @@ export class PlaybackController {
   private async fillBufferWindow(currentTime: number, callerName = 'unknown'): Promise<void> {
     if (!this.ff) return;
     if (this.activeStreamIndex === -1 || this.activeStreamIndex === null || typeof this.activeStreamIndex !== 'number') return;
+<<<<<<< Updated upstream
+=======
+    if (generation !== this.playbackGeneration) return;
+    if (this.maintenanceFrozen && callerName !== 'seek' && callerName !== 'playSyncedFromCurrentTime' && callerName !== 'play' && callerName !== 'switchAudioTrack') return;
+>>>>>>> Stashed changes
 
     // If scheduler says we don't need to buffer, skip
     if (!this.scheduler.shouldBuffer(currentTime)) return;
@@ -1086,24 +1228,50 @@ export class PlaybackController {
       if (this.sessionId !== activeSession || this.abortController.signal.aborted) return;
 
       const key = `audio_${this.activeStreamIndex}_${target}`;
+      const targetHasCoverage = this.bufferManager.getCache().hasCoverage(
+        Math.max(target, currentTime),
+        target + chunkSize
+      );
+      const targetHasChunk = this.bufferManager.getCache().hasChunk(target);
       
       // Deduplicate if already scheduled/fetching or failed
-      if (this.fetchingKeys.has(target) || this.playbackQueue.hasScheduled(target) || this.bufferManager.isFailedOrInCooldown(key)) {
+      if (
+        this.fetchingKeys.has(target) ||
+        targetHasChunk ||
+        (targetHasCoverage && this.playbackQueue.hasScheduled(target)) ||
+        this.bufferManager.isFailedOrInCooldown(key)
+      ) {
         return;
       }
 
       this.fetchingKeys.add(target);
-      this.manifest.transitionTo(target, 'FETCHING');
+      const currentState = this.manifest.getState(target);
+      if (!targetHasCoverage && !targetHasChunk && currentState !== 'EMPTY' && currentState !== 'FETCHING') {
+        this.manifest.transitionTo(target, 'EMPTY');
+      }
+      if (this.manifest.getState(target) !== 'FETCHING') {
+        this.manifest.transitionTo(target, 'FETCHING');
+      }
 
       try {
-        console.log(`[PlaybackController-${this.instanceId}] Requesting chunk starting at ${target}s`);
+        const requestStart = target === currentChunk ? Math.max(currentTime, target) : target;
+        const requestDuration = Math.max(0.25, target + chunkSize - requestStart);
+        console.log(
+          `[PlaybackController-${this.instanceId}] Requesting chunk ${target}s from ${requestStart.toFixed(3)}s for ${requestDuration.toFixed(3)}s`
+        );
         const packet = await this.bufferManager.getOrFetchPacket(
           this.ff!,
           this.activeStreamIndex,
-          target,
-          chunkSize,
+          requestStart,
+          requestDuration,
           this.seekMap,
+<<<<<<< Updated upstream
           this.abortController.signal
+=======
+          signal,
+          showCurrentBuffering && target === currentChunk,
+          target
+>>>>>>> Stashed changes
         );
 
         // Discard result if session changed during async await
@@ -1113,8 +1281,8 @@ export class PlaybackController {
           return;
         }
 
-        // Integrity check: fail packet if too short or invalid
-        if (packet.duration < 0.5) {
+        // A current chunk can legitimately be short when playback starts inside that chunk.
+        if (packet.duration <= 0.05) {
           throw new Error(`Chunk ${target}s is truncated/too short: duration=${packet.duration}s`);
         }
 
@@ -1122,7 +1290,7 @@ export class PlaybackController {
         this.manifest.transitionTo(target, 'CACHED');
 
         // Immediately schedule newly fetched packet if playhead is still relevant
-        if (this.videoEl) {
+        if (this.videoEl && !this.videoEl.paused) {
           this.playbackQueue.update(this.videoEl.currentTime, this.playbackRate);
         }
       } catch (err: any) {
@@ -1174,6 +1342,35 @@ export class PlaybackController {
       this.startHeartbeat();
 
       await this.videoEl.play();
+    } finally {
+      this.isTransitioningState = false;
+    }
+  }
+
+  async playSyncedFromCurrentTime(): Promise<void> {
+    if (this.abortController.signal.aborted) return;
+    if (!this.videoEl) return;
+    if (this.isTransitioningState) return;
+    this.isTransitioningState = true;
+
+    try {
+      console.log(`[PlaybackController-${this.instanceId}] Playback State: PLAYING_SYNCED`);
+      const generation = this.startNewPlaybackGeneration('playSyncedFromCurrentTime');
+      this.resetQueueAndTimeline();
+      this.hydrateManifestFromCache();
+
+      await this.fillBufferWindow(this.videoEl.currentTime, 'playSyncedFromCurrentTime', generation, true);
+      if (generation !== this.playbackGeneration) return;
+
+      await this.audioScheduler.resume();
+      await this.videoEl.play();
+      if (generation !== this.playbackGeneration) return;
+
+      const syncedTime = this.videoEl.currentTime;
+      this.playbackQueue.clear();
+      this.hydrateManifestFromCache();
+      this.playbackQueue.update(syncedTime, this.playbackRate);
+      this.startHeartbeat();
     } finally {
       this.isTransitioningState = false;
     }

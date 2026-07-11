@@ -15,7 +15,7 @@ import { AudioSyncEngine } from '../services/remote/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParser';
 import { ffmpegService } from '../services/ffmpeg';
-import { HttpByteSource, CachedByteSource } from '../services/remote/remoteByteSource';
+import { HttpByteSource, CachedByteSource, RemoteDownloadManager } from '../services/remote/remoteByteSource';
 import { FileByteSource } from '../services/local/localByteSource';
 import { extractLocalAudioSegment, extractLocalSubtitleSegment } from '../services/local/ffmpegLocal';
 import { extractRemoteAudioSegment, extractRemoteSubtitleSegment, extractHlsAudioSegment } from '../services/remote/ffmpegRemote';
@@ -842,6 +842,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     syncBookmarksToServer(updatedBookmarks);
   };
   const [currentTime, setCurrentTime] = useState(video.currentTime || 0);
+  const [resumePromptTime, setResumePromptTime] = useState<number | null>(null);
   const latestTimeRef = useRef<number>(video.currentTime || 0);
   useEffect(() => {
     latestTimeRef.current = currentTime;
@@ -1485,7 +1486,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   const customAudioInputRef = useRef<HTMLInputElement>(null);
   const customSubInputRef = useRef<HTMLInputElement>(null);
 
-  const cachedSourceRef = useRef<CachedByteSource | null>(null);
+  const cachedSourceRef = useRef<(CachedByteSource | RemoteDownloadManager) | null>(null);
   const audioAbortControllerRef = useRef<AbortController | null>(null);
   const subAbortControllerRef = useRef<AbortController | null>(null);
   const currentAudioOptionIndexRef = useRef<number>(-1);
@@ -1497,12 +1498,15 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   const hasAutoSelectedRef = useRef(false);
   const activeAudioStartOffsetRef = useRef(0);
   const activeSubtitleStartOffsetRef = useRef(0);
+  const remoteSeekGenerationRef = useRef(0);
+  const remoteHardSeekActiveRef = useRef(false);
 
   useEffect(() => {
     hasAutoSelectedRef.current = false;
     activeAudioStartOffsetRef.current = 0;
     activeSubtitleStartOffsetRef.current = 0;
     setCurrentTime(video.currentTime || 0);
+    setResumePromptTime(null);
     setSelectedAudioTrack(null);
     setSelectedSubTrack(null);
     setActiveAudioStreamIndex(null);
@@ -1525,7 +1529,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     if (video.isRemote) {
       const byteSource = new HttpByteSource(video.url);
-      cachedSourceRef.current = new CachedByteSource(byteSource, 4 * 1024 * 1024, 16); // 4MB chunks, cache size 16 (64MB)
+      cachedSourceRef.current = new RemoteDownloadManager(byteSource, 4 * 1024 * 1024, 24); // 4MB chunks, cache size 96MB
     } else if (video.type === 'local') {
       const byteSource = video.file
         ? new FileByteSource(video.file)
@@ -1535,6 +1539,9 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       cachedSourceRef.current = null;
     }
     return () => {
+      if (cachedSourceRef.current instanceof RemoteDownloadManager) {
+        cachedSourceRef.current.cancelAll();
+      }
       if (audioAbortControllerRef.current) {
         audioAbortControllerRef.current.abort();
       }
@@ -1573,8 +1580,12 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         const nextChunk = currentChunk + i;
         const start = nextChunk * chunkSize;
         const end = (nextChunk + 1) * chunkSize - 1;
-        
-        cachedSourceRef.current.read(start, end).catch(() => {});
+
+        if (video.isRemote && cachedSourceRef.current instanceof RemoteDownloadManager) {
+          cachedSourceRef.current.prefetch(start, end).catch(() => {});
+        } else {
+          cachedSourceRef.current.read(start, end).catch(() => {});
+        }
       }
     }
   }, [currentTime, video.isRemote, video.type, video.url, video.seekMap]);
@@ -2172,7 +2183,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const handleVideoSeeked = async () => {
-    setIsBuffering(false);
     if (!videoRef.current) return;
     const newTime = videoRef.current.currentTime;
 
@@ -2181,6 +2191,12 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       ...video,
       currentTime: newTime
     });
+
+    if (remoteHardSeekActiveRef.current) {
+      return;
+    }
+
+    setIsBuffering(false);
 
     // Chunk-based dynamic loading on seek
     if (activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
@@ -2304,6 +2320,86 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   // Playback Control Handlers
+  const cancelRemoteDownloadWindow = () => {
+    if (video.isRemote && cachedSourceRef.current instanceof RemoteDownloadManager) {
+      cachedSourceRef.current.cancelAll();
+    }
+  };
+
+  const prepareRemoteSubtitleForSeek = async (targetTime: number) => {
+    if (activeSubStreamIndex === null) return;
+
+    const containerType = (video.containerType || '').toLowerCase();
+    const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
+    const subDuration = isMkv ? 300 : 60;
+
+    if (
+      targetTime >= activeSubtitleStartOffsetRef.current &&
+      targetTime <= activeSubtitleStartOffsetRef.current + subDuration - 5
+    ) {
+      return;
+    }
+
+    await loadSubtitleChunk(targetTime, activeSubStreamIndex);
+  };
+
+  const performRemoteHardSeek = async (targetTime: number) => {
+    if (!videoRef.current) return;
+
+    const seekGeneration = ++remoteSeekGenerationRef.current;
+    const shouldResume = !videoRef.current.paused || isPlaying;
+
+    remoteHardSeekActiveRef.current = true;
+    setIsBuffering(true);
+    cancelRemoteDownloadWindow();
+
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.beginSeekTransaction('remoteHardSeek');
+      playbackControllerRef.current.pause();
+    } else {
+      videoRef.current.pause();
+    }
+    setIsPlaying(false);
+
+    try {
+      if (playbackControllerRef.current) {
+        await playbackControllerRef.current.seek(targetTime);
+      } else {
+        videoRef.current.currentTime = targetTime;
+      }
+
+      await prepareRemoteSubtitleForSeek(targetTime);
+      if (remoteSeekGenerationRef.current !== seekGeneration) return;
+
+      setCurrentTime(targetTime);
+      latestTimeRef.current = targetTime;
+      onUpdateVideo({
+        ...video,
+        currentTime: targetTime
+      });
+
+      if (shouldResume) {
+        const playPromise = playbackControllerRef.current
+          ? playbackControllerRef.current.playSyncedFromCurrentTime()
+          : videoRef.current.play();
+        await playPromise;
+        if (remoteSeekGenerationRef.current === seekGeneration) {
+          setIsPlaying(true);
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        logger.error('Remote hard seek failed:', err);
+      }
+    } finally {
+      if (remoteSeekGenerationRef.current === seekGeneration) {
+        playbackControllerRef.current?.endSeekTransaction('remoteHardSeek');
+        remoteHardSeekActiveRef.current = false;
+        setIsBuffering(false);
+      }
+    }
+  };
+
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (isPlaying) {
@@ -2327,6 +2423,13 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleRewind = () => {
     if (!videoRef.current) return;
     const targetTime = Math.max(0, videoRef.current.currentTime - 10);
+    if (video.isRemote) {
+      performRemoteHardSeek(targetTime);
+      setCurrentTime(targetTime);
+      resetControlsTimeout();
+      return;
+    }
+    cancelRemoteDownloadWindow();
     if (playbackControllerRef.current) {
       playbackControllerRef.current.seek(targetTime);
     } else {
@@ -2339,6 +2442,13 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleForward = () => {
     if (!videoRef.current) return;
     const targetTime = Math.min(duration, videoRef.current.currentTime + 10);
+    if (video.isRemote) {
+      performRemoteHardSeek(targetTime);
+      setCurrentTime(targetTime);
+      resetControlsTimeout();
+      return;
+    }
+    cancelRemoteDownloadWindow();
     if (playbackControllerRef.current) {
       playbackControllerRef.current.seek(targetTime);
     } else {
@@ -2352,6 +2462,16 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     if (uiConfig.blockSeekingCompletely) return;
     if (!videoRef.current) return;
     const seekTime = parseFloat(e.target.value);
+    if (video.isRemote) {
+      performRemoteHardSeek(seekTime);
+      setCurrentTime(seekTime);
+      resetControlsTimeout();
+      if (previewVideoRef.current) {
+        previewVideoRef.current.currentTime = seekTime;
+      }
+      return;
+    }
+    cancelRemoteDownloadWindow();
     if (playbackControllerRef.current) {
       playbackControllerRef.current.seek(seekTime);
     } else {
@@ -3005,7 +3125,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (videoRef.current) {
       const ffmpegMgr = new FFmpegManager(video.id);
-      const fileOrSource = video.file || new HttpByteSource(video.url);
+      const fileOrSource = video.file || cachedSourceRef.current || new RemoteDownloadManager(new HttpByteSource(video.url));
       const demuxMgr = new DemuxManager(ffmpegMgr, fileOrSource);
       controller = new PlaybackController(ffmpegMgr, demuxMgr, video.seekMap);
       
@@ -3626,6 +3746,13 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
             if (videoRef.current) {
               const videoDuration = videoRef.current.duration;
               setDuration(videoDuration);
+              const directResumeTime = video.resumeTime || 0;
+              if (directResumeTime > 5 && videoDuration - directResumeTime > 10) {
+                setResumePromptTime(directResumeTime);
+                videoRef.current.currentTime = 0;
+                hasSeekedRef.current = true;
+                return;
+              }
               if (video.currentTime && !hasSeekedRef.current) {
                 const remainingTime = videoDuration - video.currentTime;
                 // Lenient resume limits: resume if watched > 5s and remaining > 10s
@@ -4183,6 +4310,46 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
+      {/* Resume Button for direct URL/path opens with saved progress */}
+      {resumePromptTime !== null && currentTime < 3 && !activeSkipBookmark && (
+        <button
+          className="skip-btn resume-playback-btn"
+          style={{
+            position: 'absolute',
+            bottom: controlsVisible ? '160px' : '40px',
+            right: '40px',
+            zIndex: 90,
+            background: 'rgba(0,0,0,0.7)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            backdropFilter: 'blur(8px)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const targetTime = resumePromptTime;
+            setResumePromptTime(null);
+            if (video.isRemote) {
+              performRemoteHardSeek(targetTime);
+            } else if (videoRef.current) {
+              videoRef.current.currentTime = targetTime;
+              setCurrentTime(targetTime);
+            }
+          }}
+        >
+          Resume from {formatTime(resumePromptTime)}
+        </button>
+      )}
+
       {/* Skip Button */}
       {activeSkipBookmark && (
         <button
@@ -4236,6 +4403,16 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           {/* Seekbar timeline row */}
           {(showPlayBar || showTimeDisplay || hoveredSetting === 'showPlayBar' || hoveredSetting === 'showTimeDisplay') && (
             <div className="seekbar-row">
+              {(showTimeDisplay || hoveredSetting === 'showTimeDisplay') && (
+                <div
+                  className={`time-display-clean time-display-elapsed ${getHighlightClass('showTimeDisplay')}`}
+                  style={{
+                    opacity: showTimeDisplayMode === 'enable' ? 1 : 0.5
+                  }}
+                >
+                  {formatTime(currentTime)}
+                </div>
+              )}
               {(showPlayBar || hoveredSetting === 'showPlayBar') && (
                 <div 
                   className={`scrub-container-premium ${uiConfig.blockSeekingCompletely ? 'seeking-blocked' : ''} ${getHighlightClass('showPlayBar') || getHighlightClass('blockSeekingCompletely')}`}
@@ -5652,10 +5829,18 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           gap: 1.5rem;
         }
         .time-display-clean {
+          display: inline-flex;
+          align-items: center;
           font-size: 0.95rem;
           color: #ffffff;
           font-weight: 500;
           white-space: nowrap;
+          min-width: 3.2rem;
+          justify-content: flex-end;
+        }
+        .time-display-elapsed {
+          color: rgba(255, 255, 255, 0.82);
+          justify-content: flex-start;
         }
 
         .scrub-container-premium {

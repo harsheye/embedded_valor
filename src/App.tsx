@@ -2096,6 +2096,11 @@ function App() {
         }
       } catch {}
     }
+
+    const getResumeTimeFromMatch = (match?: VideoItem): number | undefined => {
+      const time = match?.currentTime || 0;
+      return time > 5 ? time : undefined;
+    };
     
     try {
       const urlId = `url-${Date.now()}`;
@@ -2144,7 +2149,8 @@ function App() {
           playbackMode: 'native',
           probingError: 'The remote server blocks cross-origin byte access (CORS).',
           localFilePath: localPathVal,
-          currentTime: match ? match.currentTime || 0 : 0,
+          currentTime: 0,
+          resumeTime: getResumeTimeFromMatch(match),
           lastPlayedDate: new Date().toISOString(),
           playedDates: match ? Array.from(new Set([...(match.playedDates || []), new Date().toISOString()])) : [new Date().toISOString()],
           rating: match ? match.rating : undefined,
@@ -2258,7 +2264,8 @@ function App() {
         streams,
         audioTracks: match ? match.audioTracks : audioTracks,
         subtitleTracks: match ? match.subtitleTracks : subtitleTracks,
-        currentTime: match ? match.currentTime || 0 : 0,
+        currentTime: 0,
+        resumeTime: getResumeTimeFromMatch(match),
         timecodeScale,
         playbackMode: 'advanced',
         lastPlayedDate: new Date().toISOString(),
@@ -2313,7 +2320,8 @@ function App() {
         subtitleTracks: match ? match.subtitleTracks : [],
         playbackMode: 'native',
         probingError: probingError || undefined,
-        currentTime: match ? match.currentTime || 0 : 0,
+        currentTime: 0,
+        resumeTime: getResumeTimeFromMatch(match),
         lastPlayedDate: new Date().toISOString(),
         playedDates: match ? Array.from(new Set([...(match.playedDates || []), new Date().toISOString()])) : [new Date().toISOString()],
         rating: match ? match.rating : undefined,
