@@ -25,6 +25,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -166,6 +167,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
     }
 
     searchTimeoutRef.current = setTimeout(() => {
+      setImageErrors({});
       if (category === 'all') {
         fetchTmdbResults(query);
       } else {
@@ -178,7 +180,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
     };
   }, [query, category]);
 
-  const handleRowClick = (res: SearchResult) => {
+  const handleCardClick = (res: SearchResult) => {
     const videoItem: VideoItem = {
       id: `${res.type}-${res.id}`,
       title: res.title,
@@ -194,44 +196,39 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
     onSelectMedia(videoItem);
   };
 
+  const handleImageError = (id: string | number) => {
+    setImageErrors(prev => ({ ...prev, [id]: true }));
+  };
+
   return (
     <div className="online-search-container">
-      <div className="online-search-hero">
-        <h1 className="search-title">
-          <Sparkles className="title-icon" size={24} />
-          Online Streaming Hub
-        </h1>
-        
-        {/* Search Bar & Category Buttons Unified Row */}
-        <div className="search-row-container">
-          <div className="search-input-wrapper">
-            <Search className="search-bar-icon" size={20} />
-            <input
-              type="text"
-              className="search-bar-input"
-              placeholder={category === 'all' ? "Search Movie or TV Series name..." : "Search Anime (e.g. Naruto, One Piece)..."}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {loading && <div className="search-inline-spinner"></div>}
-          </div>
+      {/* Search Header Row (Dropdown next to Search Bar, NO hero title/container card) */}
+      <div className="search-bar-row">
+        <div className="search-input-wrapper">
+          <Search className="search-bar-icon" size={20} />
+          <input
+            type="text"
+            className="search-bar-input"
+            placeholder={category === 'all' ? "Search Movie or TV Series name..." : "Search Anime (e.g. Naruto, One Piece)..."}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {loading && <div className="search-inline-spinner"></div>}
+        </div>
 
-          <div className="search-category-tabs">
-            <button 
-              className={`category-tab ${category === 'all' ? 'active' : ''}`}
-              onClick={() => { setCategory('all'); setQuery(''); setResults([]); }}
-            >
-              <Film size={16} />
-              Movies & TV Shows
-            </button>
-            <button 
-              className={`category-tab ${category === 'anime' ? 'active' : ''}`}
-              onClick={() => { setCategory('anime'); setQuery(''); setResults([]); }}
-            >
-              <Tv size={16} />
-              Anime (AniList)
-            </button>
-          </div>
+        <div className="category-select-wrapper">
+          <select 
+            className="category-dropdown"
+            value={category}
+            onChange={(e) => {
+              setCategory(e.target.value as any);
+              setQuery('');
+              setResults([]);
+            }}
+          >
+            <option value="all">🎬 Movies & TV Shows</option>
+            <option value="anime">🌸 Anime (AniList)</option>
+          </select>
         </div>
       </div>
 
@@ -242,7 +239,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
         </div>
       )}
 
-      {/* Search Results List */}
+      {/* Search Results Grid */}
       <div className="search-results-section">
         {!loading && results.length === 0 && query.trim().length > 0 && (
           <div className="search-no-results">
@@ -250,33 +247,56 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           </div>
         )}
 
-        <div className="search-results-list">
-          {results.map((res) => (
-            <div 
-              key={`${res.type}-${res.id}`} 
-              className="search-result-row"
-              onClick={() => handleRowClick(res)}
-            >
-              <div className="row-left">
-                <span className={`row-type-tag ${res.type}`}>
-                  {res.type === 'movie' ? 'Movie' : (res.type === 'tv' ? 'TV' : 'Anime')}
-                </span>
-                <span className="row-title" title={res.title}>{res.title}</span>
-                <span className="row-year">({res.year})</span>
+        <div className="search-results-grid">
+          {results.map((res) => {
+            const hasError = imageErrors[res.id] || !res.posterPath;
+            return (
+              <div 
+                key={`${res.type}-${res.id}`} 
+                className="search-result-card"
+                onClick={() => handleCardClick(res)}
+              >
+                <div className="card-poster-wrapper">
+                  {!hasError ? (
+                    <img 
+                      src={res.posterPath} 
+                      alt={res.title} 
+                      className="card-poster-image" 
+                      loading="lazy"
+                      onError={() => handleImageError(res.id)}
+                    />
+                  ) : (
+                    <div className="card-poster-fallback">
+                      <div className="fallback-backdrop"></div>
+                      {res.type === 'anime' ? <Tv size={32} className="fallback-icon" /> : <Film size={32} className="fallback-icon" />}
+                      <span className="fallback-title-text">{res.title}</span>
+                    </div>
+                  )}
+                  
+                  <div className="card-hover-overlay">
+                    <button className="play-overlay-btn">
+                      <Play fill="currentColor" size={20} />
+                    </button>
+                  </div>
+                  
+                  {res.rating && (
+                    <div className="card-rating-badge">
+                      ⭐ {res.rating.toFixed(1)}
+                    </div>
+                  )}
+                </div>
+                <div className="card-details">
+                  <h3 className="card-title" title={res.title}>{res.title}</h3>
+                  <div className="card-meta">
+                    <span className="card-year">{res.year}</span>
+                    <span className={`card-type-tag ${res.type}`}>
+                      {res.type === 'movie' ? 'Movie' : (res.type === 'tv' ? 'TV' : 'Anime')}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div className="row-right">
-                {res.rating && (
-                  <span className="row-rating">
-                    ⭐ {res.rating.toFixed(1)}
-                  </span>
-                )}
-                <button className="row-play-btn">
-                  <Play fill="currentColor" size={12} />
-                  <span>Stream</span>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
