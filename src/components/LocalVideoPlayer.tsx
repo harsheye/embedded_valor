@@ -3007,7 +3007,14 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       });
 
       controller.initialize(videoRef.current, activeAudioStreamIndex).then(() => {
-        if (active) logger.player('PlaybackController initialized successfully');
+        if (active) {
+          logger.player('PlaybackController initialized successfully');
+          if (controller) {
+            controller.play()
+              .then(() => setIsPlaying(true))
+              .catch(err => logger.player('Autoplay blocked:', err));
+          }
+        }
       });
     }
 
@@ -3026,19 +3033,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       playbackControllerRef.current.switchAudioTrack(activeAudioStreamIndex);
     }
   }, [activeAudioStreamIndex]);
-
-  // Autoplay (autostart) on load
-  useEffect(() => {
-    if (videoRef.current) {
-      // Seek / resume is handled strictly and reliably in onLoadedMetadata.
-      // We only run autoplay playback trigger here.
-      const p = playbackControllerRef.current 
-        ? playbackControllerRef.current.play() 
-        : videoRef.current.play();
-      p.then(() => setIsPlaying(true))
-       .catch(err => logger.player('Autoplay blocked:', err));
-    }
-  }, [video.url]);
 
   // Pause/Resume on Window Focus changes if enabled (Fullscreen only)
   useEffect(() => {

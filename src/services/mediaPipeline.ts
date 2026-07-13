@@ -1385,6 +1385,7 @@ export class PlaybackController {
       console.log(`[PlaybackController-${this.instanceId}] Playback State: PLAYING`);
       const generation = this.startNewPlaybackGeneration('play');
       await this.audioScheduler.resume();
+      if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
 
       this.bufferManager.resetFailures();
       this.scheduler.reset();
@@ -1396,11 +1397,11 @@ export class PlaybackController {
       
       // 1. Pre-fetch and pre-decode the audio chunk for the current position so it's ready in memory
       await this.fillBufferWindow(currentTime, 'play', generation, true);
-      if (generation !== this.playbackGeneration) return;
+      if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
 
       // 2. Play the video element
       await this.videoEl.play();
-      if (generation !== this.playbackGeneration) return;
+      if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
 
       // 3. Once video element is active, fetch the real playhead and schedule audio
       const syncedTime = this.videoEl.currentTime;
@@ -1428,12 +1429,14 @@ export class PlaybackController {
 
       // 1. Pre-fetch and pre-decode the audio chunk
       await this.fillBufferWindow(this.videoEl.currentTime, 'playSyncedFromCurrentTime', generation, true);
-      if (generation !== this.playbackGeneration) return;
+      if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
 
       // 2. Resume context and play
       await this.audioScheduler.resume();
+      if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
+
       await this.videoEl.play();
-      if (generation !== this.playbackGeneration) return;
+      if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
 
       // 3. Once video element is active, schedule matching audio playhead
       const syncedTime = this.videoEl.currentTime;
@@ -1496,12 +1499,12 @@ export class PlaybackController {
 
       // 2. Pre-buffer and decode the target audio chunk for the new position
       await this.fillBufferWindow(time, 'seek', generation);
-      if (generation !== this.playbackGeneration) return;
+      if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
 
       // 3. Resume audio contexts and restart playback contiguously
       if (wasPlaying && this.videoEl) {
         await this.videoEl.play();
-        if (generation !== this.playbackGeneration) return;
+        if (this.abortController.signal.aborted || generation !== this.playbackGeneration) return;
         
         const syncedTime = this.videoEl.currentTime;
         this.playbackQueue.clear();
@@ -1559,6 +1562,10 @@ export class PlaybackController {
 
   async destroy(): Promise<void> {
     console.log(`[PlaybackController-${this.instanceId}] destroy called.`);
+    
+    // Abort any active fetches, decodes, and scheduler updates immediately by moving generation forward
+    this.startNewPlaybackGeneration('destroy');
+    
     this.abortController.abort();
     this.stopHeartbeat();
     if (this.videoEl && this.listenersBound) {
@@ -1571,6 +1578,8 @@ export class PlaybackController {
     this.fetchingKeys.clear();
     this.playbackQueue.clear();
     this.manifest.clear();
+    this.audioScheduler.stopAll();
+    
     if (this.audioCtx) {
       await this.audioCtx.close().catch(() => {});
     }
