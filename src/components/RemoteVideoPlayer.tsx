@@ -2203,27 +2203,13 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
     setIsBuffering(false);
 
-    // Chunk-based dynamic loading on seek
-    if (activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
-      let needLoad = false;
-      if (video.containerType === 'hls' && video.hlsPlaylist) {
-        const segments = video.hlsPlaylist.segments || [];
-        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeAudioStartOffsetRef.current && activeAudioStartOffsetRef.current < s.startTime + s.duration);
-        const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
-        if (oldSegIdx !== newSegIdx) {
-          needLoad = true;
-        }
-      } else {
-        const audioDuration = 30;
-        if (newTime < activeAudioStartOffsetRef.current || newTime > activeAudioStartOffsetRef.current + audioDuration - 2) {
-          needLoad = true;
-        }
-      }
-
-      if (needLoad) {
-        logger.player(`Seek detected to ${newTime}s outside current chunk range. Fetching new audio chunk.`);
-        const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
-        await loadAudioChunk(newTime, activeAudioStreamIndex, activeStream?.codec || 'mp3', true);
+    // Sync PlaybackController playhead on seek
+    if (playbackControllerRef.current) {
+      const ctrlTime = playbackControllerRef.current.getCurrentTime();
+      if (Math.abs(ctrlTime - newTime) > 0.2) {
+        logger.player(`Seek detected to ${newTime}s in player. Updating playback controller...`);
+        activeAudioStartOffsetRef.current = Math.floor(newTime / 10) * 10;
+        playbackControllerRef.current.seek(newTime).catch(console.error);
       }
     }
 

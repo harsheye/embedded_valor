@@ -1074,6 +1074,10 @@ export class PlaybackController {
     return this.ff;
   }
 
+  getCurrentTime(): number {
+    return this.videoEl ? this.videoEl.currentTime : 0;
+  }
+
   async initialize(videoEl: HTMLVideoElement, streamIndex: number | null): Promise<void> {
     this.videoEl = videoEl;
     this.videoEl.muted = true; // Mute video element - audio is played via AudioContext
@@ -1450,11 +1454,16 @@ export class PlaybackController {
 
     try {
       console.log(`[PlaybackController-${this.instanceId}] Playback State: PAUSED`);
+      
+      // Cancel current playback generation & downloads immediately
+      this.startNewPlaybackGeneration('pause');
+
       if (this.videoEl) {
         this.videoEl.pause();
       }
       this.stopHeartbeat();
       this.playbackQueue.clear();
+      this.audioScheduler.stopAll();
       this.audioScheduler.suspend().catch(console.error);
     } finally {
       this.isTransitioningState = false;
