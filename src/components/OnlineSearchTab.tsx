@@ -61,7 +61,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           const year = date ? date.split('-')[0] : 'N/A';
           const posterPath = r.poster_path 
             ? `https://image.tmdb.org/t/p/w500${r.poster_path}` 
-            : 'https://via.placeholder.com/500x750?text=No+Poster';
+            : '';
             
           return {
             id: r.id,
@@ -133,7 +133,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
       
       const mapped: SearchResult[] = mediaList.map((m: any) => {
         const title = m.title.english || m.title.romaji || m.title.native || 'Unknown Anime';
-        const posterPath = m.coverImage.extraLarge || m.coverImage.large || 'https://via.placeholder.com/500x750?text=No+Poster';
+        const posterPath = m.coverImage.extraLarge || m.coverImage.large || '';
         
         return {
           id: m.id,
@@ -178,7 +178,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
     };
   }, [query, category]);
 
-  const handleCardClick = (res: SearchResult) => {
+  const handleRowClick = (res: SearchResult) => {
     const videoItem: VideoItem = {
       id: `${res.type}-${res.id}`,
       title: res.title,
@@ -201,39 +201,37 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           <Sparkles className="title-icon" size={24} />
           Online Streaming Hub
         </h1>
-        <p className="search-subtitle">
-          Search and stream movies, TV shows, or anime instantly using premium Vidking & Videasy servers.
-        </p>
+        
+        {/* Search Bar & Category Buttons Unified Row */}
+        <div className="search-row-container">
+          <div className="search-input-wrapper">
+            <Search className="search-bar-icon" size={20} />
+            <input
+              type="text"
+              className="search-bar-input"
+              placeholder={category === 'all' ? "Search Movie or TV Series name..." : "Search Anime (e.g. Naruto, One Piece)..."}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {loading && <div className="search-inline-spinner"></div>}
+          </div>
 
-        {/* Category Selector */}
-        <div className="search-category-tabs">
-          <button 
-            className={`category-tab ${category === 'all' ? 'active' : ''}`}
-            onClick={() => { setCategory('all'); setQuery(''); setResults([]); }}
-          >
-            <Film size={16} />
-            Movies & TV Shows
-          </button>
-          <button 
-            className={`category-tab ${category === 'anime' ? 'active' : ''}`}
-            onClick={() => { setCategory('anime'); setQuery(''); setResults([]); }}
-          >
-            <Tv size={16} />
-            Anime (AniList)
-          </button>
-        </div>
-
-        {/* Search Input Bar */}
-        <div className="search-input-wrapper">
-          <Search className="search-bar-icon" size={20} />
-          <input
-            type="text"
-            className="search-bar-input"
-            placeholder={category === 'all' ? "Search Movie or TV Series name..." : "Search Anime (e.g. Naruto, One Piece)..."}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          {loading && <div className="search-inline-spinner"></div>}
+          <div className="search-category-tabs">
+            <button 
+              className={`category-tab ${category === 'all' ? 'active' : ''}`}
+              onClick={() => { setCategory('all'); setQuery(''); setResults([]); }}
+            >
+              <Film size={16} />
+              Movies & TV Shows
+            </button>
+            <button 
+              className={`category-tab ${category === 'anime' ? 'active' : ''}`}
+              onClick={() => { setCategory('anime'); setQuery(''); setResults([]); }}
+            >
+              <Tv size={16} />
+              Anime (AniList)
+            </button>
+          </div>
         </div>
       </div>
 
@@ -244,7 +242,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
         </div>
       )}
 
-      {/* Search Results Grid */}
+      {/* Search Results List */}
       <div className="search-results-section">
         {!loading && results.length === 0 && query.trim().length > 0 && (
           <div className="search-no-results">
@@ -252,39 +250,30 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           </div>
         )}
 
-        <div className="search-results-grid">
+        <div className="search-results-list">
           {results.map((res) => (
             <div 
               key={`${res.type}-${res.id}`} 
-              className="search-result-card"
-              onClick={() => handleCardClick(res)}
+              className="search-result-row"
+              onClick={() => handleRowClick(res)}
             >
-              <div className="card-poster-wrapper">
-                <img 
-                  src={res.posterPath} 
-                  alt={res.title} 
-                  className="card-poster-image" 
-                  loading="lazy" 
-                />
-                <div className="card-hover-overlay">
-                  <button className="play-overlay-btn">
-                    <Play fill="currentColor" size={20} />
-                  </button>
-                </div>
-                {res.rating && (
-                  <div className="card-rating-badge">
-                    ⭐ {res.rating.toFixed(1)}
-                  </div>
-                )}
+              <div className="row-left">
+                <span className={`row-type-tag ${res.type}`}>
+                  {res.type === 'movie' ? 'Movie' : (res.type === 'tv' ? 'TV' : 'Anime')}
+                </span>
+                <span className="row-title" title={res.title}>{res.title}</span>
+                <span className="row-year">({res.year})</span>
               </div>
-              <div className="card-details">
-                <h3 className="card-title" title={res.title}>{res.title}</h3>
-                <div className="card-meta">
-                  <span className="card-year">{res.year}</span>
-                  <span className={`card-type-tag ${res.type}`}>
-                    {res.type === 'movie' ? 'Movie' : (res.type === 'tv' ? 'TV' : 'Anime')}
+              <div className="row-right">
+                {res.rating && (
+                  <span className="row-rating">
+                    ⭐ {res.rating.toFixed(1)}
                   </span>
-                </div>
+                )}
+                <button className="row-play-btn">
+                  <Play fill="currentColor" size={12} />
+                  <span>Stream</span>
+                </button>
               </div>
             </div>
           ))}
