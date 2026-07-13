@@ -1,0 +1,470 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  X, Instagram, Twitter, Facebook, Youtube, Link as LinkIcon, 
+  Calendar, MapPin, Star, Film, Tv, Sparkles, Filter, Search, ArrowUpDown 
+} from 'lucide-react';
+import type { VideoItem } from '../types/media';
+
+interface ActorDetailsPageProps {
+  actorId: number;
+  actorName: string;
+  onClose: () => void;
+  onSelectMedia: (video: VideoItem) => void;
+  tmdbApiKey?: string;
+}
+
+interface ActorProfile {
+  name: string;
+  biography: string;
+  birthday: string | null;
+  deathday: string | null;
+  place_of_birth: string | null;
+  profile_path: string | null;
+  popularity: number;
+  known_for_department: string;
+}
+
+interface ExternalIds {
+  instagram_id?: string;
+  twitter_id?: string;
+  facebook_id?: string;
+  youtube_id?: string;
+  tiktok_id?: string;
+}
+
+interface CreditItem {
+  id: number;
+  media_type: 'movie' | 'tv';
+  title?: string;
+  name?: string;
+  poster_path: string | null;
+  release_date?: string;
+  first_air_date?: string;
+  vote_average: number;
+  character?: string;
+  popularity: number;
+}
+
+const DEFAULT_TMDB_TOKEN = 'Bearer ...'; // fallback placeholder or env
+
+export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
+  actorId,
+  actorName,
+  onClose,
+  onSelectMedia,
+  tmdbApiKey
+}) => {
+  const [profile, setProfile] = useState<ActorProfile | null>(null);
+  const [externalIds, setExternalIds] = useState<ExternalIds | null>(null);
+  const [credits, setCredits] = useState<CreditItem[]>([]);
+  const [filteredCredits, setFilteredCredits] = useState<CreditItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Filters & Sorting States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'movie' | 'tv'>('all');
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'year_desc' | 'year_asc' | 'popularity_desc' | 'rating_desc'>('popularity_desc');
+
+  useEffect(() => {
+    const fetchActorData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const isBearer = tmdbApiKey ? tmdbApiKey.length > 50 : true;
+        const token = tmdbApiKey || DEFAULT_TMDB_TOKEN;
+        let headers: HeadersInit = { 'accept': 'application/json' };
+        
+        let authParams = '';
+        if (isBearer) {
+          headers['Authorization'] = `Bearer ${token}`;
+        } else {
+          authParams = `&api_key=${token}`;
+        }
+
+        const detailsUrl = `https://api.themoviedb.org/3/person/${actorId}?language=en-US${isBearer ? '' : authParams}`;
+        const externalIdsUrl = `https://api.themoviedb.org/3/person/${actorId}/external_ids?language=en-US${isBearer ? '' : authParams}`;
+        const creditsUrl = `https://api.themoviedb.org/3/person/${actorId}/combined_credits?language=en-US${isBearer ? '' : authParams}`;
+
+        // Fetch details
+        const detailsRes = await fetch(detailsUrl, { headers });
+        if (!detailsRes.ok) throw new Error('Failed to load actor profile');
+        const detailsData = await detailsRes.json();
+        setProfile(detailsData);
+
+        // Fetch Social IDs
+        const socialRes = await fetch(externalIdsUrl, { headers });
+        if (socialRes.ok) {
+          const socialData = await socialRes.json();
+          setExternalIds(socialData);
+        }
+
+        // Fetch Credits
+        const creditsRes = await fetch(creditsUrl, { headers });
+        if (creditsRes.ok) {
+          const creditsData = await creditsRes.json();
+          const castList: CreditItem[] = (creditsData.cast || [])
+            .map((c: any) => ({
+              id: c.id,
+              media_type: c.media_type,
+              title: c.title,
+              name: c.name,
+              poster_path: c.poster_path,
+              release_date: c.release_date,
+              first_air_date: c.first_air_date,
+              vote_average: c.vote_average || 0,
+              character: c.character,
+              popularity: c.popularity || 0
+            }));
+          setCredits(castList);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'Failed to fetch actor data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchActorData();
+  }, [actorId, tmdbApiKey]);
+
+  // Apply filters and sorting
+  useEffect(() => {
+    let result = [...credits];
+
+    // Filter by Search Query
+    if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(c => {
+        const title = (c.title || c.name || '').toLowerCase();
+        const character = (c.character || '').toLowerCase();
+        return title.includes(q) || character.includes(q);
+      });
+    }
+
+    // Filter by Category
+    if (categoryFilter !== 'all') {
+      result = result.filter(c => c.media_type === categoryFilter);
+    }
+
+    // Filter by Year
+    if (yearFilter !== 'all') {
+      result = result.filter(c => {
+        const dateStr = c.release_date || c.first_air_date;
+        if (!dateStr) return false;
+        return dateStr.startsWith(yearFilter);
+      });
+    }
+
+    // Sorting
+    result.sort((a, b) => {
+      const dateA = a.release_date || a.first_air_date || '';
+      const dateB = b.release_date || b.first_air_date || '';
+
+      if (sortOrder === 'year_desc') {
+        return dateB.localeCompare(dateA);
+      } else if (sortOrder === 'year_asc') {
+        return dateA.localeCompare(dateB);
+      } else if (sortOrder === 'rating_desc') {
+        return b.vote_average - a.vote_average;
+      } else {
+        // default: popularity_desc
+        return b.popularity - a.popularity;
+      }
+    });
+
+    setFilteredCredits(result);
+  }, [credits, searchQuery, categoryFilter, yearFilter, sortOrder]);
+
+  // Extract unique years from credits to populate filter dropdown
+  const uniqueYears = Array.from(
+    new Set(
+      credits
+        .map(c => {
+          const dateStr = c.release_date || c.first_air_date;
+          return dateStr ? dateStr.substring(0, 4) : null;
+        })
+        .filter((y): y is string => y !== null)
+    )
+  ).sort((a, b) => b.localeCompare(a));
+
+  if (loading) {
+    return (
+      <div className="actor-details-overlay loading-view">
+        <div className="spinner" />
+        <p>Loading actor details...</p>
+      </div>
+    );
+  }
+
+  if (error || !profile) {
+    return (
+      <div className="actor-details-overlay error-view">
+        <h2>Error Loading Profile</h2>
+        <p>{error || 'Unable to retrieve data.'}</p>
+        <button onClick={onClose} className="btn-back">Close</button>
+      </div>
+    );
+  }
+
+  const profileImageUrl = profile.profile_path
+    ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/h632${profile.profile_path}`
+    : '';
+
+  return (
+    <div className="actor-details-overlay animate-fade-in">
+      <div className="actor-details-container glass-panel">
+        
+        {/* Close Button */}
+        <button className="actor-close-btn" onClick={onClose} title="Close Profile">
+          <X size={24} />
+        </button>
+
+        <div className="actor-layout-grid">
+          
+          {/* Left Column: Portrait & Info */}
+          <div className="actor-left-col">
+            <div className="actor-portrait-card">
+              {profileImageUrl ? (
+                <img src={profileImageUrl} alt={profile.name} className="actor-profile-image" />
+              ) : (
+                <div className="actor-profile-image-fallback">
+                  <Sparkles size={64} />
+                </div>
+              )}
+            </div>
+
+            <div className="actor-quick-meta">
+              <h2>{profile.name}</h2>
+              {profile.known_for_department && (
+                <span className="actor-dept-badge">{profile.known_for_department}</span>
+              )}
+
+              {/* Social Links */}
+              {externalIds && (
+                <div className="actor-socials">
+                  {externalIds.instagram_id && (
+                    <a 
+                      href={`https://instagram.com/${externalIds.instagram_id}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      title="Instagram"
+                    >
+                      <Instagram size={20} />
+                    </a>
+                  )}
+                  {externalIds.twitter_id && (
+                    <a 
+                      href={`https://twitter.com/${externalIds.twitter_id}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      title="Twitter"
+                    >
+                      <Twitter size={20} />
+                    </a>
+                  )}
+                  {externalIds.facebook_id && (
+                    <a 
+                      href={`https://facebook.com/${externalIds.facebook_id}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      title="Facebook"
+                    >
+                      <Facebook size={20} />
+                    </a>
+                  )}
+                  {externalIds.youtube_id && (
+                    <a 
+                      href={`https://youtube.com/channel/${externalIds.youtube_id}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      title="Youtube"
+                    >
+                      <Youtube size={20} />
+                    </a>
+                  )}
+                  {profile.profile_path && (
+                    <a 
+                      href={`https://www.themoviedb.org/person/${actorId}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      title="TMDB Profile"
+                    >
+                      <LinkIcon size={20} />
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Fact Sheets */}
+              <div className="actor-facts-list">
+                {profile.birthday && (
+                  <div className="actor-fact-item">
+                    <Calendar size={16} />
+                    <div>
+                      <span className="fact-label">Born</span>
+                      <span className="fact-val">{profile.birthday}</span>
+                    </div>
+                  </div>
+                )}
+                {profile.place_of_birth && (
+                  <div className="actor-fact-item">
+                    <MapPin size={16} />
+                    <div>
+                      <span className="fact-label">Birthplace</span>
+                      <span className="fact-val">{profile.place_of_birth}</span>
+                    </div>
+                  </div>
+                )}
+                <div className="actor-fact-item">
+                  <Star size={16} />
+                  <div>
+                    <span className="fact-label">Popularity Score</span>
+                    <span className="fact-val">{profile.popularity.toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Bio & Filmography */}
+          <div className="actor-right-col">
+            
+            {/* Biography */}
+            <div className="actor-bio-section">
+              <h3 className="section-title">Biography</h3>
+              <p className="actor-biography-text">
+                {profile.biography || `We don't have a biography for ${profile.name} yet.`}
+              </p>
+            </div>
+
+            {/* Filmography Filter Controls */}
+            <div className="actor-credits-section">
+              <div className="credits-header-row">
+                <h3 className="section-title">Known For ({filteredCredits.length})</h3>
+                
+                <div className="credits-filter-actions">
+                  {/* Search Bar */}
+                  <div className="filter-search-wrapper">
+                    <Search size={16} className="search-icon" />
+                    <input 
+                      type="text" 
+                      placeholder="Search movie or role..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Category select */}
+                  <div className="filter-dropdown-wrapper">
+                    <Filter size={14} className="filter-icon" />
+                    <select 
+                      value={categoryFilter} 
+                      onChange={e => setCategoryFilter(e.target.value as any)}
+                    >
+                      <option value="all">All Formats</option>
+                      <option value="movie">Movies</option>
+                      <option value="tv">TV Shows</option>
+                    </select>
+                  </div>
+
+                  {/* Year filter select */}
+                  <div className="filter-dropdown-wrapper">
+                    <Calendar size={14} className="filter-icon" />
+                    <select 
+                      value={yearFilter} 
+                      onChange={e => setYearFilter(e.target.value)}
+                    >
+                      <option value="all">All Years</option>
+                      {uniqueYears.map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Sorting select */}
+                  <div className="filter-dropdown-wrapper">
+                    <ArrowUpDown size={14} className="filter-icon" />
+                    <select 
+                      value={sortOrder} 
+                      onChange={e => setSortOrder(e.target.value as any)}
+                    >
+                      <option value="popularity_desc">Popularity</option>
+                      <option value="year_desc">Year (Newest)</option>
+                      <option value="year_asc">Year (Oldest)</option>
+                      <option value="rating_desc">Rating</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Credits Grid */}
+              {filteredCredits.length > 0 ? (
+                <div className="actor-credits-grid">
+                  {filteredCredits.map(c => {
+                    const posterUrl = c.poster_path
+                      ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w185${c.poster_path}`
+                      : '';
+                    const titleStr = c.title || c.name || 'Untitled';
+                    const dateStr = c.release_date || c.first_air_date || '';
+                    const yearStr = dateStr ? dateStr.substring(0, 4) : 'N/A';
+
+                    return (
+                      <div 
+                        key={`${c.media_type}-${c.id}`} 
+                        className="actor-credit-card"
+                        onClick={() => {
+                          onSelectMedia({
+                            id: `online-${c.media_type}-${c.id}`,
+                            tmdbId: String(c.id),
+                            type: c.media_type === 'movie' ? 'online_movie' : 'online_tv',
+                            title: titleStr,
+                            backdrop_path: '',
+                            poster_path: c.poster_path ? `https://image.tmdb.org/t/p/w500${c.poster_path}` : ''
+                          } as any);
+                        }}
+                      >
+                        <div className="credit-card-poster">
+                          {posterUrl ? (
+                            <img src={posterUrl} alt={titleStr} />
+                          ) : (
+                            <div className="credit-card-poster-fallback">
+                              {c.media_type === 'movie' ? <Film size={28} /> : <Tv size={28} />}
+                            </div>
+                          )}
+                          <div className="credit-card-type-badge">
+                            {c.media_type === 'movie' ? 'Movie' : 'TV'}
+                          </div>
+                          {c.vote_average > 0 && (
+                            <div className="credit-card-rating">
+                              <Star size={10} fill="#fbbf24" stroke="none" />
+                              <span>{c.vote_average.toFixed(1)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="credit-card-info">
+                          <span className="credit-card-year">{yearStr}</span>
+                          <h4 className="credit-card-title">{titleStr}</h4>
+                          {c.character && (
+                            <p className="credit-card-character">as {c.character}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="no-credits-found">
+                  <p>No matching movies or shows found for this filter combination.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};

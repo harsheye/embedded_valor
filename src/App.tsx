@@ -291,6 +291,24 @@ function App() {
       processRemoteUrl(localStreamUrl, true);
     }
 
+    // Recovery of online details page
+    const detId = params.get('details_id');
+    const detTmdbId = params.get('details_tmdb_id');
+    const detType = params.get('details_type');
+    const detTitle = params.get('details_title');
+    const detPoster = params.get('details_poster');
+    if (detId && detType) {
+      setSelectedDetailsMedia({
+        id: detId,
+        tmdbId: detTmdbId || undefined,
+        type: detType as any,
+        title: detTitle || '',
+        poster_path: detPoster || '',
+        backdrop_path: ''
+      } as any);
+      setActiveTab('online');
+    }
+
     const traktCode = params.get('code');
     if (traktCode) {
       const exchangeTraktCode = async () => {
@@ -343,6 +361,35 @@ function App() {
       exchangeTraktCode();
     }
   }, []);
+
+  // Synchronize selectedDetailsMedia with URL search parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (selectedDetailsMedia) {
+      params.set('details_id', selectedDetailsMedia.id);
+      if (selectedDetailsMedia.tmdbId) {
+        params.set('details_tmdb_id', selectedDetailsMedia.tmdbId);
+      } else {
+        params.delete('details_tmdb_id');
+      }
+      params.set('details_type', selectedDetailsMedia.type);
+      params.set('details_title', selectedDetailsMedia.title);
+      if (selectedDetailsMedia.poster_path) {
+        params.set('details_poster', selectedDetailsMedia.poster_path);
+      } else {
+        params.delete('details_poster');
+      }
+      window.history.replaceState({}, document.title, `?${params.toString()}`);
+    } else if (!playingVideo) {
+      params.delete('details_id');
+      params.delete('details_tmdb_id');
+      params.delete('details_type');
+      params.delete('details_title');
+      params.delete('details_poster');
+      const qs = params.toString();
+      window.history.replaceState({}, document.title, qs ? `?${qs}` : window.location.pathname);
+    }
+  }, [selectedDetailsMedia, playingVideo]);
 
   useEffect(() => {
     const initData = async () => {
@@ -3066,6 +3113,7 @@ function App() {
                       };
                       handlePlayVideo(toPlay);
                     }}
+                    onSelectMedia={setSelectedDetailsMedia}
                     tmdbApiKey={settings.tmdbApiKey}
                   />
                 )}

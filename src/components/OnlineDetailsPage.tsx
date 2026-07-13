@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Play, Star, Calendar, Clock, Film, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import type { VideoItem } from '../types/media';
+import { ActorDetailsPage } from './ActorDetailsPage';
 
 interface OnlineDetailsPageProps {
   video: VideoItem;
   onClose: () => void;
   onPlay: (video: VideoItem, season?: number, episode?: number) => void;
+  onSelectMedia?: (video: VideoItem) => void;
   tmdbApiKey?: string;
 }
 
@@ -29,6 +31,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   video,
   onClose,
   onPlay,
+  onSelectMedia,
   tmdbApiKey
 }) => {
   const [details, setDetails] = useState<any>(null);
@@ -36,6 +39,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   const [seasons, setSeasons] = useState<any[]>([]);
   const [currentSeason, setCurrentSeason] = useState(1);
   const [episodes, setEpisodes] = useState<EpisodeItem[]>([]);
+  const [selectedActor, setSelectedActor] = useState<{ id: number; name: string } | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -392,7 +396,12 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
 
             <div className="cast-scroll-container" ref={castScrollRef}>
               {cast.map((actor) => (
-                <div className="actor-card-item" key={actor.id}>
+                <div 
+                  className="actor-card-item" 
+                  key={actor.id}
+                  onClick={() => setSelectedActor({ id: actor.id, name: actor.name })}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="actor-profile-image-wrapper">
                     {actor.profilePath ? (
                       <img src={actor.profilePath} alt={actor.name} className="actor-profile-image" />
@@ -421,9 +430,9 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
               {video.type === 'online_tv' && seasons.length > 0 && (
                 <div className="season-selector-dropdown-wrapper">
                   <select 
-                    value={currentSeason}
-                    onChange={(e) => setCurrentSeason(Number(e.target.value))}
-                    className="season-details-dropdown"
+                     value={currentSeason}
+                     onChange={(e) => setCurrentSeason(Number(e.target.value))}
+                     className="season-details-dropdown"
                   >
                     {seasons
                       .filter((s: any) => s.season_number > 0) // Exclude Specials/Season 0
@@ -453,8 +462,8 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                     onClick={() => onPlay(video, currentSeason, ep.episodeNumber)}
                   >
                     <div className="episode-card-thumb-wrapper">
-                      {ep.stillPath ? (
-                        <img src={ep.stillPath} alt={ep.name} className="episode-card-thumb" />
+                      {(ep.stillPath || posterUrl) ? (
+                        <img src={ep.stillPath || posterUrl} alt={ep.name} className="episode-card-thumb" />
                       ) : (
                         <div className="episode-card-thumb-fallback">
                           <Play size={20} />
@@ -478,6 +487,21 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
           </div>
         )}
       </div>
+
+      {selectedActor && (
+        <ActorDetailsPage
+          actorId={selectedActor.id}
+          actorName={selectedActor.name}
+          onClose={() => setSelectedActor(null)}
+          onSelectMedia={(clickedMedia) => {
+            setSelectedActor(null);
+            if (onSelectMedia) {
+              onSelectMedia(clickedMedia);
+            }
+          }}
+          tmdbApiKey={tmdbApiKey}
+        />
+      )}
     </div>
   );
 };
