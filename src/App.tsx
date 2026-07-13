@@ -2652,6 +2652,7 @@ function App() {
                     <img 
                       src={video.posterPath} 
                       alt="" 
+                      crossOrigin="anonymous"
                       onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                       style={{ width: '20px', height: '30px', borderRadius: '3px', objectFit: 'cover', flexShrink: 0 }} 
                     />
@@ -2970,6 +2971,7 @@ function App() {
                             <img 
                               src={video.posterPath} 
                               alt="" 
+                              crossOrigin="anonymous"
                               onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                               style={{ width: '45px', height: '65px', borderRadius: '6px', objectFit: 'cover', marginRight: '1rem', flexShrink: 0 }} 
                             />

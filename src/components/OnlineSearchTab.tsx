@@ -264,6 +264,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
                       alt={res.title} 
                       className="card-poster-image" 
                       loading="lazy"
+                      crossOrigin="anonymous"
                       onError={() => handleImageError(res.id)}
                     />
                   ) : (
