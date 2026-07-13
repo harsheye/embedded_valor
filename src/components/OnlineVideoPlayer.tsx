@@ -623,6 +623,16 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
       style={{ background: 'black', fontFamily: 'Outfit, sans-serif' }}
     >
       <style>{`
+        .local-player-container {
+          position: fixed;
+          inset: 0;
+          width: 100vw;
+          height: 100vh;
+          background: #000;
+          z-index: 2000;
+          overflow: hidden;
+          user-select: none;
+        }
         .online-iframe-wrapper {
           position: absolute;
           inset: 0;
@@ -676,6 +686,345 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           background: rgba(167, 139, 250, 0.15) !important;
           border-color: #c084fc !important;
           color: #c084fc !important;
+        }
+
+        /* Custom UI Overlays Styling */
+        .player-ui-overlay-layer {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 10;
+          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 20%, transparent 80%, rgba(0, 0, 0, 0.7) 100%);
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .player-ui-overlay-layer.visible {
+          opacity: 1;
+          pointer-events: auto;
+        }
+
+        .top-bar-overlay {
+          height: 80px;
+          background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 2rem;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .back-btn {
+          background: transparent;
+          border: none;
+          color: white;
+          cursor: pointer;
+          transition: transform 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px;
+          border-radius: 50%;
+        }
+        .back-btn:hover {
+          background: rgba(255,255,255,0.1);
+          transform: scale(1.08);
+        }
+        .player-title-info h2 {
+          margin: 0;
+          font-size: 1.25rem;
+          color: white;
+          font-weight: 700;
+        }
+        .player-title-info span {
+          font-size: 0.85rem;
+          color: #a78bfa;
+          font-weight: 600;
+          margin-top: 4px;
+          display: block;
+        }
+        .source-indicator-badge {
+          background: rgba(139, 92, 246, 0.2);
+          border: 1px solid #8b5cf6;
+          color: #c084fc;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .center-hud-clicker {
+          flex-grow: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .lock-hud-indicator {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          color: #ff0914;
+          background: rgba(0,0,0,0.7);
+          padding: 20px 40px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,9,20,0.3);
+          backdrop-filter: blur(10px);
+        }
+        .lock-hud-indicator span {
+          font-weight: 700;
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+
+        .pause-synopsis-overlay {
+          position: absolute;
+          left: 2rem;
+          bottom: 120px;
+          max-width: 450px;
+          z-index: 12;
+          pointer-events: none;
+        }
+        .synopsis-box {
+          background: rgba(10, 10, 15, 0.75);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          padding: 1.5rem;
+          border-radius: 16px;
+          backdrop-filter: blur(15px);
+          -webkit-backdrop-filter: blur(15px);
+          box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+          pointer-events: auto;
+        }
+        .synopsis-tag {
+          background: #ff0914;
+          color: white;
+          font-size: 10px;
+          font-weight: 800;
+          padding: 2px 8px;
+          border-radius: 4px;
+          letter-spacing: 0.5px;
+        }
+        .synopsis-box h3 {
+          margin: 10px 0 6px 0;
+          color: white;
+          font-size: 1.35rem;
+        }
+        .synopsis-box p {
+          margin: 0;
+          color: rgba(255, 255, 255, 0.55);
+          font-size: 0.85rem;
+          line-height: 1.5;
+        }
+
+        .bottom-bar-overlay {
+          background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+          padding: 1.5rem 2rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .scrub-container-premium {
+          position: relative;
+          width: 100%;
+          height: 16px;
+          display: flex;
+          align-items: center;
+          cursor: pointer;
+        }
+        .scrub-bar-premium {
+          position: absolute;
+          width: 100%;
+          height: 4px;
+          background: rgba(255,255,255,0.2);
+          border-radius: 2px;
+          outline: none;
+          -webkit-appearance: none;
+          z-index: 10;
+          cursor: pointer;
+        }
+        .scrub-bar-premium::-webkit-slider-runnable-track {
+          background: transparent;
+        }
+        .scrub-bar-premium::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: #8b5cf6;
+          cursor: pointer;
+          transition: transform 0.15s;
+          transform: scale(0);
+        }
+        .scrub-container-premium:hover .scrub-bar-premium::-webkit-slider-thumb {
+          transform: scale(1.3);
+        }
+        .scrub-track-progress {
+          position: absolute;
+          height: 4px;
+          background: #8b5cf6;
+          border-radius: 2px;
+          z-index: 8;
+          pointer-events: none;
+        }
+        .timeline-bookmark-range {
+          position: absolute;
+          height: 4px;
+          background: rgba(229, 9, 20, 0.6);
+          z-index: 9;
+          pointer-events: none;
+        }
+        .timeline-bookmark-dot {
+          position: absolute;
+          width: 6px;
+          height: 6px;
+          background: #fbbf24;
+          border-radius: 50%;
+          transform: translate(-3px, -1px);
+          z-index: 9;
+          pointer-events: none;
+        }
+        .timeline-bookmark-range.nudity, .timeline-bookmark-dot.nudity { background: #ec4899; }
+        .timeline-bookmark-range.sex, .timeline-bookmark-dot.sex { background: #a855f7; }
+        .timeline-bookmark-range.gore, .timeline-bookmark-dot.gore { background: #ef4444; }
+        .timeline-bookmark-range.intro, .timeline-bookmark-dot.intro { background: #3b82f6; }
+        .timeline-bookmark-range.outro, .timeline-bookmark-dot.outro { background: #10b981; }
+
+        .bottom-control-buttons-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+        }
+        .bottom-controls-left-group, .bottom-controls-right-group {
+          display: flex;
+          align-items: center;
+          gap: 1.25rem;
+        }
+        .control-btn {
+          background: transparent;
+          border: none;
+          color: white;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px;
+          border-radius: 50%;
+          transition: background 0.2s, transform 0.15s;
+        }
+        .control-btn:hover {
+          background: rgba(255,255,255,0.1);
+          transform: scale(1.08);
+        }
+        .control-btn.active {
+          color: #8b5cf6;
+        }
+        .volume-slider-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .volume-slider-bar {
+          width: 80px;
+          height: 4px;
+          background: rgba(255,255,255,0.2);
+          border-radius: 2px;
+          outline: none;
+          -webkit-appearance: none;
+          cursor: pointer;
+        }
+        .volume-slider-bar::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: white;
+          cursor: pointer;
+        }
+        .time-display-odometer {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: rgba(255,255,255,0.7);
+          font-size: 0.85rem;
+          font-family: monospace;
+        }
+        .time-display-odometer .divider {
+          color: rgba(255,255,255,0.3);
+        }
+
+        .popover-wrapper {
+          position: relative;
+        }
+        .player-toast-notification {
+          position: absolute;
+          bottom: 120px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(139, 92, 246, 0.95);
+          border: 1px solid #a78bfa;
+          color: white;
+          padding: 8px 20px;
+          border-radius: 20px;
+          font-size: 13px;
+          font-weight: 600;
+          z-index: 1000;
+          box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        /* Quick Settings Panel */
+        .player-quick-settings-panel {
+          position: absolute;
+          bottom: 120px;
+          right: 2rem;
+          width: 320px;
+          background: rgba(10, 10, 15, 0.9);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 16px;
+          padding: 1.25rem;
+          color: white;
+          z-index: 1000;
+          box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+        }
+        .player-quick-settings-panel .settings-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          padding-bottom: 8px;
+          margin-bottom: 12px;
+        }
+        .player-quick-settings-panel .settings-header h3 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+        }
+        .player-quick-settings-panel .settings-header button {
+          background: transparent;
+          border: none;
+          color: rgba(255,255,255,0.6);
+          cursor: pointer;
+        }
+        .player-quick-settings-panel .settings-options-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .player-quick-settings-panel .pref-toggle-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 13px;
         }
       `}</style>
 
@@ -897,18 +1246,7 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
                 )}
 
                 {/* Bookmarks popover list */}
-                <div 
-                  className="popover-wrapper"
-                  onMouseEnter={() => {
-                    if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
-                    setShowBookmarksPopover(true);
-                  }}
-                  onMouseLeave={() => {
-                    bookmarksTimeoutRef.current = setTimeout(() => {
-                      setShowBookmarksPopover(false);
-                    }, 200);
-                  }}
-                >
+                <div className="popover-wrapper">
                   <button 
                     className={`control-btn ${showBookmarksPopover ? 'active' : ''}`}
                     onClick={() => setShowBookmarksPopover(prev => !prev)}

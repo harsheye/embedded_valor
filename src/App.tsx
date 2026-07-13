@@ -3105,11 +3105,18 @@ function App() {
                     video={selectedDetailsMedia}
                     onClose={() => setSelectedDetailsMedia(null)}
                     onPlay={(selectedVideo, season, episode) => {
+                      const match = videos.find(v => {
+                        if (selectedVideo.type === 'online_movie') {
+                          return v.id === selectedVideo.id;
+                        } else {
+                          return v.id === selectedVideo.id && v.season === season && v.episode === episode;
+                        }
+                      });
                       const toPlay = {
                         ...selectedVideo,
                         season,
                         episode,
-                        currentTime: 0
+                        currentTime: match ? (match.currentTime || 0) : 0
                       };
                       handlePlayVideo(toPlay);
                     }}

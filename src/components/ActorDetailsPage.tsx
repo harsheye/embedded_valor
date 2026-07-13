@@ -122,7 +122,54 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
         const detailsRes = await fetch(detailsUrl, { headers });
         if (!detailsRes.ok) {
           console.warn('TMDB details fetch failed with status:', detailsRes.status);
-          tmdbFailed = true;
+          
+          if (token !== DEFAULT_TMDB_TOKEN) {
+            console.log('Attempting TMDB details fetch with system fallback token...');
+            const fallbackHeaders = {
+              'accept': 'application/json',
+              'Authorization': `Bearer ${DEFAULT_TMDB_TOKEN}`
+            };
+            const fallbackDetailsUrl = `https://api.themoviedb.org/3/person/${actorId}?language=en-US`;
+            const retryRes = await fetch(fallbackDetailsUrl, { headers: fallbackHeaders });
+            
+            if (retryRes.ok) {
+              const detailsData = await retryRes.json();
+              setProfile(detailsData);
+              
+              // Fetch socials using fallback token
+              const fallbackSocialUrl = `https://api.themoviedb.org/3/person/${actorId}/external_ids?language=en-US`;
+              const retrySocial = await fetch(fallbackSocialUrl, { headers: fallbackHeaders });
+              if (retrySocial.ok) {
+                setExternalIds(await retrySocial.json());
+              }
+              
+              // Fetch credits using fallback token
+              const fallbackCreditsUrl = `https://api.themoviedb.org/3/person/${actorId}/combined_credits?language=en-US`;
+              const retryCredits = await fetch(fallbackCreditsUrl, { headers: fallbackHeaders });
+              if (retryCredits.ok) {
+                const creditsData = await retryCredits.json();
+                const castList: CreditItem[] = (creditsData.cast || [])
+                  .map((c: any) => ({
+                    id: c.id,
+                    media_type: c.media_type,
+                    title: c.title,
+                    name: c.name,
+                    poster_path: c.poster_path,
+                    release_date: c.release_date,
+                    first_air_date: c.first_air_date,
+                    vote_average: c.vote_average || 0,
+                    character: c.character,
+                    popularity: c.popularity || 0
+                  }));
+                setCredits(castList);
+              }
+              tmdbFailed = false;
+            } else {
+              tmdbFailed = true;
+            }
+          } else {
+            tmdbFailed = true;
+          }
         } else {
           const detailsData = await detailsRes.json();
           setProfile(detailsData);
