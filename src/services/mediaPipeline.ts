@@ -806,11 +806,35 @@ export class ChunkManifest {
 
 export class AudioScheduler {
   public readonly instanceId = Math.random().toString(36).substring(7);
-  private activeNodes: { node: AudioBufferSourceNode; startTime: number; endTime: number; audioStartTime: number; audioEndTime: number }[] = [];
+  private activeNodes: { 
+    node: AudioBufferSourceNode; 
+    startTime: number; 
+    endTime: number; 
+    audioStartTime: number; 
+    audioEndTime: number;
+    playOffset: number;
+    playbackRate: number;
+  }[] = [];
   private lastScheduledEndTime: number | null = null;
   private lastScheduledAudioEndTime: number | null = null;
 
   constructor(private audioCtx: AudioContext, private gainNode: GainNode) {}
+
+  getLastScheduledEndTime(): number | null {
+    return this.lastScheduledEndTime;
+  }
+
+  getCurrentPlayhead(): number | null {
+    if (this.audioCtx.state === 'suspended') return null;
+    const now = this.audioCtx.currentTime;
+    for (const node of this.activeNodes) {
+      if (now >= node.audioStartTime && now < node.audioEndTime) {
+        const elapsed = now - node.audioStartTime;
+        return node.startTime + node.playOffset + (elapsed * node.playbackRate);
+      }
+    }
+    return null;
+  }
 
   schedule(packet: AudioPacket, currentTime: number, playbackRate: number): void {
     // Don't schedule if chunk is already fully played
@@ -871,7 +895,9 @@ export class AudioScheduler {
       startTime: packet.startTime,
       endTime: packet.endTime,
       audioStartTime,
-      audioEndTime: this.lastScheduledAudioEndTime
+      audioEndTime: this.lastScheduledAudioEndTime,
+      playOffset,
+      playbackRate
     });
     console.log(`[AudioScheduler-${this.instanceId}] Active Sources: ${this.activeNodes.length}`);
   }
@@ -951,6 +977,16 @@ export class PlaybackQueue {
     for (const { chunkKey, packet } of cachedPackets) {
       if (packet.endTime > currentTime && packet.startTime < highWaterTarget) {
         if (!this.scheduledTimes.has(chunkKey)) {
+          // Sync constraint: only schedule if it covers playhead or is contiguous to the last scheduled end time
+          const coversPlayhead = currentTime >= packet.startTime && currentTime < packet.endTime;
+          const lastEnd = this.audioScheduler.getLastScheduledEndTime();
+          const isContiguous = lastEnd !== null && Math.abs(packet.startTime - lastEnd) < 0.1;
+
+          if (!coversPlayhead && !isContiguous) {
+            // Delay scheduling this chunk until the preceding buffer is queued/scheduled
+            continue;
+          }
+
           this.scheduledTimes.add(chunkKey);
           
           this.manifest.transitionTo(chunkKey, 'QUEUED');
@@ -1202,6 +1238,18 @@ export class PlaybackController {
     this.bufferManager.getCache().evict(currentTime);
 
     if (this.videoEl.paused) return;
+
+    // Drift detection & correction loop
+    const audioPlayhead = this.audioScheduler.getCurrentPlayhead();
+    if (audioPlayhead !== null) {
+      const drift = Math.abs(currentTime - audioPlayhead);
+      if (drift > 0.20) { // 200ms threshold
+        console.warn(`[PlaybackController-${this.instanceId}] Audio-Video sync drift detected: Video=${currentTime.toFixed(3)}s, Audio=${audioPlayhead.toFixed(3)}s, Drift=${drift.toFixed(3)}s. Re-syncing scheduler...`);
+        this.audioScheduler.stopAll();
+        this.playbackQueue.clear();
+        this.hydrateManifestFromCache();
+      }
+    }
 
     // Update queue to schedule cached chunks and prune completed
     this.playbackQueue.update(currentTime, this.playbackRate);
