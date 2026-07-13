@@ -1062,7 +1062,7 @@ a:hover {
 }
 
 .category-dropdown {
-  padding: 0.85rem 2.2rem 0.85rem 1.2rem;
+  padding: 0.85rem 1.8rem 0.85rem 1rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -1074,15 +1074,15 @@ a:hover {
   transition: all 0.2s;
   appearance: none;
   -webkit-appearance: none;
-  min-width: 220px;
+  min-width: 140px;
 }
 
 .category-select-wrapper::after {
   content: '▼';
-  font-size: 0.65rem;
+  font-size: 0.55rem;
   color: rgba(255, 255, 255, 0.5);
   position: absolute;
-  right: 1rem;
+  right: 0.75rem;
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
@@ -1101,6 +1101,79 @@ a:hover {
 .category-dropdown option {
   background: #141414;
   color: white;
+}
+
+/* Search History Row Styling */
+.search-history-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: -1rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  padding: 0 0.5rem;
+}
+
+.search-history-label {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+}
+
+.search-history-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.history-pill-wrapper {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.history-pill-wrapper:hover {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.search-history-pill {
+  padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s;
+  outline: none;
+  white-space: nowrap;
+}
+
+.search-history-pill:hover {
+  color: #fff;
+}
+
+.clear-history-pill-btn {
+  padding: 0.35rem 0.65rem 0.35rem 0.35rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 1rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: color 0.2s;
+  outline: none;
+  line-height: 1;
+}
+
+.clear-history-pill-btn:hover {
+  color: #ef4444;
 }
 
 .search-error-alert {

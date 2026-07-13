@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Film, Tv, Play, Sparkles } from 'lucide-react';
+import { Search, Film, Tv, Play } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 
 interface OnlineSearchTabProps {
@@ -20,14 +20,34 @@ interface SearchResult {
 const DEFAULT_TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
 
 export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia, tmdbApiKey }) => {
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<'all' | 'anime'>('all');
+  const [query, setQuery] = useState(() => {
+    return localStorage.getItem('valor_online_search_query') || '';
+  });
+  const [category, setCategory] = useState<'all' | 'anime'>(() => {
+    return (localStorage.getItem('valor_online_search_category') as any) || 'all';
+  });
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   
+  const [history, setHistory] = useState<string[]>(() => {
+    const saved = localStorage.getItem('valor_online_search_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const addToHistory = (searchQuery: string) => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) return;
+    const trimmed = searchQuery.trim();
+    setHistory(prev => {
+      const filtered = prev.filter(q => q.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, 5);
+      localStorage.setItem('valor_online_search_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   const fetchTmdbResults = async (searchQuery: string) => {
     if (!searchQuery.trim()) {
@@ -75,6 +95,9 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           };
         });
       setResults(mapped);
+      if (mapped.length > 0) {
+        addToHistory(searchQuery);
+      }
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Failed to fetch search results from TMDB.');
@@ -148,6 +171,9 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
         };
       });
       setResults(mapped);
+      if (mapped.length > 0) {
+        addToHistory(searchQuery);
+      }
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Failed to fetch search results from AniList.');
@@ -158,6 +184,9 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
 
   // Debounced search trigger
   useEffect(() => {
+    localStorage.setItem('valor_online_search_query', query);
+    localStorage.setItem('valor_online_search_category', category);
+
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -203,8 +232,23 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
 
   return (
     <div className="online-search-container">
-      {/* Search Header Row (Dropdown next to Search Bar, NO hero title/container card) */}
+      {/* Search Header Row (Dropdown on LEFT "start" next to Search Bar, NO hero title/container card) */}
       <div className="search-bar-row">
+        <div className="category-select-wrapper">
+          <select 
+            className="category-dropdown"
+            value={category}
+            onChange={(e) => {
+              setCategory(e.target.value as any);
+              setQuery('');
+              setResults([]);
+            }}
+          >
+            <option value="all">🎬 Movies/TV</option>
+            <option value="anime">🌸 Anime</option>
+          </select>
+        </div>
+
         <div className="search-input-wrapper">
           <Search className="search-bar-icon" size={20} />
           <input
@@ -216,22 +260,40 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           />
           {loading && <div className="search-inline-spinner"></div>}
         </div>
-
-        <div className="category-select-wrapper">
-          <select 
-            className="category-dropdown"
-            value={category}
-            onChange={(e) => {
-              setCategory(e.target.value as any);
-              setQuery('');
-              setResults([]);
-            }}
-          >
-            <option value="all">🎬 Movies & TV Shows</option>
-            <option value="anime">🌸 Anime (AniList)</option>
-          </select>
-        </div>
       </div>
+
+      {/* Search History Pills */}
+      {history.length > 0 && (
+        <div className="search-history-container">
+          <span className="search-history-label">Recent:</span>
+          <div className="search-history-pills">
+            {history.map((h, i) => (
+              <div key={i} className="history-pill-wrapper">
+                <button 
+                  className="search-history-pill"
+                  onClick={() => setQuery(h)}
+                  title={`Search "${h}"`}
+                >
+                  {h}
+                </button>
+                <button 
+                  className="clear-history-pill-btn"
+                  onClick={() => {
+                    setHistory(prev => {
+                      const updated = prev.filter((_, idx) => idx !== i);
+                      localStorage.setItem('valor_online_search_history', JSON.stringify(updated));
+                      return updated;
+                    });
+                  }}
+                  title="Remove from history"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Error Message */}
       {error && (
@@ -270,7 +332,6 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
                   ) : (
                     <div className="card-poster-fallback">
                       <div className="fallback-backdrop"></div>
-                      {res.type === 'anime' ? <Tv size={32} className="fallback-icon" /> : <Film size={32} className="fallback-icon" />}
                       <span className="fallback-title-text">{res.title}</span>
                     </div>
                   )}

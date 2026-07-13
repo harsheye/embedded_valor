@@ -171,7 +171,15 @@ function App() {
     }
   });
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>(() => {
+    const saved = localStorage.getItem('valor_active_tab');
+    return (saved as any) || 'home';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('valor_active_tab', activeTab);
+  }, [activeTab]);
+
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api' | 'bookmarks'>('general');
   const [uiOverlaySection, setUiOverlaySection] = useState<'hotkeys' | 'gridOverlay' | 'pauseOverlay'>('hotkeys');
   const [previewExpanded, setPreviewExpanded] = useState(false);
