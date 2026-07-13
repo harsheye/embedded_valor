@@ -61,7 +61,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           const date = isMovie ? r.release_date : r.first_air_date;
           const year = date ? date.split('-')[0] : 'N/A';
           const posterPath = r.poster_path 
-            ? `https://image.tmdb.org/t/p/w500${r.poster_path}` 
+            ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w500${r.poster_path}` 
             : '';
             
           return {
@@ -134,7 +134,8 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
       
       const mapped: SearchResult[] = mediaList.map((m: any) => {
         const title = m.title.english || m.title.romaji || m.title.native || 'Unknown Anime';
-        const posterPath = m.coverImage.extraLarge || m.coverImage.large || '';
+        const rawPoster = m.coverImage.extraLarge || m.coverImage.large || '';
+        const posterPath = rawPoster ? `https://images.weserv.nl/?url=${encodeURIComponent(rawPoster)}` : '';
         
         return {
           id: m.id,
