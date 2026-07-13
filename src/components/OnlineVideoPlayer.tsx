@@ -125,7 +125,12 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
       { type: action, value },
       { method: action, value },
       { command: action, value },
-      { type: 'PLAYER_COMMAND', command: action, value }
+      { type: 'PLAYER_COMMAND', command: action, value },
+      { event: 'command', func: action, value },
+      { event: 'command', func: `${action}Video`, value },
+      { event: action, value },
+      { action, value },
+      { type: 'media', action, value }
     ];
     
     payloads.forEach(p => {
@@ -639,9 +644,6 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           width: 100%;
           height: 100%;
           z-index: 5;
-          pointer-events: none;
-        }
-        .online-iframe-wrapper.native-active {
           pointer-events: auto !important;
         }
         .online-native-hud {
@@ -700,12 +702,12 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           flex-direction: column;
           justify-content: space-between;
           opacity: 0;
-          pointer-events: none;
+          pointer-events: none !important;
           transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .player-ui-overlay-layer.visible {
           opacity: 1;
-          pointer-events: auto;
+          pointer-events: none !important;
         }
 
         .top-bar-overlay {
@@ -717,6 +719,7 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           padding: 0 2rem;
           width: 100%;
           box-sizing: border-box;
+          pointer-events: auto;
         }
         .back-btn {
           background: transparent;
@@ -830,6 +833,7 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           gap: 1.25rem;
           width: 100%;
           box-sizing: border-box;
+          pointer-events: auto;
         }
         .scrub-container-premium {
           position: relative;
