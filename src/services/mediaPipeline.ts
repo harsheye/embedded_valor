@@ -806,7 +806,9 @@ export class ChunkManifest {
 
 export class AudioScheduler {
   public readonly instanceId = Math.random().toString(36).substring(7);
-  private activeNodes: { node: AudioBufferSourceNode; startTime: number; endTime: number }[] = [];
+  private activeNodes: { node: AudioBufferSourceNode; startTime: number; endTime: number; audioStartTime: number; audioEndTime: number }[] = [];
+  private lastScheduledEndTime: number | null = null;
+  private lastScheduledAudioEndTime: number | null = null;
 
   constructor(private audioCtx: AudioContext, private gainNode: GainNode) {}
 
@@ -824,10 +826,29 @@ export class AudioScheduler {
     source.connect(this.gainNode);
     console.log(`[AudioScheduler-${this.instanceId}] Created new AudioBufferSourceNode for chunk starting at ${packet.startTime}s: YES`);
 
-    // Math: when to start audio source relative to AudioContext.currentTime
-    const timeDelta = packet.startTime - currentTime;
-    const playOffset = Math.max(0, currentTime - packet.startTime);
-    const audioStartTime = this.audioCtx.currentTime + (timeDelta > 0 ? timeDelta / playbackRate : 0);
+    let audioStartTime: number;
+    let playOffset: number;
+
+    const isContiguous = this.lastScheduledEndTime !== null && 
+                         this.lastScheduledAudioEndTime !== null &&
+                         Math.abs(packet.startTime - this.lastScheduledEndTime) < 0.1 &&
+                         this.lastScheduledAudioEndTime > this.audioCtx.currentTime;
+
+    if (isContiguous) {
+      audioStartTime = this.lastScheduledAudioEndTime!;
+      playOffset = 0;
+      console.log(`[AudioScheduler-${this.instanceId}] Contiguous scheduling: starting chunk ${packet.startTime}s exactly at previous audio end time ${audioStartTime.toFixed(3)}s (delta = ${(audioStartTime - this.audioCtx.currentTime).toFixed(3)}s)`);
+    } else {
+      // Math: when to start audio source relative to AudioContext.currentTime
+      const timeDelta = packet.startTime - currentTime;
+      playOffset = Math.max(0, currentTime - packet.startTime);
+      audioStartTime = this.audioCtx.currentTime + (timeDelta > 0 ? timeDelta / playbackRate : 0);
+      console.log(`[AudioScheduler-${this.instanceId}] Jittery scheduling: starting chunk ${packet.startTime}s at ${audioStartTime.toFixed(3)}s (playOffset = ${playOffset.toFixed(3)}s)`);
+    }
+
+    const durationPlayed = (packet.buffer.duration - playOffset) / playbackRate;
+    this.lastScheduledEndTime = packet.endTime;
+    this.lastScheduledAudioEndTime = audioStartTime + durationPlayed;
 
     console.log({
       instanceId: this.instanceId,
@@ -848,7 +869,9 @@ export class AudioScheduler {
     this.activeNodes.push({
       node: source,
       startTime: packet.startTime,
-      endTime: packet.endTime
+      endTime: packet.endTime,
+      audioStartTime,
+      audioEndTime: this.lastScheduledAudioEndTime
     });
     console.log(`[AudioScheduler-${this.instanceId}] Active Sources: ${this.activeNodes.length}`);
   }
@@ -864,6 +887,8 @@ export class AudioScheduler {
       }
     }
     this.activeNodes = [];
+    this.lastScheduledEndTime = null;
+    this.lastScheduledAudioEndTime = null;
     console.log(`[AudioScheduler-${this.instanceId}] Active Sources: 0`);
   }
 
