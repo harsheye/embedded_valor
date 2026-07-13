@@ -1,14 +1,12 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { 
-  FFmpegManager, 
-  DemuxManager, 
-  PacketReader, 
-  BufferManager, 
-  BufferScheduler, 
-  ChunkManifest, 
-  AudioScheduler, 
-  PlaybackQueue 
-} from '../mediaPipeline';
+import { FFmpegManager } from '../ffmpeg/FFmpegManager';
+import { DemuxManager } from '../ffmpeg/DemuxManager';
+import { PacketReader } from '../packet/PacketReader';
+import { BufferManager } from '../buffer/BufferManager';
+import { BufferScheduler } from '../scheduler/BufferScheduler';
+import { ChunkManifest } from '../scheduler/ChunkManifest';
+import { AudioScheduler } from '../scheduler/AudioScheduler';
+import { PlaybackQueue } from '../scheduler/PlaybackQueue';
 import { PlaybackState } from './PlaybackState';
 import { PlaybackSession } from './PlaybackSession';
 import { Timeline } from './Timeline';
