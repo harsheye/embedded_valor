@@ -19,7 +19,8 @@ import { HttpByteSource, CachedByteSource, RemoteDownloadManager } from '../serv
 import { FileByteSource } from '../services/local/localByteSource';
 import { extractLocalAudioSegment, extractLocalSubtitleSegment } from '../services/local/ffmpegLocal';
 import { extractRemoteAudioSegment, extractRemoteSubtitleSegment, extractHlsAudioSegment } from '../services/remote/ffmpegRemote';
-import { FFmpegManager, DemuxManager, PlaybackController } from '../services/mediaPipeline';
+import { FFmpegManager, DemuxManager } from '../services/mediaPipeline';
+import { PlaybackController } from '../services/playback/PlaybackController';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
 
