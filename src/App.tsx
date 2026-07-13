@@ -5,6 +5,8 @@ import { LocalVideoPlayer } from './components/LocalVideoPlayer';
 import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
 import { OnlineSearchTab } from './components/OnlineSearchTab';
 import { OnlineEmbedPlayer } from './components/OnlineEmbedPlayer';
+import { OnlineDetailsPage } from './components/OnlineDetailsPage';
+import { OnlineVideoPlayer } from './components/OnlineVideoPlayer';
 import { CustomSelect } from './components/CustomSelect';
 import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
@@ -171,6 +173,7 @@ function App() {
     }
   });
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
+  const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>(() => {
     const saved = localStorage.getItem('valor_active_tab');
     return (saved as any) || 'home';
@@ -2364,79 +2367,31 @@ function App() {
 
   // If playing, render VideoPlayer fullscreen
   if (playingVideo) {
-    if (playingVideo.type === 'online_movie' || playingVideo.type === 'online_tv' || playingVideo.type === 'online_anime') {
       return (
-        <OnlineEmbedPlayer
+        <OnlineVideoPlayer
           video={playingVideo}
-          onClose={() => {
+          userId={settings.userId}
+          onBack={() => {
             setPlayingVideo(null);
             window.history.replaceState({}, document.title, window.location.pathname);
           }}
-          onUpdateProgress={(updatedVideo, cTime, dur) => {
-            setVideos((prev) => {
-              return prev.map(v => {
-                if (v.id === updatedVideo.id) {
-                  return {
-                    ...v,
-                    currentTime: cTime,
-                    duration: typeof dur === 'number' ? formatTime(dur) : String(dur),
-                    season: updatedVideo.season,
-                    episode: updatedVideo.episode,
-                    lastPlayedDate: new Date().toISOString()
-                  };
-                }
-                return v;
-              });
-            });
-            setPlayingVideo(prev => {
-              if (prev && prev.id === updatedVideo.id) {
-                return {
-                  ...prev,
-                  currentTime: cTime,
-                  season: updatedVideo.season,
-                  episode: updatedVideo.episode
-                };
-              }
-              return prev;
-            });
-          }}
-          onAddBookmark={(updatedVideo, cTime) => {
-            const newBookmark = {
-              id: `bmark-${Date.now()}`,
-              time: cTime,
-              label: `Bookmark at ${formatTime(cTime)}`,
-              season: updatedVideo.season,
-              episode: updatedVideo.episode,
-              createdAt: new Date().toISOString(),
-              createdBy: 'manual' as const
-            };
-            
-            setVideos((prev) => {
-              return prev.map(v => {
-                if (v.id === updatedVideo.id) {
-                  const bmarks = v.bookmarks || [];
-                  return {
-                    ...v,
-                    bookmarks: [...bmarks, newBookmark]
-                  };
-                }
-                return v;
-              });
-            });
-
-            setPlayingVideo((prev) => {
-              if (prev && prev.id === updatedVideo.id) {
-                const bmarks = prev.bookmarks || [];
-                return {
-                  ...prev,
-                  bookmarks: [...bmarks, newBookmark]
-                };
-              }
-              return prev;
-            });
-
-            addToast("Bookmark added successfully!", "success");
-          }}
+          onUpdateVideo={handleUpdateVideo}
+          hideUIOverlays={settings.hideUIOverlays}
+          toastDuration={settings.toastDuration}
+          disableAnimations={settings.disableAnimations}
+          showPlayButton={settings.showPlayButton}
+          showTimeDisplay={settings.showTimeDisplay}
+          showPlayBar={settings.showPlayBar}
+          showVolumeControl={settings.showVolumeControl}
+          showFullscreen={settings.showFullscreen}
+          historySaveInterval={settings.historySaveInterval}
+          saveVolume={settings.saveVolume}
+          allowUiSkipping={settings.allowUiSkipping}
+          blockSeekingCompletely={settings.blockSeekingCompletely}
+          autoSkipIntroOutro={settings.autoSkipIntroOutro}
+          autoSkipSexScenes={settings.autoSkipSexScenes}
+          lockModeActive={settings.lockModeActive}
+          uiHideTimeout={settings.uiHideTimeout}
           tmdbApiKey={settings.tmdbApiKey}
         />
       );
@@ -3092,10 +3047,28 @@ function App() {
             )}
 
             {activeTab === 'online' && (
-              <OnlineSearchTab 
-                onSelectMedia={handlePlayVideo}
-                tmdbApiKey={settings.tmdbApiKey}
-              />
+              <>
+                <OnlineSearchTab 
+                  onSelectMedia={setSelectedDetailsMedia}
+                  tmdbApiKey={settings.tmdbApiKey}
+                />
+                {selectedDetailsMedia && (
+                  <OnlineDetailsPage
+                    video={selectedDetailsMedia}
+                    onClose={() => setSelectedDetailsMedia(null)}
+                    onPlay={(selectedVideo, season, episode) => {
+                      const toPlay = {
+                        ...selectedVideo,
+                        season,
+                        episode,
+                        currentTime: 0
+                      };
+                      handlePlayVideo(toPlay);
+                    }}
+                    tmdbApiKey={settings.tmdbApiKey}
+                  />
+                )}
+              </>
             )}
 
             {activeTab === 'settings' && (
