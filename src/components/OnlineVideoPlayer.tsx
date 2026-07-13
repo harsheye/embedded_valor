@@ -627,6 +627,45 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
       onMouseLeave={() => !interactWithNative && isPlaying && setShowControls(false)}
       style={{ background: 'black', fontFamily: 'Outfit, sans-serif' }}
     >
+      {/* Floating exit / back button overlay */}
+      <button 
+        onClick={onBack} 
+        style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          zIndex: 2200,
+          background: 'rgba(0, 0, 0, 0.55)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          color: 'white',
+          width: '38px',
+          height: '38px',
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justify-content: 'center',
+          cursor: 'pointer',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          transition: 'all 0.2s ease',
+          pointerEvents: 'auto',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+        }}
+        title="Exit Player"
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#e50914';
+          e.currentTarget.style.borderColor = '#ff4a4a';
+          e.currentTarget.style.transform = 'scale(1.08)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'rgba(0, 0, 0, 0.55)';
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+          e.currentTarget.style.transform = 'none';
+        }}
+      >
+        <X size={18} />
+      </button>
+
       <style>{`
         .local-player-container {
           position: fixed;

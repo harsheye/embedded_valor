@@ -172,7 +172,15 @@ function App() {
       return [];
     }
   });
-  const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(() => {
+    try {
+      const saved = localStorage.getItem('valor_currently_playing');
+      return saved ? JSON.parse(saved) : null;
+    } catch (err) {
+      console.error('Failed to parse currently playing video:', err);
+      return null;
+    }
+  });
   const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>(() => {
     const saved = localStorage.getItem('valor_active_tab');
@@ -182,6 +190,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem('valor_active_tab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (playingVideo) {
+      localStorage.setItem('valor_currently_playing', JSON.stringify(playingVideo));
+    } else {
+      localStorage.removeItem('valor_currently_playing');
+    }
+  }, [playingVideo]);
 
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api' | 'bookmarks'>('general');
   const [uiOverlaySection, setUiOverlaySection] = useState<'hotkeys' | 'gridOverlay' | 'pauseOverlay'>('hotkeys');
