@@ -97,7 +97,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
               id: c.id,
               name: c.name,
               character: c.character,
-              profilePath: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : ''
+              profilePath: c.profile_path ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w185${c.profile_path}` : ''
             }));
           setCast(castList);
         }
@@ -138,7 +138,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
           episodeNumber: e.episode_number,
           name: e.name || `Episode ${e.episode_number}`,
           overview: e.overview || 'No description available.',
-          stillPath: e.still_path ? `https://image.tmdb.org/t/p/w300${e.still_path}` : ''
+          stillPath: e.still_path ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w300${e.still_path}` : ''
         }));
         
         setEpisodes(mappedEpisodes);
@@ -285,10 +285,10 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   const isMovie = video.type === 'online_movie';
   const backdropUrl = isAnime 
     ? details.backdrop_path 
-    : (details.backdrop_path ? `https://image.tmdb.org/t/p/original${details.backdrop_path}` : '');
+    : (details.backdrop_path ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/original${details.backdrop_path}` : '');
   const posterUrl = isAnime 
     ? details.poster_path 
-    : (details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : '');
+    : (details.poster_path ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w500${details.poster_path}` : '');
   const genresText = (details.genres || []).map((g: any) => g.name).join(', ');
   const releaseYear = details.release_date ? details.release_date.split('-')[0] : '';
   const voteAverage = details.vote_average ? details.vote_average.toFixed(1) : 'N/A';
