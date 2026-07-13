@@ -1393,24 +1393,32 @@ export class PlaybackController {
 
     try {
       console.log(`[PlaybackController-${this.instanceId}] Playback State: PLAYING`);
+      const generation = this.startNewPlaybackGeneration('play');
       await this.audioScheduler.resume();
 
       this.bufferManager.resetFailures();
       this.scheduler.reset();
       this.playbackQueue.clear();
       this.manifest.clear();
-      // Sync manifest from cache
-      for (const packet of this.bufferManager.getCache().getAllPackets()) {
-        const chunkKey = Math.floor(packet.startTime / 10) * 10;
-        this.manifest.transitionTo(chunkKey, 'CACHED');
-      }
       this.fetchingKeys.clear();
+      
       const currentTime = this.videoEl.currentTime;
-      await this.fillBufferWindow(currentTime, 'play');
-      this.playbackQueue.update(currentTime, this.playbackRate);
-      this.startHeartbeat();
+      
+      // 1. Pre-fetch and pre-decode the audio chunk for the current position so it's ready in memory
+      await this.fillBufferWindow(currentTime, 'play', generation, true);
+      if (generation !== this.playbackGeneration) return;
 
+      // 2. Play the video element
       await this.videoEl.play();
+      if (generation !== this.playbackGeneration) return;
+
+      // 3. Once video element is active, fetch the real playhead and schedule audio
+      const syncedTime = this.videoEl.currentTime;
+      this.playbackQueue.clear();
+      this.hydrateManifestFromCache();
+      this.playbackQueue.update(syncedTime, this.playbackRate);
+      
+      this.startHeartbeat();
     } finally {
       this.isTransitioningState = false;
     }
@@ -1428,17 +1436,21 @@ export class PlaybackController {
       this.resetQueueAndTimeline();
       this.hydrateManifestFromCache();
 
+      // 1. Pre-fetch and pre-decode the audio chunk
       await this.fillBufferWindow(this.videoEl.currentTime, 'playSyncedFromCurrentTime', generation, true);
       if (generation !== this.playbackGeneration) return;
 
+      // 2. Resume context and play
       await this.audioScheduler.resume();
       await this.videoEl.play();
       if (generation !== this.playbackGeneration) return;
 
+      // 3. Once video element is active, schedule matching audio playhead
       const syncedTime = this.videoEl.currentTime;
       this.playbackQueue.clear();
       this.hydrateManifestFromCache();
       this.playbackQueue.update(syncedTime, this.playbackRate);
+      
       this.startHeartbeat();
     } finally {
       this.isTransitioningState = false;
@@ -1472,12 +1484,32 @@ export class PlaybackController {
     this.bufferManager.resetFailures();
     this.scheduler.reset();
 
-    if (this.videoEl) {
-      this.videoEl.currentTime = time;
-    }
+    const wasPlaying = this.videoEl ? !this.videoEl.paused : false;
+    const generation = this.beginSeekTransaction('seek');
+    this.resetQueueAndTimeline();
 
-    await this.fillBufferWindow(time, 'seek');
-    this.playbackQueue.update(time, this.playbackRate);
+    try {
+      if (this.videoEl) {
+        this.videoEl.currentTime = time;
+      }
+
+      // 1. Pre-buffer and decode the target audio chunk
+      await this.fillBufferWindow(time, 'seek', generation);
+      if (generation !== this.playbackGeneration) return;
+
+      // 2. If it was playing, play first, then schedule at actual time
+      if (wasPlaying && this.videoEl) {
+        await this.videoEl.play();
+        const syncedTime = this.videoEl.currentTime;
+        this.playbackQueue.clear();
+        this.hydrateManifestFromCache();
+        this.playbackQueue.update(syncedTime, this.playbackRate);
+      } else {
+        this.playbackQueue.update(time, this.playbackRate);
+      }
+    } finally {
+      this.endSeekTransaction('seek');
+    }
   }
 
   async setPlaybackRate(rate: number): Promise<void> {
@@ -1506,9 +1538,18 @@ export class PlaybackController {
     this.scheduler.reset();
 
     if (this.videoEl) {
+      const isPlaying = !this.videoEl.paused;
       const currentTime = this.videoEl.currentTime;
       await this.fillBufferWindow(currentTime, 'switchAudioTrack');
-      this.playbackQueue.update(currentTime, this.playbackRate);
+      
+      if (isPlaying && this.videoEl) {
+        const syncedTime = this.videoEl.currentTime;
+        this.playbackQueue.clear();
+        this.hydrateManifestFromCache();
+        this.playbackQueue.update(syncedTime, this.playbackRate);
+      } else {
+        this.playbackQueue.update(currentTime, this.playbackRate);
+      }
     }
   }
 
