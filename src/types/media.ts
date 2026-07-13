@@ -78,4 +78,5 @@ export interface Bookmark {
   episode?: number;
   season?: number;
   color?: string;
+  createdBy?: 'theintrodb' | 'manual' | 'system';
 }

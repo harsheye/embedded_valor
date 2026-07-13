@@ -605,7 +605,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           let updated = false;
 
           if (introToCopy && !hasIntro) {
-            newBms.push({ ...introToCopy, id: `bm-intro-${video.id}` });
+            newBms.push({ ...introToCopy, id: `bm-intro-${video.id}`, createdBy: 'system' });
             updated = true;
           }
           if (outroToCopy && !hasOutro) {
@@ -613,7 +613,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
             const newOutroTime = (outroOffset !== null && duration) 
               ? Math.max(0, Math.round(duration - outroOffset)) 
               : outroToCopy.time;
-            newBms.push({ ...outroToCopy, time: newOutroTime, id: `bm-outro-${video.id}` });
+            newBms.push({ ...outroToCopy, time: newOutroTime, id: `bm-outro-${video.id}`, createdBy: 'system' });
             updated = true;
           }
 
@@ -802,7 +802,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     } else {
       newBookmark = {
         ...bmData,
-        id: `bm-${Date.now()}`
+        id: `bm-${Date.now()}`,
+        createdBy: bmData.createdBy || 'manual'
       };
       updatedBookmarks = [...bookmarks, newBookmark].sort((a, b) => a.time - b.time);
     }
@@ -1190,7 +1191,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
               label: 'Intro',
               isIntro: true,
               isOutro: false,
-              skipEnabled: true
+              skipEnabled: true,
+              createdBy: 'theintrodb'
             });
           });
         }
@@ -1204,7 +1206,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
               label: 'Recap',
               isIntro: true,
               isOutro: false,
-              skipEnabled: true
+              skipEnabled: true,
+              createdBy: 'theintrodb'
             });
           });
         }
@@ -1218,7 +1221,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
               label: 'Credits/Outro',
               isIntro: false,
               isOutro: true,
-              skipEnabled: true
+              skipEnabled: true,
+              createdBy: 'theintrodb'
             });
           });
         }

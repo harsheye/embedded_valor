@@ -129,6 +129,44 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
                       {bm.title || bm.label || 'Untitled Bookmark'}
                     </span>
                     {bm.favorite && <Heart size={14} fill="#e50914" color="#e50914" style={{ flexShrink: 0 }} />}
+                    {(() => {
+                      const createdBy = bm.createdBy;
+                      let label = 'Manual';
+                      let color = '#34d399'; // green
+                      let bg = 'rgba(52, 211, 153, 0.12)';
+                      
+                      if (createdBy === 'theintrodb' || createdBy === 'tidb' || bm.id.startsWith('api-')) {
+                        label = 'TheIntroDB';
+                        color = '#60a5fa'; // blue
+                        bg = 'rgba(96, 165, 250, 0.12)';
+                      } else if (createdBy === 'system' || bm.id.startsWith('bm-intro-') || bm.id.startsWith('bm-outro-') || bm.isIntro || bm.isOutro) {
+                        label = 'System';
+                        color = '#c084fc'; // purple
+                        bg = 'rgba(192, 132, 252, 0.12)';
+                      } else if (createdBy === 'manual') {
+                        label = 'Manual';
+                        color = '#34d399';
+                        bg = 'rgba(52, 211, 153, 0.12)';
+                      }
+                      
+                      return (
+                        <span style={{ 
+                          fontSize: '9px', 
+                          fontWeight: 700, 
+                          textTransform: 'uppercase', 
+                          padding: '1px 5px', 
+                          borderRadius: '4px', 
+                          color, 
+                          background: bg,
+                          border: `1px solid ${color}22`,
+                          letterSpacing: '0.5px',
+                          display: 'inline-block',
+                          flexShrink: 0
+                        }}>
+                          {label}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e50914', fontSize: '13px', fontWeight: 600 }}>
                     <Clock size={12} />

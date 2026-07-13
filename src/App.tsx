@@ -2407,7 +2407,8 @@ function App() {
               label: `Bookmark at ${formatTime(cTime)}`,
               season: updatedVideo.season,
               episode: updatedVideo.episode,
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
+              createdBy: 'manual' as const
             };
             
             setVideos((prev) => {

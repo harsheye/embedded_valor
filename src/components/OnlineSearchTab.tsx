@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Film, Tv, Play } from 'lucide-react';
+import { Search, Film, Tv, Play, History, Clock, X } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 
 interface OnlineSearchTabProps {
@@ -30,6 +30,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+  const [isFocused, setIsFocused] = useState(false);
   
   const [history, setHistory] = useState<string[]>(() => {
     const saved = localStorage.getItem('valor_online_search_history');
@@ -37,6 +38,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
   });
   
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchWrapperRef = useRef<HTMLDivElement>(null);
 
   const addToHistory = (searchQuery: string) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) return;
@@ -182,6 +184,19 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
     }
   };
 
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
+        setIsFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   // Debounced search trigger
   useEffect(() => {
     localStorage.setItem('valor_online_search_query', query);
@@ -249,7 +264,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           </select>
         </div>
 
-        <div className="search-input-wrapper">
+        <div className="search-input-wrapper" ref={searchWrapperRef}>
           <Search className="search-bar-icon" size={20} />
           <input
             type="text"
@@ -257,43 +272,64 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
             placeholder={category === 'all' ? "Search Movie or TV Series name..." : "Search Anime (e.g. Naruto, One Piece)..."}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setIsFocused(true)}
           />
           {loading && <div className="search-inline-spinner"></div>}
-        </div>
-      </div>
 
-      {/* Search History Pills */}
-      {history.length > 0 && (
-        <div className="search-history-container">
-          <span className="search-history-label">Recent:</span>
-          <div className="search-history-pills">
-            {history.map((h, i) => (
-              <div key={i} className="history-pill-wrapper">
+          {/* Autocomplete Sexier Recent Searches Dropdown inside search input */}
+          {isFocused && history.length > 0 && (
+            <div className="search-history-dropdown">
+              <div className="dropdown-header">
+                <span className="header-title-text">
+                  <History size={13} style={{ marginRight: '6px' }} />
+                  Recent Searches
+                </span>
                 <button 
-                  className="search-history-pill"
-                  onClick={() => setQuery(h)}
-                  title={`Search "${h}"`}
-                >
-                  {h}
-                </button>
-                <button 
-                  className="clear-history-pill-btn"
-                  onClick={() => {
-                    setHistory(prev => {
-                      const updated = prev.filter((_, idx) => idx !== i);
-                      localStorage.setItem('valor_online_search_history', JSON.stringify(updated));
-                      return updated;
-                    });
+                  className="clear-all-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHistory([]);
+                    localStorage.removeItem('valor_online_search_history');
                   }}
-                  title="Remove from history"
                 >
-                  &times;
+                  Clear All
                 </button>
               </div>
-            ))}
-          </div>
+              <div className="dropdown-list">
+                {history.map((h, i) => (
+                  <div 
+                    key={i} 
+                    className="dropdown-item"
+                    onClick={() => {
+                      setQuery(h);
+                      setIsFocused(false);
+                    }}
+                  >
+                    <div className="item-left">
+                      <Clock size={13} className="item-clock-icon" />
+                      <span className="item-text">{h}</span>
+                    </div>
+                    <button 
+                      className="delete-item-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHistory(prev => {
+                          const updated = prev.filter((_, idx) => idx !== i);
+                          localStorage.setItem('valor_online_search_history', JSON.stringify(updated));
+                          return updated;
+                        });
+                      }}
+                      title="Remove"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Error Message */}
       {error && (
