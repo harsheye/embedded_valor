@@ -2367,6 +2367,7 @@ function App() {
 
   // If playing, render VideoPlayer fullscreen
   if (playingVideo) {
+    if (playingVideo.type === 'online_movie' || playingVideo.type === 'online_tv' || playingVideo.type === 'online_anime') {
       return (
         <OnlineVideoPlayer
           video={playingVideo}
