@@ -39,7 +39,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   const [seasons, setSeasons] = useState<any[]>([]);
   const [currentSeason, setCurrentSeason] = useState(1);
   const [episodes, setEpisodes] = useState<EpisodeItem[]>([]);
-  const [selectedActor, setSelectedActor] = useState<{ id: number; name: string } | null>(null);
+  const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -399,7 +399,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                 <div 
                   className="actor-card-item" 
                   key={actor.id}
-                  onClick={() => setSelectedActor({ id: actor.id, name: actor.name })}
+                  onClick={() => setSelectedActor({ id: actor.id, name: actor.name, profilePath: actor.profilePath })}
                   style={{ cursor: 'pointer' }}
                 >
                   <div className="actor-profile-image-wrapper">
@@ -500,6 +500,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
             }
           }}
           tmdbApiKey={tmdbApiKey}
+          profilePath={selectedActor.profilePath}
         />
       )}
     </div>

@@ -38,6 +38,7 @@ interface ActorDetailsPageProps {
   onClose: () => void;
   onSelectMedia: (video: VideoItem) => void;
   tmdbApiKey?: string;
+  profilePath?: string;
 }
 
 interface ActorProfile {
@@ -79,7 +80,8 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
   actorName,
   onClose,
   onSelectMedia,
-  tmdbApiKey
+  tmdbApiKey,
+  profilePath
 }) => {
   const [profile, setProfile] = useState<ActorProfile | null>(null);
   const [externalIds, setExternalIds] = useState<ExternalIds | null>(null);
@@ -98,6 +100,8 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
     const fetchActorData = async () => {
       setLoading(true);
       setError(null);
+      
+      let tmdbFailed = false;
       try {
         const isBearer = tmdbApiKey ? tmdbApiKey.length > 50 : true;
         const token = tmdbApiKey || DEFAULT_TMDB_TOKEN;
@@ -116,42 +120,125 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
 
         // Fetch details
         const detailsRes = await fetch(detailsUrl, { headers });
-        if (!detailsRes.ok) throw new Error('Failed to load actor profile');
-        const detailsData = await detailsRes.json();
-        setProfile(detailsData);
+        if (!detailsRes.ok) {
+          console.warn('TMDB details fetch failed with status:', detailsRes.status);
+          tmdbFailed = true;
+        } else {
+          const detailsData = await detailsRes.json();
+          setProfile(detailsData);
 
-        // Fetch Social IDs
-        const socialRes = await fetch(externalIdsUrl, { headers });
-        if (socialRes.ok) {
-          const socialData = await socialRes.json();
-          setExternalIds(socialData);
-        }
+          // Fetch Social IDs
+          const socialRes = await fetch(externalIdsUrl, { headers });
+          if (socialRes.ok) {
+            const socialData = await socialRes.json();
+            setExternalIds(socialData);
+          }
 
-        // Fetch Credits
-        const creditsRes = await fetch(creditsUrl, { headers });
-        if (creditsRes.ok) {
-          const creditsData = await creditsRes.json();
-          const castList: CreditItem[] = (creditsData.cast || [])
-            .map((c: any) => ({
-              id: c.id,
-              media_type: c.media_type,
-              title: c.title,
-              name: c.name,
-              poster_path: c.poster_path,
-              release_date: c.release_date,
-              first_air_date: c.first_air_date,
-              vote_average: c.vote_average || 0,
-              character: c.character,
-              popularity: c.popularity || 0
-            }));
-          setCredits(castList);
+          // Fetch Credits
+          const creditsRes = await fetch(creditsUrl, { headers });
+          if (creditsRes.ok) {
+            const creditsData = await creditsRes.json();
+            const castList: CreditItem[] = (creditsData.cast || [])
+              .map((c: any) => ({
+                id: c.id,
+                media_type: c.media_type,
+                title: c.title,
+                name: c.name,
+                poster_path: c.poster_path,
+                release_date: c.release_date,
+                first_air_date: c.first_air_date,
+                vote_average: c.vote_average || 0,
+                character: c.character,
+                popularity: c.popularity || 0
+              }));
+            setCredits(castList);
+          }
         }
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message || 'Failed to fetch actor data');
-      } finally {
-        setLoading(false);
+      } catch (err) {
+        console.warn('Error during TMDB fetch; attempting Trakt fallback:', err);
+        tmdbFailed = true;
       }
+
+      // Trakt Fallback if TMDB failed
+      if (tmdbFailed) {
+        try {
+          console.log('Fetching actor data from Trakt fallback...');
+          const traktHeaders = {
+            'Content-Type': 'application/json',
+            'trakt-api-version': '2',
+            'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289'
+          };
+
+          // 1. Search person by TMDB ID on Trakt
+          const searchRes = await fetch(`https://api.trakt.tv/search/tmdb/${actorId}?type=person`, { headers: traktHeaders });
+          if (!searchRes.ok) throw new Error(`Trakt search failed with status ${searchRes.status}`);
+          
+          const searchData = await searchRes.json();
+          if (!searchData || searchData.length === 0 || !searchData[0].person) {
+            throw new Error('Actor not found on Trakt');
+          }
+
+          const person = searchData[0].person;
+          const traktSlug = person.ids.slug;
+
+          // 2. Fetch full Trakt person details
+          const detailRes = await fetch(`https://api.trakt.tv/people/${traktSlug}?extended=full`, { headers: traktHeaders });
+          if (!detailRes.ok) throw new Error(`Trakt details fetch failed with status ${detailRes.status}`);
+          const detailData = await detailRes.json();
+
+          setProfile({
+            name: detailData.name || actorName,
+            biography: detailData.biography || '',
+            birthday: detailData.birthday || null,
+            deathday: detailData.deathday || null,
+            place_of_birth: detailData.birthplace || null,
+            profile_path: profilePath || null, // Reuse parent details page image url!
+            popularity: 100,
+            known_for_department: 'Acting'
+          });
+
+          // 3. Fetch movies credit from Trakt
+          let combined: CreditItem[] = [];
+          const moviesRes = await fetch(`https://api.trakt.tv/people/${traktSlug}/movies?extended=full`, { headers: traktHeaders });
+          if (moviesRes.ok) {
+            const moviesData = await moviesRes.json();
+            const movieCast = (moviesData.cast || []).map((m: any) => ({
+              id: m.movie.ids.tmdb || m.movie.ids.trakt,
+              media_type: 'movie' as const,
+              title: m.movie.title,
+              poster_path: null,
+              release_date: m.movie.year ? `${m.movie.year}-01-01` : '',
+              vote_average: m.movie.rating || 0,
+              character: m.character,
+              popularity: m.movie.votes || 0
+            }));
+            combined = [...combined, ...movieCast];
+          }
+
+          // 4. Fetch TV shows credit from Trakt
+          const showsRes = await fetch(`https://api.trakt.tv/people/${traktSlug}/shows?extended=full`, { headers: traktHeaders });
+          if (showsRes.ok) {
+            const showsData = await showsRes.json();
+            const showCast = (showsData.cast || []).map((s: any) => ({
+              id: s.show.ids.tmdb || s.show.ids.trakt,
+              media_type: 'tv' as const,
+              name: s.show.title,
+              poster_path: null,
+              first_air_date: s.show.year ? `${s.show.year}-01-01` : '',
+              vote_average: s.show.rating || 0,
+              character: s.character,
+              popularity: s.show.votes || 0
+            }));
+            combined = [...combined, ...showCast];
+          }
+
+          setCredits(combined);
+        } catch (traktErr: any) {
+          console.error('Trakt fallback failed:', traktErr);
+          setError('Failed to load profile from both TMDB and Trakt.');
+        }
+      }
+      setLoading(false);
     };
 
     fetchActorData();
@@ -237,7 +324,7 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
   }
 
   const profileImageUrl = profile.profile_path
-    ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/h632${profile.profile_path}`
+    ? (profile.profile_path.startsWith('http') ? profile.profile_path : `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/h632${profile.profile_path}`)
     : '';
 
   return (
