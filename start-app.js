@@ -243,9 +243,6 @@ const backendServer = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -1473,12 +1470,7 @@ async function start() {
         server: {
           port: PORT_SERVICE,
           host: '127.0.0.1',
-          open: false,
-          headers: {
-            'Cross-Origin-Opener-Policy': 'same-origin',
-            'Cross-Origin-Embedder-Policy': 'require-corp',
-            'Cross-Origin-Resource-Policy': 'cross-origin',
-          }
+          open: false
         },
       });
       await viteServer.listen();
