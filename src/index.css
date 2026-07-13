@@ -1510,6 +1510,49 @@ a:hover {
   gap: 1rem;
 }
 
+.season-details-dropdown {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.65rem 2.5rem 0.65rem 1.25rem;
+  border-radius: 10px;
+  color: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.season-selector-dropdown-wrapper::after {
+  content: '▼';
+  font-size: 0.55rem;
+  color: rgba(255,255,255,0.5);
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.season-details-dropdown:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #ff7a00;
+  box-shadow: 0 0 15px rgba(255, 122, 0, 0.25);
+  transform: translateY(-1px);
+}
+
+.season-details-dropdown:focus {
+  border-color: #ff2a5f;
+  box-shadow: 0 0 15px rgba(255, 42, 95, 0.25);
+}
+
+.season-details-dropdown option {
+  background: #09090c;
+  color: white;
+}
+
 .header-control-btn {
   display: flex;
   align-items: center;
@@ -2178,21 +2221,6 @@ a:hover {
   position: relative;
 }
 
-.season-details-dropdown {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.65rem 2.5rem 0.65rem 1.25rem;
-  border-radius: 10px;
-  color: white;
-  font-weight: 700;
-  font-size: 0.95rem;
-  cursor: pointer;
-  outline: none;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  appearance: none;
-  -webkit-appearance: none;
-}
-
 .season-selector-dropdown-wrapper::after {
   content: '▼';
   font-size: 0.55rem;
@@ -2202,11 +2230,6 @@ a:hover {
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-}
-
-.season-details-dropdown:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .episodes-loading-container {
@@ -2339,22 +2362,34 @@ a:hover {
 .actor-details-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 3, 8, 0.85);
-  backdrop-filter: blur(25px);
-  -webkit-backdrop-filter: blur(25px);
+  background: radial-gradient(circle at 50% 0%, #161233 0%, #06050b 100%);
   z-index: 2500;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.actor-details-header {
+  height: 80px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 2rem;
+  justify-content: flex-end;
+  padding: 0 2.5rem;
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .actor-details-overlay.loading-view,
 .actor-details-overlay.error-view {
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 1.5rem;
   color: rgba(255,255,255,0.7);
   font-size: 1.1rem;
+  height: 100vh;
 }
 
 .actor-details-overlay.loading-view .spinner {
@@ -2368,40 +2403,37 @@ a:hover {
 
 .actor-details-container {
   width: 100%;
-  max-width: 1200px;
-  height: 90vh;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
-  overflow-y: auto;
-  position: relative;
-  padding: 3rem;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+  max-width: 1300px;
+  margin: 0 auto;
+  background: transparent;
+  border: none;
+  padding: 0 2.5rem 5rem;
+  box-shadow: none;
+  box-sizing: border-box;
 }
 
 .actor-close-btn {
-  position: absolute;
-  top: 1.5rem;
-  right: 1.5rem;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: white;
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
   z-index: 10;
 }
 
 .actor-close-btn:hover {
   background: #ff0914;
   border-color: #ff4a5a;
-  transform: rotate(90deg) scale(1.05);
-  box-shadow: 0 0 15px rgba(255, 9, 20, 0.4);
+  transform: rotate(90deg) scale(1.08);
+  box-shadow: 0 0 20px rgba(255, 9, 20, 0.4);
 }
 
 .actor-layout-grid {
@@ -2638,14 +2670,26 @@ a:hover {
   font-size: 0.85rem;
   cursor: pointer;
   outline: none;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   appearance: none;
   -webkit-appearance: none;
 }
 
 .filter-dropdown-wrapper select:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: #ff7a00;
+  box-shadow: 0 0 15px rgba(255, 122, 0, 0.25);
+  transform: translateY(-1px);
+}
+
+.filter-dropdown-wrapper select:focus {
+  border-color: #ff2a5f;
+  box-shadow: 0 0 15px rgba(255, 42, 95, 0.25);
+}
+
+.filter-dropdown-wrapper select option {
+  background: #09090c;
+  color: white;
 }
 
 .filter-dropdown-wrapper .filter-icon {

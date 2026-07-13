@@ -73,7 +73,7 @@ interface CreditItem {
   popularity: number;
 }
 
-const DEFAULT_TMDB_TOKEN = 'Bearer ...'; // fallback placeholder or env
+const DEFAULT_TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
 
 export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
   actorId,
@@ -94,7 +94,7 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'movie' | 'tv'>('all');
   const [yearFilter, setYearFilter] = useState<string>('all');
-  const [sortOrder, setSortOrder] = useState<'year_desc' | 'year_asc' | 'popularity_desc' | 'rating_desc'>('popularity_desc');
+  const [sortOrder, setSortOrder] = useState<'year_desc' | 'year_asc' | 'popularity_desc' | 'rating_desc'>('year_desc');
 
   useEffect(() => {
     const fetchActorData = async () => {
@@ -329,13 +329,14 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
 
   return (
     <div className="actor-details-overlay animate-fade-in">
-      <div className="actor-details-container glass-panel">
-        
-        {/* Close Button */}
+      {/* Header bar */}
+      <div className="actor-details-header">
         <button className="actor-close-btn" onClick={onClose} title="Close Profile">
           <X size={24} />
         </button>
+      </div>
 
+      <div className="actor-details-container">
         <div className="actor-layout-grid">
           
           {/* Left Column: Portrait & Info */}
