@@ -1113,23 +1113,33 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
 
           {/* Bottom Controls Overlay */}
           <div className="bottom-bar-overlay">
-            {/* Timeline Scrub Bar */}
+            {/* Passive Timeline Progress Tracker */}
             {showPlayBar && (
-              <div className="scrub-container-premium">
-                <input 
-                  type="range"
-                  min="0"
-                  max={duration || 100}
-                  value={currentTime}
-                  onChange={handleSliderChange}
-                  className="scrub-bar-premium"
-                  disabled={blockSeekingCompletely}
+              <div className="scrub-container-premium" style={{ cursor: 'default' }}>
+                {/* Visual Track Background */}
+                <div 
+                  className="scrub-track-bg" 
+                  style={{ 
+                    position: 'absolute', 
+                    width: '100%', 
+                    height: '4px', 
+                    background: 'rgba(255,255,255,0.2)', 
+                    borderRadius: '2px',
+                    zIndex: 7
+                  }} 
                 />
                 
-                {/* Visual Buffer / Progress bar overlays */}
+                {/* Visual Progress Bar Overlay */}
                 <div 
                   className="scrub-track-progress" 
-                  style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                  style={{ 
+                    width: `${(currentTime / (duration || 1)) * 100}%`,
+                    height: '4px',
+                    background: '#8b5cf6',
+                    borderRadius: '2px',
+                    position: 'absolute',
+                    zIndex: 8
+                  }} 
                 />
 
                 {/* Render bookmarks on timeline */}
@@ -1164,19 +1174,6 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
             {/* Controls Button Row */}
             <div className="bottom-control-buttons-row">
               <div className="bottom-controls-left-group">
-                {showPlayButton && (
-                  <button className="control-btn" onClick={togglePlay}>
-                    {isPlaying ? <Pause size={20} fill="white" /> : <Play size={20} fill="white" />}
-                  </button>
-                )}
-                
-                <button className="control-btn" onClick={() => seekDelta(-10)} title="Seek Backward 10s">
-                  <RotateCcw size={18} />
-                </button>
-                <button className="control-btn" onClick={() => seekDelta(10)} title="Seek Forward 10s">
-                  <RotateCw size={18} />
-                </button>
-
                 {showVolumeControl && (
                   <div className="volume-slider-wrapper">
                     <button className="control-btn" onClick={toggleMute}>
