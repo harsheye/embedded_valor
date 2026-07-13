@@ -1504,15 +1504,16 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   useEffect(() => {
     hasAutoSelectedRef.current = false;
-    activeAudioStartOffsetRef.current = 0;
-    activeSubtitleStartOffsetRef.current = 0;
-    setCurrentTime(video.currentTime || 0);
+    const resumeTime = video.currentTime || 0;
+    activeAudioStartOffsetRef.current = Math.floor(resumeTime / 10) * 10;
+    activeSubtitleStartOffsetRef.current = resumeTime;
+    setCurrentTime(resumeTime);
     setSelectedAudioTrack(null);
     setSelectedSubTrack(null);
     setActiveAudioStreamIndex(null);
     setActiveSubStreamIndex(null);
-    setActiveAudioStartOffset(0);
-    setActiveSubtitleStartOffset(0);
+    setActiveAudioStartOffset(Math.floor(resumeTime / 10) * 10);
+    setActiveSubtitleStartOffset(resumeTime);
   }, [video.id]);
 
   const onUpdateVideoRef = useRef(onUpdateVideo);

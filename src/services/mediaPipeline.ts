@@ -600,6 +600,19 @@ export class BufferManager {
     this.failedFills.clear();
   }
 
+  clear(): void {
+    this.packetCache.clear();
+    this.subtitleCache.clear();
+    this.activeFills.clear();
+    this.failedFills.clear();
+    this.setBuffering(false);
+  }
+
+  clearActiveFills(): void {
+    this.activeFills.clear();
+    this.setBuffering(false);
+  }
+
   setBufferingCallback(cb: (buffering: boolean) => void): void {
     this.onBufferingChange = cb;
   }
@@ -1111,23 +1124,25 @@ export class PlaybackController {
     this.videoEl.muted = true; // Mute video element - audio is played via AudioContext
     this.activeStreamIndex = typeof streamIndex === 'number' ? streamIndex : -1;
     this.bufferManager.resetFailures();
-    this.sessionId = Math.random().toString(36).substring(7);
+    
+    // 1. Setup new playback generation to initialize abort signals and sessionId correctly
+    const generation = this.startNewPlaybackGeneration('initialize');
     console.log(`[PlaybackController-${this.instanceId}] Initializing controller. session=${this.sessionId}, track=${this.activeStreamIndex}`);
 
     this.ff = await this.ffmpegMgr.load();
-    if (this.abortController.signal.aborted) {
+    if (this.abortController.signal.aborted || generation !== this.playbackGeneration) {
       console.log(`[PlaybackController-${this.instanceId}] Init aborted during ffmpeg load.`);
       return;
     }
 
     await this.demuxMgr.getMountedInputPath(this.ff);
-    if (this.abortController.signal.aborted) {
+    if (this.abortController.signal.aborted || generation !== this.playbackGeneration) {
       console.log(`[PlaybackController-${this.instanceId}] Init aborted during demux mount.`);
       return;
     }
 
     // Bind event listeners only if we are still active
-    if (!this.abortController.signal.aborted) {
+    if (!this.abortController.signal.aborted && generation === this.playbackGeneration) {
       this.videoEl.addEventListener('timeupdate', this.onTimeUpdate);
       this.videoEl.addEventListener('play', this.onPlayEvent);
       this.videoEl.addEventListener('pause', this.onPauseEvent);
@@ -1138,6 +1153,17 @@ export class PlaybackController {
       const startChunk = Math.floor(resumeTime / 10) * 10;
       const chunkId = `audio_${this.activeStreamIndex}_${startChunk}`;
       console.log(`[PlaybackController-${this.instanceId}] PLAYER INITIALIZED: resumeTime=${resumeTime.toFixed(3)}s, initialAudioChunkId=${chunkId}`);
+
+      // 2. Warm the audio pipeline by fetching/decoding the initial chunk(s) asynchronously before play begins
+      console.log(`[PlaybackController-${this.instanceId}] Warming audio pipeline: pre-buffering chunk ${startChunk}s for resumeTime=${resumeTime.toFixed(3)}s`);
+      this.fillBufferWindow(resumeTime, 'initialize', generation, true).then(() => {
+        if (generation === this.playbackGeneration) {
+          this.hydrateManifestFromCache();
+          console.log(`[PlaybackController-${this.instanceId}] Audio pipeline warmed successfully. Initial chunks cached.`);
+        }
+      }).catch(err => {
+        console.warn(`[PlaybackController-${this.instanceId}] Background pre-buffering failed:`, err);
+      });
     }
   }
 
@@ -1482,29 +1508,37 @@ export class PlaybackController {
 
   async seek(time: number): Promise<void> {
     if (this.abortController.signal.aborted) return;
+    if (this.isTransitioningState) return;
+    this.isTransitioningState = true;
+
+    const wasPlaying = this.videoEl ? !this.videoEl.paused : false;
+    
+    // 1. Transactional initialization: abort previous fetches/processes and freeze heartbeat
+    const generation = this.startNewPlaybackGeneration('seek');
+    this.beginSeekTransaction('seek');
+    
     this.fetchingKeys.clear();
     this.playbackQueue.clear();
     this.manifest.clear();
     this.bufferManager.clear();
     this.bufferManager.resetFailures();
     this.scheduler.reset();
-
-    const wasPlaying = this.videoEl ? !this.videoEl.paused : false;
-    const generation = this.beginSeekTransaction('seek');
-    this.resetQueueAndTimeline();
+    this.audioScheduler.stopAll();
 
     try {
       if (this.videoEl) {
         this.videoEl.currentTime = time;
       }
 
-      // 1. Pre-buffer and decode the target audio chunk
+      // 2. Pre-buffer and decode the target audio chunk for the new position
       await this.fillBufferWindow(time, 'seek', generation);
       if (generation !== this.playbackGeneration) return;
 
-      // 2. If it was playing, play first, then schedule at actual time
+      // 3. Resume audio contexts and restart playback contiguously
       if (wasPlaying && this.videoEl) {
         await this.videoEl.play();
+        if (generation !== this.playbackGeneration) return;
+        
         const syncedTime = this.videoEl.currentTime;
         this.playbackQueue.clear();
         this.hydrateManifestFromCache();
@@ -1514,6 +1548,7 @@ export class PlaybackController {
       }
     } finally {
       this.endSeekTransaction('seek');
+      this.isTransitioningState = false;
     }
   }
 
