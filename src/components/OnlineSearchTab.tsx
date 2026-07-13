@@ -5,6 +5,7 @@ import type { VideoItem } from '../types/media';
 interface OnlineSearchTabProps {
   onSelectMedia: (video: VideoItem) => void;
   tmdbApiKey?: string;
+  traktAccessToken?: string;
 }
 
 interface SearchResult {
@@ -19,7 +20,7 @@ interface SearchResult {
 
 const DEFAULT_TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
 
-export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia, tmdbApiKey }) => {
+export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia, tmdbApiKey, traktAccessToken }) => {
   const [query, setQuery] = useState(() => {
     return localStorage.getItem('valor_online_search_query') || '';
   });
@@ -31,6 +32,53 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [isFocused, setIsFocused] = useState(false);
+  const [watchedTmdbIds, setWatchedTmdbIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!traktAccessToken) return;
+
+    const fetchTraktWatched = async () => {
+      try {
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${traktAccessToken}`,
+          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+          'trakt-api-version': '2'
+        };
+
+        const [moviesRes, showsRes] = await Promise.all([
+          fetch('https://api.trakt.tv/sync/watched/movies', { headers }),
+          fetch('https://api.trakt.tv/sync/watched/shows', { headers })
+        ]);
+
+        const ids = new Set<number>();
+
+        if (moviesRes.ok) {
+          const moviesData = await moviesRes.json();
+          moviesData.forEach((item: any) => {
+            if (item.movie?.ids?.tmdb) {
+              ids.add(Number(item.movie.ids.tmdb));
+            }
+          });
+        }
+
+        if (showsRes.ok) {
+          const showsData = await showsRes.json();
+          showsData.forEach((item: any) => {
+            if (item.show?.ids?.tmdb) {
+              ids.add(Number(item.show.ids.tmdb));
+            }
+          });
+        }
+
+        setWatchedTmdbIds(ids);
+      } catch (err) {
+        console.warn('Failed to fetch watched history from Trakt:', err);
+      }
+    };
+
+    fetchTraktWatched();
+  }, [traktAccessToken]);
   
   const [history, setHistory] = useState<string[]>(() => {
     const saved = localStorage.getItem('valor_online_search_history');
@@ -346,57 +394,94 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           </div>
         )}
 
-        <div className="search-results-grid">
-          {results.map((res) => {
-            const hasError = imageErrors[res.id] || !res.posterPath;
-            return (
-              <div 
-                key={`${res.type}-${res.id}`} 
-                className="search-result-card"
-                onClick={() => handleCardClick(res)}
-              >
-                <div className="card-poster-wrapper">
-                  {!hasError ? (
-                    <img 
-                      src={res.posterPath} 
-                      alt={res.title} 
-                      className="card-poster-image" 
-                      loading="lazy"
-                      crossOrigin="anonymous"
-                      onError={() => handleImageError(res.id)}
-                    />
-                  ) : (
-                    <div className="card-poster-fallback">
-                      <div className="fallback-backdrop"></div>
-                      <span className="fallback-title-text">{res.title}</span>
-                    </div>
-                  )}
-                  
-                  <div className="card-hover-overlay">
-                    <button className="play-overlay-btn">
-                      <Play fill="currentColor" size={20} />
-                    </button>
-                  </div>
-                  
-                  {res.rating && (
-                    <div className="card-rating-badge">
-                      ⭐ {res.rating.toFixed(1)}
-                    </div>
-                  )}
-                </div>
-                <div className="card-details">
-                  <h3 className="card-title" title={res.title}>{res.title}</h3>
-                  <div className="card-meta">
-                    <span className="card-year">{res.year}</span>
-                    <span className={`card-type-tag ${res.type}`}>
-                      {res.type === 'movie' ? 'Movie' : (res.type === 'tv' ? 'TV' : 'Anime')}
-                    </span>
-                  </div>
+        {loading ? (
+          <div className="search-results-grid">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="search-result-card skeleton">
+                <div className="card-poster-wrapper skeleton-shimmer" style={{ background: 'rgba(255,255,255,0.03)', height: '280px', borderRadius: '12px' }}></div>
+                <div className="card-details" style={{ marginTop: '10px' }}>
+                  <div className="skeleton-line skeleton-shimmer" style={{ height: '16px', width: '80%', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', marginBottom: '8px' }}></div>
+                  <div className="skeleton-line skeleton-shimmer" style={{ height: '12px', width: '40%', background: 'rgba(255,255,255,0.06)', borderRadius: '4px' }}></div>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="search-results-grid">
+            {results.map((res) => {
+              const hasError = imageErrors[res.id] || !res.posterPath;
+              const isWatchedOnTrakt = res.type !== 'anime' && watchedTmdbIds.has(Number(res.id));
+              
+              return (
+                <div 
+                  key={`${res.type}-${res.id}`} 
+                  className="search-result-card"
+                  onClick={() => handleCardClick(res)}
+                >
+                  <div className="card-poster-wrapper">
+                    {!hasError ? (
+                      <img 
+                        src={res.posterPath} 
+                        alt={res.title} 
+                        className="card-poster-image" 
+                        loading="lazy"
+                        crossOrigin="anonymous"
+                        onError={() => handleImageError(res.id)}
+                      />
+                    ) : (
+                      <div className="card-poster-fallback">
+                        <div className="fallback-backdrop"></div>
+                        <span className="fallback-title-text">{res.title}</span>
+                      </div>
+                    )}
+                    
+                    <div className="card-hover-overlay">
+                      <button className="play-overlay-btn">
+                        <Play fill="currentColor" size={20} />
+                      </button>
+                    </div>
+                    
+                    {res.rating && (
+                      <div className="card-rating-badge">
+                        ⭐ {res.rating.toFixed(1)}
+                      </div>
+                    )}
+
+                    {isWatchedOnTrakt && (
+                      <div className="card-watched-badge" style={{
+                        position: 'absolute',
+                        top: '10px',
+                        left: '10px',
+                        background: '#8b5cf6',
+                        color: 'white',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        zIndex: 10,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        ✓ Watched
+                      </div>
+                    )}
+                  </div>
+                  <div className="card-details">
+                    <h3 className="card-title" title={res.title}>{res.title}</h3>
+                    <div className="card-meta">
+                      <span className="card-year">{res.year}</span>
+                      <span className={`card-type-tag ${res.type}`}>
+                        {res.type === 'movie' ? 'Movie' : (res.type === 'tv' ? 'TV' : 'Anime')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

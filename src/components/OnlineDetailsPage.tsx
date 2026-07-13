@@ -454,32 +454,67 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                 <span>Fetching season episodes...</span>
               </div>
             ) : (
-              <div className="details-episodes-grid">
+              <div className="details-episodes-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {episodes.map((ep) => (
                   <div 
-                    className="details-episode-card" 
+                    className="details-episode-list-item" 
                     key={ep.episodeNumber}
                     onClick={() => onPlay(video, currentSeason, ep.episodeNumber)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '16px',
+                      padding: '10px 14px',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.08)';
+                      e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.2)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                    }}
                   >
-                    <div className="episode-card-thumb-wrapper">
+                    <div 
+                      style={{
+                        width: '70px',
+                        height: '40px',
+                        borderRadius: '4px',
+                        overflow: 'hidden',
+                        background: '#121212',
+                        flexShrink: 0,
+                        position: 'relative'
+                      }}
+                    >
                       {(ep.stillPath || posterUrl) ? (
-                        <img src={ep.stillPath || posterUrl} alt={ep.name} className="episode-card-thumb" />
+                        <img 
+                          src={ep.stillPath || posterUrl} 
+                          alt={ep.name} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        />
                       ) : (
-                        <div className="episode-card-thumb-fallback">
-                          <Play size={20} />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)' }}>
+                          <Play size={14} />
                         </div>
                       )}
-                      <div className="episode-card-thumb-overlay">
-                        <Play size={24} fill="white" />
-                      </div>
-                      <div className="episode-card-badge">
+                      <div style={{ position: 'absolute', bottom: '2px', right: '4px', background: 'rgba(0,0,0,0.7)', padding: '1px 3px', borderRadius: '3px', fontSize: '9px', fontWeight: 700, color: 'white' }}>
                         EP {ep.episodeNumber}
                       </div>
                     </div>
-                    <div className="episode-card-meta">
-                      <h3 className="episode-card-title">{ep.name}</h3>
-                      <p className="episode-card-overview" title={ep.overview}>{ep.overview}</p>
+                    <div style={{ flexGrow: 1, minWidth: 0 }}>
+                      <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ep.name}
+                      </h4>
+                      <p style={{ margin: '3px 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', lineHeight: '1.2' }}>
+                        {ep.overview || "No overview available."}
+                      </p>
                     </div>
+                    <Play size={14} color="#8b5cf6" style={{ flexShrink: 0 }} />
                   </div>
                 ))}
               </div>

@@ -3115,6 +3115,7 @@ function App() {
                 <OnlineSearchTab 
                   onSelectMedia={setSelectedDetailsMedia}
                   tmdbApiKey={settings.tmdbApiKey}
+                  traktAccessToken={settings.traktAccessToken}
                 />
                 {selectedDetailsMedia && (
                   <OnlineDetailsPage

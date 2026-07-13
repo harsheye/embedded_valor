@@ -2838,5 +2838,49 @@ a:hover {
   text-align: center;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Online Search Skeletons & Custom Sexy Scrollbars
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Shimmer Animation for Skeletons */
+@keyframes skeleton-loading-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 37%, rgba(255, 255, 255, 0.03) 63%);
+  background-size: 200% 100%;
+  animation: skeleton-loading-shimmer 1.5s infinite;
+}
+
+/* Custom sexy thin scrollbars for pages */
+.actor-details-overlay::-webkit-scrollbar,
+.search-results-section::-webkit-scrollbar,
+.online-search-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.actor-details-overlay::-webkit-scrollbar-track,
+.search-results-section::-webkit-scrollbar-track,
+.online-search-container::-webkit-scrollbar-track {
+  background: rgba(20, 20, 25, 0.5);
+}
+.actor-details-overlay::-webkit-scrollbar-thumb,
+.search-results-section::-webkit-scrollbar-thumb,
+.online-search-container::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.4);
+  border-radius: 4px;
+}
+.actor-details-overlay::-webkit-scrollbar-thumb:hover,
+.search-results-section::-webkit-scrollbar-thumb:hover,
+.online-search-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.7);
+}
+
 
 

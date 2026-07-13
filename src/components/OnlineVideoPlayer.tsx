@@ -643,7 +643,7 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
-          justify-content: 'center',
+          justifyContent: 'center',
           cursor: 'pointer',
           backdropFilter: 'blur(10px)',
           WebkitBackdropFilter: 'blur(10px)',
@@ -1115,10 +1115,22 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
               </div>
             </div>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span className="source-indicator-badge">
-                {server.toUpperCase()}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', pointerEvents: 'auto' }}>
+              <div className="season-selector-dropdown-wrapper" style={{ position: 'relative' }}>
+                <select 
+                  value={server} 
+                  onChange={(e) => setServer(e.target.value as 'videasy' | 'vidking')}
+                  className="season-details-dropdown"
+                  style={{
+                    padding: '0.45rem 2.2rem 0.45rem 1rem',
+                    fontSize: '0.85rem',
+                    borderRadius: '8px'
+                  }}
+                >
+                  <option value="videasy">Source 1</option>
+                  <option value="vidking">Source 2</option>
+                </select>
+              </div>
             </div>
           </div>
 
