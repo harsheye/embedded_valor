@@ -3,6 +3,8 @@ import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from './types/m
 import { ffmpegService } from './services/ffmpeg';
 import { LocalVideoPlayer } from './components/LocalVideoPlayer';
 import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
+import { OnlineSearchTab } from './components/OnlineSearchTab';
+import { OnlineEmbedPlayer } from './components/OnlineEmbedPlayer';
 import { CustomSelect } from './components/CustomSelect';
 import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
@@ -169,7 +171,7 @@ function App() {
     }
   });
   const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>('home');
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api' | 'bookmarks'>('general');
   const [uiOverlaySection, setUiOverlaySection] = useState<'hotkeys' | 'gridOverlay' | 'pauseOverlay'>('hotkeys');
   const [previewExpanded, setPreviewExpanded] = useState(false);
@@ -612,6 +614,7 @@ function App() {
 
   const isInstantlyPlayable = (video: VideoItem): boolean => {
     if (video.type === 'url') return true;
+    if (video.type === 'online_movie' || video.type === 'online_tv' || video.type === 'online_anime') return true;
     if (video.localFilePath) return true;
     if (video.file) {
       try {
@@ -1779,6 +1782,12 @@ function App() {
   const handlePlayVideo = async (video: VideoItem) => {
     if (isPickerOpenRef.current) return;
     
+    if (video.type === 'online_movie' || video.type === 'online_tv' || video.type === 'online_anime') {
+      setVideos(prev => mergeOrAddVideo(prev, video));
+      setPlayingVideo(video);
+      return;
+    }
+
     // Set picker open lock if we might open a file picker
     if (video.type === 'local' && !video.file && !video.url) {
       isPickerOpenRef.current = true;
@@ -2347,6 +2356,83 @@ function App() {
 
   // If playing, render VideoPlayer fullscreen
   if (playingVideo) {
+    if (playingVideo.type === 'online_movie' || playingVideo.type === 'online_tv' || playingVideo.type === 'online_anime') {
+      return (
+        <OnlineEmbedPlayer
+          video={playingVideo}
+          onClose={() => {
+            setPlayingVideo(null);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }}
+          onUpdateProgress={(updatedVideo, cTime, dur) => {
+            setVideos((prev) => {
+              return prev.map(v => {
+                if (v.id === updatedVideo.id) {
+                  return {
+                    ...v,
+                    currentTime: cTime,
+                    duration: typeof dur === 'number' ? formatTime(dur) : String(dur),
+                    season: updatedVideo.season,
+                    episode: updatedVideo.episode,
+                    lastPlayedDate: new Date().toISOString()
+                  };
+                }
+                return v;
+              });
+            });
+            setPlayingVideo(prev => {
+              if (prev && prev.id === updatedVideo.id) {
+                return {
+                  ...prev,
+                  currentTime: cTime,
+                  season: updatedVideo.season,
+                  episode: updatedVideo.episode
+                };
+              }
+              return prev;
+            });
+          }}
+          onAddBookmark={(updatedVideo, cTime) => {
+            const newBookmark = {
+              id: `bmark-${Date.now()}`,
+              time: cTime,
+              label: `Bookmark at ${formatTime(cTime)}`,
+              season: updatedVideo.season,
+              episode: updatedVideo.episode,
+              createdAt: new Date().toISOString()
+            };
+            
+            setVideos((prev) => {
+              return prev.map(v => {
+                if (v.id === updatedVideo.id) {
+                  const bmarks = v.bookmarks || [];
+                  return {
+                    ...v,
+                    bookmarks: [...bmarks, newBookmark]
+                  };
+                }
+                return v;
+              });
+            });
+
+            setPlayingVideo((prev) => {
+              if (prev && prev.id === updatedVideo.id) {
+                const bmarks = prev.bookmarks || [];
+                return {
+                  ...prev,
+                  bookmarks: [...bmarks, newBookmark]
+                };
+              }
+              return prev;
+            });
+
+            addToast("Bookmark added successfully!", "success");
+          }}
+          tmdbApiKey={settings.tmdbApiKey}
+        />
+      );
+    }
+
     const playerProps = {
       video: playingVideo,
       userId: settings.userId,
@@ -2539,6 +2625,14 @@ function App() {
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             <span className="sidebar-menu-text">Library</span>
           </button>
+          <button 
+            className={`sidebar-menu-item ${activeTab === 'online' ? 'active' : ''}`}
+            onClick={() => setActiveTab('online')}
+            title="Online Stream"
+          >
+            <Play size={20} />
+            <span className="sidebar-menu-text">Online Stream</span>
+          </button>
         </nav>
 
         <div className="sidebar-history-section">
@@ -2553,8 +2647,15 @@ function App() {
           ) : (
             <div className="sidebar-history-list">
               {videos.map((video) => (
-                <div key={`sidebar-${video.id}`} className="sidebar-history-item" onClick={() => handlePlayVideo(video)}>
-                  <span className="sidebar-history-item-title" title={video.title}>{video.title}</span>
+                <div key={`sidebar-${video.id}`} className="sidebar-history-item" onClick={() => handlePlayVideo(video)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {video.posterPath && (
+                    <img 
+                      src={video.posterPath} 
+                      alt="" 
+                      style={{ width: '20px', height: '30px', borderRadius: '3px', objectFit: 'cover', flexShrink: 0 }} 
+                    />
+                  )}
+                  <span className="sidebar-history-item-title" title={video.title} style={{ flexGrow: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.title}</span>
                   <button 
                     className="sidebar-history-remove-btn" 
                     onClick={(e) => handleRemoveVideo(video.id, e)}
@@ -2863,7 +2964,14 @@ function App() {
                   ) : (
                     <div className="history-list">
                       {videos.map((video) => (
-                        <div key={video.id} className="history-item glass-panel" onClick={() => handlePlayVideo(video)}>
+                        <div key={video.id} className="history-item glass-panel" onClick={() => handlePlayVideo(video)} style={{ display: 'flex', alignItems: 'center' }}>
+                          {video.posterPath && (
+                            <img 
+                              src={video.posterPath} 
+                              alt="" 
+                              style={{ width: '45px', height: '65px', borderRadius: '6px', objectFit: 'cover', marginRight: '1rem', flexShrink: 0 }} 
+                            />
+                          )}
                           <div className="history-info">
                             <span className="history-title" title={video.title}>{video.title}</span>
                             <div className="history-stats">
@@ -2967,6 +3075,13 @@ function App() {
                 videos={videos} 
                 onPlayVideo={handlePlayVideo} 
                 isInstantlyPlayable={isInstantlyPlayable}
+              />
+            )}
+
+            {activeTab === 'online' && (
+              <OnlineSearchTab 
+                onSelectMedia={handlePlayVideo}
+                tmdbApiKey={settings.tmdbApiKey}
               />
             )}
 
@@ -4754,6 +4869,13 @@ function App() {
         >
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 2px auto' }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span>Calendar</span>
+        </button>
+        <button 
+          className={`mobile-bottom-nav-item ${activeTab === 'online' ? 'active' : ''}`}
+          onClick={() => setActiveTab('online')}
+        >
+          <Play size={20} />
+          <span>Online</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'library' ? 'active' : ''}`}

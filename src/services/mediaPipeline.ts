@@ -618,13 +618,9 @@ export class BufferManager {
     startTime: number,
     duration: number,
     seekMap?: any[],
-<<<<<<< Updated upstream
-    signal?: AbortSignal
-=======
     signal?: AbortSignal,
     showBuffering = false,
     cacheKeyStartTime = startTime
->>>>>>> Stashed changes
   ): Promise<AudioPacket> {
     // Critical validation
     if (streamIndex === null || streamIndex === undefined || streamIndex === -1 || isNaN(streamIndex)) {
@@ -1008,6 +1004,8 @@ export class PlaybackController {
   // Architectural manifest & session tracking
   private manifest = new ChunkManifest();
   private sessionId = '';
+  private playbackGeneration = 0;
+  private chunkAbortController = new AbortController();
   private heartbeatIntervalId: any = null;
   private isTransitioningState = false;
   private maintenanceFrozen = false;
@@ -1122,8 +1120,6 @@ export class PlaybackController {
 
   private heartbeatTickCount = 0;
 
-<<<<<<< Updated upstream
-=======
   private startNewPlaybackGeneration(reason: string): number {
     this.playbackGeneration++;
     this.sessionId = Math.random().toString(36).substring(7);
@@ -1171,7 +1167,6 @@ export class PlaybackController {
     }
   }
 
->>>>>>> Stashed changes
   private runSchedulerCycle(callerName: string): void {
     if (this.abortController.signal.aborted) return;
     if (this.maintenanceFrozen) return;
@@ -1199,14 +1194,19 @@ export class PlaybackController {
     this.fillBufferWindow(currentTime, callerName).catch(console.error);
   }
 
-  private async fillBufferWindow(currentTime: number, callerName = 'unknown'): Promise<void> {
+  private async fillBufferWindow(
+    currentTime: number,
+    callerName = 'unknown',
+    generation = this.playbackGeneration,
+    showCurrentBuffering = false
+  ): Promise<void> {
     if (!this.ff) return;
     if (this.activeStreamIndex === -1 || this.activeStreamIndex === null || typeof this.activeStreamIndex !== 'number') return;
-<<<<<<< Updated upstream
-=======
     if (generation !== this.playbackGeneration) return;
     if (this.maintenanceFrozen && callerName !== 'seek' && callerName !== 'playSyncedFromCurrentTime' && callerName !== 'play' && callerName !== 'switchAudioTrack') return;
->>>>>>> Stashed changes
+
+    const signal = this.chunkAbortController.signal;
+    const currentChunk = Math.floor(currentTime / 10) * 10;
 
     // If scheduler says we don't need to buffer, skip
     if (!this.scheduler.shouldBuffer(currentTime)) return;
@@ -1265,13 +1265,9 @@ export class PlaybackController {
           requestStart,
           requestDuration,
           this.seekMap,
-<<<<<<< Updated upstream
-          this.abortController.signal
-=======
           signal,
           showCurrentBuffering && target === currentChunk,
           target
->>>>>>> Stashed changes
         );
 
         // Discard result if session changed during async await

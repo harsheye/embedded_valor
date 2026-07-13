@@ -26,7 +26,7 @@ export interface VideoItem {
   id: string;
   title: string;
   url: string;
-  type: 'local' | 'url';
+  type: 'local' | 'url' | 'online_movie' | 'online_tv' | 'online_anime';
   file?: File;
   fileName?: string;
   duration?: string;
@@ -52,6 +52,10 @@ export interface VideoItem {
   timeToFinish?: number;
   bookmarks?: Bookmark[];
   tmdbId?: number;
+  anilistId?: number;
+  posterPath?: string;
+  season?: number;
+  episode?: number;
   hasScrobbledTrakt?: boolean;
 }
 
