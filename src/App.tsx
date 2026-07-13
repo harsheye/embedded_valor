@@ -2612,6 +2612,33 @@ function App() {
     );
   }
 
+  if (selectedDetailsMedia) {
+    return (
+      <OnlineDetailsPage
+        video={selectedDetailsMedia}
+        onClose={() => setSelectedDetailsMedia(null)}
+        onPlay={(selectedVideo, season, episode) => {
+          const match = videos.find(v => {
+            if (selectedVideo.type === 'online_movie') {
+              return v.id === selectedVideo.id;
+            } else {
+              return v.id === selectedVideo.id && v.season === season && v.episode === episode;
+            }
+          });
+          const toPlay = {
+            ...selectedVideo,
+            season,
+            episode,
+            currentTime: match ? (match.currentTime || 0) : 0
+          };
+          handlePlayVideo(toPlay);
+        }}
+        onSelectMedia={setSelectedDetailsMedia}
+        tmdbApiKey={settings.tmdbApiKey}
+      />
+    );
+  }
+
   return (
     <div className={`app-layout ${settings.disableAnimations ? 'no-animations' : ''} ${activeTab === 'settings' ? 'settings-active' : ''}`}>
       {/* Sidebar - Desktop and Tablet */}
@@ -3111,37 +3138,11 @@ function App() {
             )}
 
             {activeTab === 'online' && (
-              <>
-                <OnlineSearchTab 
-                  onSelectMedia={setSelectedDetailsMedia}
-                  tmdbApiKey={settings.tmdbApiKey}
-                  traktAccessToken={settings.traktAccessToken}
-                />
-                {selectedDetailsMedia && (
-                  <OnlineDetailsPage
-                    video={selectedDetailsMedia}
-                    onClose={() => setSelectedDetailsMedia(null)}
-                    onPlay={(selectedVideo, season, episode) => {
-                      const match = videos.find(v => {
-                        if (selectedVideo.type === 'online_movie') {
-                          return v.id === selectedVideo.id;
-                        } else {
-                          return v.id === selectedVideo.id && v.season === season && v.episode === episode;
-                        }
-                      });
-                      const toPlay = {
-                        ...selectedVideo,
-                        season,
-                        episode,
-                        currentTime: match ? (match.currentTime || 0) : 0
-                      };
-                      handlePlayVideo(toPlay);
-                    }}
-                    onSelectMedia={setSelectedDetailsMedia}
-                    tmdbApiKey={settings.tmdbApiKey}
-                  />
-                )}
-              </>
+              <OnlineSearchTab 
+                onSelectMedia={setSelectedDetailsMedia}
+                tmdbApiKey={settings.tmdbApiKey}
+                traktAccessToken={settings.traktAccessToken}
+              />
             )}
 
             {activeTab === 'settings' && (

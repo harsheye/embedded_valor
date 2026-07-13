@@ -40,6 +40,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   const [currentSeason, setCurrentSeason] = useState(1);
   const [episodes, setEpisodes] = useState<EpisodeItem[]>([]);
   const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -104,6 +105,23 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
               profilePath: c.profile_path ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w185${c.profile_path}` : ''
             }));
           setCast(castList);
+        }
+
+        // 3. Fetch Recommendations
+        let recsUrl = `https://api.themoviedb.org/3/${mediaType}/${video.tmdbId}/recommendations?language=en-US`;
+        if (!isBearer) recsUrl += `&api_key=${token}`;
+        
+        const recsRes = await fetch(recsUrl, { headers });
+        if (recsRes.ok) {
+          const recsData = await recsRes.json();
+          const items = (recsData.results || []).slice(0, 12).map((r: any) => ({
+            id: r.id,
+            title: r.title || r.name,
+            posterPath: r.poster_path ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w300${r.poster_path}` : '',
+            type: mediaType,
+            year: r.release_date || r.first_air_date ? (r.release_date || r.first_air_date).split('-')[0] : ''
+          }));
+          setRecommendations(items);
         }
       } catch (err: any) {
         console.error(err);
@@ -194,6 +212,26 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                 role
               }
             }
+            recommendations (limit: 12) {
+              edges {
+                node {
+                  mediaRecommendation {
+                    id
+                    title {
+                      english
+                      romaji
+                    }
+                    coverImage {
+                      large
+                    }
+                    startDate {
+                      year
+                    }
+                    type
+                  }
+                }
+              }
+            }
           }
         }
       `;
@@ -237,6 +275,22 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
           profilePath: edge.node.image?.large || ''
         }));
       setCast(castList);
+
+      // Map Recommendations
+      const recsList = (media.recommendations?.edges || [])
+        .map((edge: any) => {
+          const rec = edge.node?.mediaRecommendation;
+          if (!rec) return null;
+          return {
+            id: rec.id,
+            title: rec.title.english || rec.title.romaji || 'Unknown Anime',
+            posterPath: rec.coverImage.large ? `https://images.weserv.nl/?url=${encodeURIComponent(rec.coverImage.large)}` : '',
+            type: 'anime',
+            year: rec.startDate.year ? String(rec.startDate.year) : ''
+          };
+        })
+        .filter(Boolean);
+      setRecommendations(recsList);
 
       // Generate episodes grid for Anime
       const totalEp = media.episodes || 12;
@@ -365,6 +419,55 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
             )}
 
             <p className="media-details-overview">{details.overview || 'No description available for this catalog entry.'}</p>
+
+            {/* Facts bar */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '24px',
+              margin: '1.5rem 0',
+              padding: '12px 16px',
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              borderRadius: '8px'
+            }}>
+              {details.status && (
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Status</span>
+                  <span style={{ fontSize: '0.85rem', color: 'white', fontWeight: 600 }}>{details.status}</span>
+                </div>
+              )}
+              {details.original_language && (
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Language</span>
+                  <span style={{ fontSize: '0.85rem', color: 'white', fontWeight: 600 }}>{details.original_language.toUpperCase()}</span>
+                </div>
+              )}
+              {isMovie && details.budget > 0 && (
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Budget</span>
+                  <span style={{ fontSize: '0.85rem', color: 'white', fontWeight: 600 }}>${(details.budget / 1000000).toFixed(1)}M</span>
+                </div>
+              )}
+              {isMovie && details.revenue > 0 && (
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Revenue</span>
+                  <span style={{ fontSize: '0.85rem', color: 'white', fontWeight: 600 }}>${(details.revenue / 1000000).toFixed(1)}M</span>
+                </div>
+              )}
+              {!isMovie && details.number_of_seasons && (
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Seasons</span>
+                  <span style={{ fontSize: '0.85rem', color: 'white', fontWeight: 600 }}>{details.number_of_seasons}</span>
+                </div>
+              )}
+              {!isMovie && details.number_of_episodes && (
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Total Episodes</span>
+                  <span style={{ fontSize: '0.85rem', color: 'white', fontWeight: 600 }}>{details.number_of_episodes}</span>
+                </div>
+              )}
+            </div>
 
             {/* Play Button for Movie */}
             {isMovie && (
@@ -519,6 +622,68 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Recommendations / More Like This */}
+        {recommendations.length > 0 && (
+          <div className="media-details-section" style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '2rem' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 1.25rem 0' }}>More Like This</h2>
+            <div 
+              style={{
+                display: 'flex',
+                gap: '16px',
+                overflowX: 'auto',
+                paddingBottom: '1rem',
+              }}
+              className="search-results-section" // reuse the thin scrollbar styling
+            >
+              {recommendations.map((rec) => (
+                <div 
+                  key={rec.id} 
+                  onClick={() => {
+                    if (onSelectMedia) {
+                      onSelectMedia({
+                        id: `${rec.type === 'movie' ? 'movie' : (rec.type === 'tv' ? 'tv' : 'anime')}-${rec.id}`,
+                        title: rec.title,
+                        url: '',
+                        type: rec.type === 'movie' ? 'online_movie' : (rec.type === 'tv' ? 'online_tv' : 'online_anime'),
+                        isRemote: true,
+                        posterPath: rec.posterPath,
+                        tmdbId: rec.type !== 'anime' ? Number(rec.id) : undefined,
+                        anilistId: rec.type === 'anime' ? Number(rec.id) : undefined,
+                        audioTracks: [],
+                        subtitleTracks: []
+                      });
+                    }
+                  }}
+                  style={{
+                    width: '120px',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    transition: 'transform 0.2s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
+                  onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+                >
+                  <div style={{ width: '120px', height: '180px', borderRadius: '8px', overflow: 'hidden', background: '#1c1c24', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    {rec.posterPath ? (
+                      <img src={rec.posterPath} alt={rec.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', padding: '10px', textAlign: 'center' }}>
+                        {rec.title}
+                      </div>
+                    )}
+                  </div>
+                  <h4 style={{ margin: '8px 0 2px 0', fontSize: '0.8rem', fontWeight: 600, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rec.title}>
+                    {rec.title}
+                  </h4>
+                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
+                    {rec.year}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

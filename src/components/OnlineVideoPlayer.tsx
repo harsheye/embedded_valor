@@ -627,44 +627,72 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
       onMouseLeave={() => !interactWithNative && isPlaying && setShowControls(false)}
       style={{ background: 'black', fontFamily: 'Outfit, sans-serif' }}
     >
-      {/* Floating exit / back button overlay */}
-      <button 
-        onClick={onBack} 
+      {/* Floating control panel: exit & server selection */}
+      <div 
         style={{
           position: 'fixed',
           top: '20px',
           right: '20px',
           zIndex: 2200,
-          background: 'rgba(0, 0, 0, 0.55)',
-          border: '1px solid rgba(255, 255, 255, 0.2)',
-          color: 'white',
-          width: '38px',
-          height: '38px',
-          borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          transition: 'all 0.2s ease',
-          pointerEvents: 'auto',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-        }}
-        title="Exit Player"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = '#e50914';
-          e.currentTarget.style.borderColor = '#ff4a4a';
-          e.currentTarget.style.transform = 'scale(1.08)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'rgba(0, 0, 0, 0.55)';
-          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-          e.currentTarget.style.transform = 'none';
+          gap: '12px',
+          background: 'rgba(10, 10, 15, 0.85)',
+          backdropFilter: 'blur(15px)',
+          WebkitBackdropFilter: 'blur(15px)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          padding: '6px 12px',
+          borderRadius: '10px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          pointerEvents: 'auto'
         }}
       >
-        <X size={18} />
-      </button>
+        {/* Source Selector Dropdown */}
+        <div className="season-selector-dropdown-wrapper" style={{ position: 'relative' }}>
+          <select 
+            value={server} 
+            onChange={(e) => setServer(e.target.value as 'videasy' | 'vidking')}
+            className="season-details-dropdown"
+            style={{
+              padding: '0.2rem 1.8rem 0.2rem 0.6rem',
+              fontSize: '0.8rem',
+              borderRadius: '6px',
+              height: '28px',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'white',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="videasy">Source 1</option>
+            <option value="vidking">Source 2</option>
+          </select>
+        </div>
+
+        {/* Separator */}
+        <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)' }} />
+
+        {/* Exit Button */}
+        <button 
+          onClick={onBack}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'rgba(255, 255, 255, 0.8)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s ease',
+            padding: '4px'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.color = '#e50914'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.8)'}
+          title="Exit Player"
+        >
+          <X size={18} />
+        </button>
+      </div>
 
       <style>{`
         .local-player-container {
@@ -1112,24 +1140,6 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
                     {video.type === 'online_tv' ? `Season ${currentSeason} • Episode ${currentEpisode}` : `Episode ${currentEpisode}`}
                   </span>
                 )}
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', pointerEvents: 'auto' }}>
-              <div className="season-selector-dropdown-wrapper" style={{ position: 'relative' }}>
-                <select 
-                  value={server} 
-                  onChange={(e) => setServer(e.target.value as 'videasy' | 'vidking')}
-                  className="season-details-dropdown"
-                  style={{
-                    padding: '0.45rem 2.2rem 0.45rem 1rem',
-                    fontSize: '0.85rem',
-                    borderRadius: '8px'
-                  }}
-                >
-                  <option value="videasy">Source 1</option>
-                  <option value="vidking">Source 2</option>
-                </select>
               </div>
             </div>
           </div>

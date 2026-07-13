@@ -2454,6 +2454,18 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  position: sticky;
+  top: 2rem;
+  align-self: start;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+.actor-left-col::-webkit-scrollbar {
+  width: 4px;
+}
+.actor-left-col::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
 }
 
 .actor-portrait-card {

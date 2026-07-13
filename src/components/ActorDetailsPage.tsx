@@ -488,20 +488,20 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Biography */}
+              <div className="actor-bio-section">
+                <h3 className="section-title">Biography</h3>
+                <p className="actor-biography-text">
+                  {profile.biography || `We don't have a biography for ${profile.name} yet.`}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Right Column: Bio & Filmography */}
+          {/* Right Column: Filmography */}
           <div className="actor-right-col">
             
-            {/* Biography */}
-            <div className="actor-bio-section">
-              <h3 className="section-title">Biography</h3>
-              <p className="actor-biography-text">
-                {profile.biography || `We don't have a biography for ${profile.name} yet.`}
-              </p>
-            </div>
-
             {/* Filmography Filter Controls */}
             <div className="actor-credits-section">
               <div className="credits-header-row">
