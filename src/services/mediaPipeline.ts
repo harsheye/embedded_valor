@@ -1133,6 +1133,11 @@ export class PlaybackController {
       this.videoEl.addEventListener('pause', this.onPauseEvent);
       this.listenersBound = true;
       console.log(`[PlaybackController-${this.instanceId}] Event listeners bound to video element.`);
+
+      const resumeTime = this.videoEl.currentTime;
+      const startChunk = Math.floor(resumeTime / 10) * 10;
+      const chunkId = `audio_${this.activeStreamIndex}_${startChunk}`;
+      console.log(`[PlaybackController-${this.instanceId}] PLAYER INITIALIZED: resumeTime=${resumeTime.toFixed(3)}s, initialAudioChunkId=${chunkId}`);
     }
   }
 
