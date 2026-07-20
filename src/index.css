@@ -1,31 +1,41 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
 
-:root {
+:root,
+html[data-theme="dark"] {
   --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'ui-monospace', monospace;
 
   /* Colors */
-  --bg-color: #141414;
-  --card-bg: #181818;
-  --card-hover-bg: #2f2f2f;
-  --accent-color: #e50914;
-  --accent-hover: #b80710;
+  --bg-color: #0b0b10;
+  --bg-primary: #0b0b10;
+  --bg-secondary: #12121a;
+  --card-bg: #161622;
+  --card-hover-bg: #222234;
+  --accent-color: #8b5cf6;
+  --accent-hover: #7c3aed;
+  --accent-glow: rgba(139, 92, 246, 0.4);
   --text-primary: #ffffff;
-  --text-secondary: #e5e5e5;
-  --text-muted: #808080;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(229, 9, 20, 0.5);
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-focus: rgba(139, 92, 246, 0.5);
   
-  /* Glassmorphism */
-  --glass-bg: rgba(20, 20, 20, 0.7);
-  --glass-blur: blur(12px);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  /* Glassmorphism & Dropdowns */
+  --glass-bg: rgba(18, 18, 28, 0.75);
+  --glass-blur: blur(14px);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+
+  --dropdown-bg: #121218;
+  --dropdown-border: rgba(255, 255, 255, 0.14);
+  --dropdown-text: #f3f4f6;
+  --dropdown-hover-bg: rgba(255, 255, 255, 0.08);
+  --dropdown-selected-bg: #8b5cf6;
 
   /* Player Variables */
-  --player-accent: #e50914;
+  --player-accent: #8b5cf6;
   --player-bg: rgba(0, 0, 0, 0.95);
-  --player-control-bg: rgba(20, 20, 20, 0.85);
+  --player-control-bg: rgba(18, 18, 28, 0.85);
 
   font-family: var(--font-sans);
   color-scheme: dark;
@@ -34,6 +44,76 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html[data-theme="black-and-white"] {
+  --bg-color: #000000;
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --card-bg: #111111;
+  --card-hover-bg: #1c1c1c;
+  --accent-color: #ffffff;
+  --accent-hover: #e5e5e5;
+  --accent-glow: rgba(255, 255, 255, 0.3);
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --text-muted: #777777;
+  --border-color: rgba(255, 255, 255, 0.18);
+  --border-focus: rgba(255, 255, 255, 0.7);
+  
+  /* Glassmorphism & Dropdowns */
+  --glass-bg: rgba(12, 12, 12, 0.85);
+  --glass-blur: blur(16px);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.9);
+
+  --dropdown-bg: #0d0d0d;
+  --dropdown-border: rgba(255, 255, 255, 0.22);
+  --dropdown-text: #ffffff;
+  --dropdown-hover-bg: rgba(255, 255, 255, 0.12);
+  --dropdown-selected-bg: #ffffff;
+
+  /* Player Variables */
+  --player-accent: #ffffff;
+  --player-bg: #000000;
+  --player-control-bg: rgba(15, 15, 15, 0.9);
+
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --bg-color: #f8fafc;
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --card-bg: #ffffff;
+  --card-hover-bg: #e2e8f0;
+  --accent-color: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-glow: rgba(99, 102, 241, 0.3);
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-color: rgba(0, 0, 0, 0.12);
+  --border-focus: rgba(99, 102, 241, 0.5);
+  
+  /* Glassmorphism & Dropdowns */
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-blur: blur(14px);
+  --glass-border: rgba(0, 0, 0, 0.12);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
+
+  --dropdown-bg: #ffffff;
+  --dropdown-border: rgba(0, 0, 0, 0.15);
+  --dropdown-text: #0f172a;
+  --dropdown-hover-bg: rgba(0, 0, 0, 0.05);
+  --dropdown-selected-bg: #6366f1;
+
+  /* Player Variables */
+  --player-accent: #6366f1;
+  --player-bg: #ffffff;
+  --player-control-bg: rgba(240, 240, 245, 0.9);
+
+  color-scheme: light;
 }
 
 body {
@@ -2909,15 +2989,15 @@ a:hover {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-color: rgba(255, 255, 255, 0.07);
+  background-color: var(--dropdown-bg);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.85rem center;
   background-size: 1.1em;
   padding: 0.65rem 2.5rem 0.65rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--dropdown-border);
   border-radius: 0.75rem;
-  color: #f3f4f6;
+  color: var(--dropdown-text);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -2928,36 +3008,24 @@ a:hover {
 }
 
 .global-select-dropdown:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(139, 92, 246, 0.5);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.2);
+  background-color: var(--dropdown-hover-bg);
+  border-color: var(--accent-glow);
+  box-shadow: 0 6px 20px var(--accent-glow);
 }
 
 .global-select-dropdown:focus {
   outline: none;
-  border-color: rgba(139, 92, 246, 0.85);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3);
-  background-color: rgba(18, 18, 28, 0.95);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  background-color: var(--dropdown-bg);
 }
 
 .global-select-dropdown option {
-  background-color: #121218;
-  color: #f3f4f6;
+  background-color: var(--dropdown-bg);
+  color: var(--dropdown-text);
   padding: 0.6rem;
   font-size: 0.875rem;
 }
-
-/* Light mode override for global dropdowns */
-.light .global-select-dropdown {
-  background-color: rgba(0, 0, 0, 0.05);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(0,0,0,0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  border-color: rgba(0, 0, 0, 0.15);
-  color: #1f2937;
-}
-
-.light .global-select-dropdown option {
-  background-color: #ffffff;
-  color: #1f2937;
 }
 
 /* Full Page Navigation Layouts (Media & Actor Standalone Pages) */

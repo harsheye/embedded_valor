@@ -184,6 +184,7 @@ function App() {
   });
   const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
   const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
+  const [historyViewMode, setHistoryViewMode] = useState<'list' | 'calendar'>('list');
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>(() => {
     const saved = localStorage.getItem('valor_active_tab');
     return (saved as any) || 'home';
@@ -797,6 +798,7 @@ function App() {
     defaultSub: 'ENG',
     historyLimit: 10 as number | 'Infinite',
     historySaveInterval: 5 as number,
+    theme: 'dark' as 'dark' | 'black-and-white' | 'light',
     hideUIOverlays: false,
     hideVideoName: false,
     uiHideTimeout: 1.5,
@@ -1134,6 +1136,10 @@ function App() {
       return defaultSettings;
     }
   });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme || 'dark');
+  }, [settings.theme]);
 
   const saveSettingsToStorage = async (state: typeof defaultSettings) => {
     if (state.storageMode === 'file' && state.userId && state.userId !== 'local' && !state.userId.startsWith('local_')) {
@@ -2684,9 +2690,12 @@ function App() {
             <span className="sidebar-menu-text">History ({videos.length})</span>
           </button>
           <button 
-            className={`sidebar-menu-item ${activeTab === 'calendar' ? 'active' : ''}`}
-            onClick={() => setActiveTab('calendar')}
-            title="Calendar"
+            className={`sidebar-menu-item ${activeTab === 'history' && historyViewMode === 'calendar' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('history');
+              setHistoryViewMode('calendar');
+            }}
+            title="Calendar Schedule"
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <span className="sidebar-menu-text">Calendar</span>
@@ -2935,9 +2944,41 @@ function App() {
             {activeTab === 'history' && (
               <div className="workspace-panel-wrapper">
                 <div className="glass-panel workspace-panel">
-                  <div className="panel-header border-b" style={{ marginBottom: '1.5rem' }}>
+                  <div className="panel-header border-b" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
                     <h2>Playback History ({videos.length})</h2>
+
+                    <button
+                      className="history-calendar-toggle-btn"
+                      onClick={() => setHistoryViewMode(prev => prev === 'list' ? 'calendar' : 'list')}
+                      title={historyViewMode === 'list' ? "Switch to Calendar View" : "Switch to History List View"}
+                      style={{
+                        background: historyViewMode === 'calendar' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        borderRadius: '0.75rem',
+                        color: historyViewMode === 'calendar' ? '#a78bfa' : '#ffffff',
+                        padding: '0.55rem 1rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Calendar size={18} />
+                      {historyViewMode === 'list' ? 'Calendar View' : 'History List'}
+                    </button>
                   </div>
+
+                  {historyViewMode === 'calendar' ? (
+                    settings.calendarStyle === 'list' ? (
+                      <Calendar02 videos={videos} onPlayVideo={handlePlayVideo} isInstantlyPlayable={isInstantlyPlayable} />
+                    ) : (
+                      <CalendarView videos={videos} onPlayVideo={handlePlayVideo} />
+                    )
+                  ) : (
+                    <>
 
                   {(() => {
                     const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
@@ -3129,6 +3170,8 @@ function App() {
                       ))}
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -3236,6 +3279,22 @@ function App() {
                         <div className="settings-page-grid">
                           <div className="settings-grid-col">
 
+                            <div className="settings-section">
+                              <h3>Visual Theme Engine</h3>
+                              <p className="settings-section-desc">Select your preferred color theme for the entire application.</p>
+                              <div className="pref-row">
+                                <span className="pref-label">Application Theme</span>
+                                <CustomSelect 
+                                  value={settings.theme || 'dark'} 
+                                  onChange={(val) => setSettings(prev => ({ ...prev, theme: val }))}
+                                  options={[
+                                    { value: 'dark', label: '🌙 Dark Mode (Default)' },
+                                    { value: 'black-and-white', label: '🏁 Black & White (Monochrome Noir)' },
+                                    { value: 'light', label: '☀️ Light Mode' }
+                                  ]}
+                                />
+                              </div>
+                            </div>
 
                             <div className="settings-section">
                               <h3>Preferred Languages</h3>

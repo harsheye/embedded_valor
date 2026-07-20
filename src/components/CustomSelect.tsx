@@ -127,10 +127,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          background: rgba(10, 10, 10, 0.7);
-          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: var(--dropdown-bg);
+          border: 1px solid var(--dropdown-border);
           border-radius: 8px;
-          color: #ffffff;
+          color: var(--dropdown-text);
           padding: 0.55rem 0.85rem;
           font-size: 0.88rem;
           cursor: pointer;
@@ -139,9 +139,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           outline: none;
         }
         .custom-select-trigger:hover {
-          border-color: rgba(255, 255, 255, 0.25);
-          background: rgba(20, 20, 20, 0.85);
-          box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
+          border-color: var(--accent-glow);
+          background: var(--dropdown-hover-bg);
+          box-shadow: 0 0 10px var(--accent-glow);
         }
         .trigger-label {
           white-space: nowrap;
@@ -152,7 +152,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         .trigger-chevron {
           width: 16px;
           height: 16px;
-          opacity: 0.5;
+          opacity: 0.6;
           flex-shrink: 0;
         }
         .custom-select-dropdown {
@@ -160,8 +160,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           top: calc(100% + 5px);
           left: 0;
           right: 0;
-          background: #0d0d0d;
-          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: var(--dropdown-bg);
+          border: 1px solid var(--dropdown-border);
           border-radius: 8px;
           z-index: 1000;
           box-shadow: 0 12px 36px rgba(0,0,0,0.9);
@@ -174,14 +174,14 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         }
         .custom-select-search-wrapper {
           padding: 6px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          border-bottom: 1px solid var(--dropdown-border);
         }
         .custom-select-search-input {
           width: 100%;
-          background: rgba(0, 0, 0, 0.3);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(0, 0, 0, 0.2);
+          border: 1px solid var(--dropdown-border);
           border-radius: 6px;
-          color: #ffffff;
+          color: var(--dropdown-text);
           padding: 0.4rem 0.6rem;
           font-size: 0.82rem;
           outline: none;
@@ -189,7 +189,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           transition: border-color 0.15s;
         }
         .custom-select-search-input:focus {
-          border-color: rgba(229, 9, 20, 0.5);
+          border-color: var(--accent-color);
         }
         .custom-select-options-list {
           max-height: 180px;
@@ -201,7 +201,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         }
         .custom-select-empty {
           padding: 0.75rem;
-          color: rgba(255, 255, 255, 0.4);
+          color: var(--text-muted);
           font-size: 0.82rem;
           text-align: center;
         }
@@ -210,16 +210,15 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           align-items: center;
           padding: 0.5rem 0.85rem;
           font-size: 0.85rem;
-          color: rgba(255, 255, 255, 0.7);
+          color: var(--dropdown-text);
           cursor: pointer;
           transition: all 0.15s ease;
         }
         .custom-select-option:hover {
-          background: rgba(255, 255, 255, 0.08);
-          color: #ffffff;
+          background: var(--dropdown-hover-bg);
         }
         .custom-select-option.selected {
-          background: #e50914;
+          background: var(--accent-color);
           color: #ffffff;
         }
         .option-check-icon {
