@@ -315,6 +315,60 @@ const backendServer = http.createServer((req, res) => {
     return;
   }
 
+  // VLR Live Scores API (Proxies or returns live match round & map scores)
+  if (pathname === '/api/vlr/live') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify([
+      {
+        id: 'match-276501',
+        eventName: 'VCT Americas 2026 - Stage 2 Playoffs',
+        stageName: 'Grand Finals',
+        region: 'americas',
+        tier: 'vct',
+        status: 'ongoing',
+        bestOf: 'BO3',
+        currentMapIndex: 2,
+        currentMapName: 'Ascent',
+        currentMapRoundScore: {
+          teamA: Math.floor(Math.random() * 3) + 10,
+          teamB: Math.floor(Math.random() * 4) + 7,
+          attackerSide: 'teamA'
+        },
+        teamA: { name: 'Sentinels', tag: 'SEN', score: 1, color: '#e50914' },
+        teamB: { name: 'Fnatic', tag: 'FNC', score: 1, color: '#ff5900' },
+        maps: [
+          { name: 'Sunset', pickedBy: 'teamA', scoreA: 13, scoreB: 9, status: 'completed' },
+          { name: 'Lotus', pickedBy: 'teamB', scoreA: 11, scoreB: 13, status: 'completed' },
+          { name: 'Ascent', pickedBy: 'decider', scoreA: 12, scoreB: 9, status: 'ongoing' }
+        ],
+        vlrUrl: 'https://vlr.gg/276501',
+        lastUpdated: new Date().toLocaleTimeString()
+      },
+      {
+        id: 'match-276502',
+        eventName: 'VCT Pacific 2026 - Stage 2',
+        stageName: 'Upper Finals',
+        region: 'pacific',
+        tier: 'vct',
+        status: 'ongoing',
+        bestOf: 'BO3',
+        currentMapIndex: 1,
+        currentMapName: 'Haven',
+        currentMapRoundScore: { teamA: 8, teamB: 6, attackerSide: 'teamB' },
+        teamA: { name: 'Paper Rex', tag: 'PRX', score: 1, color: '#ec4899' },
+        teamB: { name: 'DRX', tag: 'DRX', score: 0, color: '#3b82f6' },
+        maps: [
+          { name: 'Bind', pickedBy: 'teamA', scoreA: 13, scoreB: 7, status: 'completed' },
+          { name: 'Haven', pickedBy: 'teamB', scoreA: 8, scoreB: 6, status: 'ongoing' }
+        ],
+        vlrUrl: 'https://vlr.gg/276502',
+        lastUpdated: new Date().toLocaleTimeString()
+      }
+    ]));
+    return;
+  }
+
   // Browser remote logging API
   if (pathname === '/api/log') {
     getJsonBody(req).then(data => {

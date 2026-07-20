@@ -55,13 +55,14 @@ import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
 import { LibraryView } from './components/LibraryView';
 import { ApiSettingsView } from './components/ApiSettingsView';
+import { VlrLiveScores } from './components/VlrLiveScores';
 import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
   Film, UploadCloud, Play, Settings, X, Calendar, List,
   History, Home, Layers, Type, Clock, Sliders, Volume2,
   Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft,
-  LogOut, Trash2, Plus, Download, UserPlus
+  LogOut, Trash2, Plus, Download, UserPlus, Trophy, Radio
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
 import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './services/remote/remoteByteSource';
@@ -228,7 +229,7 @@ function App() {
   const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
   const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
   const [historyViewMode, setHistoryViewMode] = useState<'list' | 'calendar'>('list');
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>(() => {
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online' | 'vlr'>(() => {
     const saved = localStorage.getItem('valor_active_tab');
     return (saved as any) || 'home';
   });
@@ -2710,6 +2711,18 @@ function App() {
             <span className="sidebar-menu-text">Library</span>
           </button>
           <button 
+            className={`sidebar-menu-item ${activeTab === 'vlr' ? 'active' : ''}`}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('vlr');
+            }}
+            title="Live Scores & Matches"
+          >
+            <Trophy size={20} color="#e50914" />
+            <span className="sidebar-menu-text">Live Scores</span>
+          </button>
+          <button 
             className={`sidebar-menu-item ${activeTab === 'online' ? 'active' : ''}`}
             onClick={() => {
               setSelectedActor(null);
@@ -3217,6 +3230,10 @@ function App() {
                 onPlayVideo={handlePlayVideo} 
                 isInstantlyPlayable={isInstantlyPlayable}
               />
+            )}
+
+            {activeTab === 'vlr' && (
+              <VlrLiveScores />
             )}
 
             {activeTab === 'online' && (
