@@ -1,5 +1,40 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Component, ReactNode } from 'react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from './types/media';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center', background: '#0b0b10', color: '#fff', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ef4444' }}>Something went wrong</h2>
+          <p style={{ color: 'rgba(255,255,255,0.7)', maxWidth: '500px', margin: '1rem 0' }}>
+            {this.state.error?.toString() || 'An unexpected error occurred.'}
+          </p>
+          <button 
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            style={{ background: '#8b5cf6', color: '#fff', border: 'none', padding: '0.65rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Reload Application
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { ffmpegService } from './services/ffmpeg';
 import { LocalVideoPlayer } from './components/LocalVideoPlayer';
 import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
@@ -8075,4 +8110,10 @@ function App() {
   );
 }
 
-export default App;
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
