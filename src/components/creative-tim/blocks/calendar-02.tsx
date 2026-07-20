@@ -96,34 +96,9 @@ export default function Calendar02({ videos, onPlayVideo, isInstantlyPlayable }:
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Header Panel */}
-      <div 
-        className="glass-panel" 
-        style={{ 
-          display: 'flex', 
-          flexDirection: 'row', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          padding: '1.25rem 1.5rem',
-          borderRadius: '12px',
-          border: '1px solid rgba(255, 255, 255, 0.08)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '8px', borderRadius: '8px', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Calendar size={20} />
-          </div>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#fff' }}>
-              Viewing Timeline
-            </h3>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.78rem', margin: 0 }}>
-              Chronological schedule of watched media streams
-            </p>
-          </div>
-        </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      {/* Compact Month Navigation Bar */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '4px 12px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
           <button 
             className="settings-close-btn" 
             onClick={handlePrevMonth} 

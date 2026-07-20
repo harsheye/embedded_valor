@@ -58,7 +58,7 @@ import { ApiSettingsView } from './components/ApiSettingsView';
 import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
-  Film, UploadCloud, Play, Settings, X, Calendar,
+  Film, UploadCloud, Play, Settings, X, Calendar, List,
   History, Home, Layers, Type, Clock, Sliders, Volume2,
   Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft
 } from 'lucide-react';
@@ -2975,24 +2975,10 @@ function App() {
             )}
 
             {activeTab === 'history' && (
-              <div className="workspace-panel-wrapper">
-                <div className="glass-panel workspace-panel">
+              <div className="workspace-panel-wrapper" style={{ position: 'relative', height: '100%' }}>
+                <div className="glass-panel workspace-panel" style={{ position: 'relative', minHeight: '100%' }}>
                   {historyViewMode === 'calendar' ? (
                     <div>
-                      <div className="panel-header border-b" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <h2 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                          <Calendar size={20} color="var(--accent-color)" /> Calendar Schedule
-                        </h2>
-
-                        <button
-                          className="btn-theme-icon"
-                          onClick={() => setHistoryViewMode('list')}
-                          title="Close Calendar"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-
                       {settings.calendarStyle === 'list' ? (
                         <Calendar02 videos={videos} onPlayVideo={handlePlayVideo} isInstantlyPlayable={isInstantlyPlayable} />
                       ) : (
@@ -3001,18 +2987,6 @@ function App() {
                     </div>
                   ) : (
                     <>
-                      <div className="panel-header border-b" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                        <h2>Playback History ({videos.length})</h2>
-
-                        <button
-                          className="btn-theme-outline"
-                          onClick={() => setHistoryViewMode('calendar')}
-                          title="Switch to Calendar View"
-                        >
-                          <Calendar size={18} />
-                          Calendar View
-                        </button>
-                      </div>
 
                   {(() => {
                     const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
@@ -3034,7 +3008,10 @@ function App() {
                           boxShadow: '0 8px 24px rgba(229, 9, 20, 0.25)',
                           border: '1px solid rgba(255, 255, 255, 0.1)',
                           transition: 'transform 0.2s, box-shadow 0.2s',
-                          boxSizing: 'border-box'
+                          boxSizing: 'border-box',
+                          position: 'sticky',
+                          top: '0',
+                          zIndex: 10
                         }}
                         className="premium-red-banner"
                       >
@@ -3206,6 +3183,21 @@ function App() {
                   )}
                     </>
                   )}
+
+                  {/* Absolute Top Overlay Icon-Only Calendar Button */}
+                  <button
+                    className="dom-calendar-btn"
+                    onClick={() => setHistoryViewMode(historyViewMode === 'calendar' ? 'list' : 'calendar')}
+                    title={historyViewMode === 'calendar' ? 'Switch to History List' : 'Switch to Calendar View'}
+                    style={{
+                      position: 'absolute',
+                      top: '1.5rem',
+                      right: '1.5rem',
+                      zIndex: 100
+                    }}
+                  >
+                    {historyViewMode === 'calendar' ? <List size={20} color="#ffffff" /> : <Calendar size={20} color="#ffffff" />}
+                  </button>
                 </div>
               </div>
             )}

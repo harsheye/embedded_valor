@@ -5680,7 +5680,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           left: 0;
           height: 4px;
           background: #e50914;
-          border-radius: 2px;
+          border-radius: 2px 0 0 2px;
           z-index: 3;
         }
         .scrub-bar-premium {
@@ -5703,14 +5703,16 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           border-radius: 50%;
           background: #e50914;
           cursor: pointer;
-          transform: scale(0.65);
-          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+          transform: scale(0);
+          opacity: 0;
+          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
           box-shadow: 0 0 10px rgba(229, 9, 20, 0.8);
           z-index: 10;
         }
         .scrub-container-premium:hover .scrub-bar-premium::-webkit-slider-thumb,
         .scrub-bar-premium:active::-webkit-slider-thumb {
           transform: scale(1.4);
+          opacity: 1;
         }
         .scrub-bar-premium::-moz-range-thumb {
           width: 22px;
@@ -5719,14 +5721,16 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           border-radius: 50%;
           background: #e50914;
           cursor: pointer;
-          transform: scale(0.65);
-          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+          transform: scale(0);
+          opacity: 0;
+          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
           box-shadow: 0 0 10px rgba(229, 9, 20, 0.8);
           z-index: 10;
         }
         .scrub-container-premium:hover .scrub-bar-premium::-moz-range-thumb,
         .scrub-bar-premium:active::-moz-range-thumb {
           transform: scale(1.4);
+          opacity: 1;
         }
         .scrub-container-premium:hover .scrub-track-bg,
         .scrub-container-premium:hover .scrub-track-buffered,
@@ -6507,11 +6511,15 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
             max-height: 200px;
           }
           /* Touch-safety thumb size scaling */
-          .scrub-bar-premium::-webkit-slider-thumb {
-            transform: scale(1.1) !important;
+          .scrub-container-premium:hover .scrub-bar-premium::-webkit-slider-thumb,
+          .scrub-bar-premium:active::-webkit-slider-thumb {
+            transform: scale(1.4) !important;
+            opacity: 1 !important;
           }
-          .scrub-bar-premium::-moz-range-thumb {
-            transform: scale(1.1) !important;
+          .scrub-container-premium:hover .scrub-bar-premium::-moz-range-thumb,
+          .scrub-bar-premium:active::-moz-range-thumb {
+            transform: scale(1.4) !important;
+            opacity: 1 !important;
           }
         }
 

@@ -87,23 +87,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ videos, onPlayVideo 
     <div className="workspace-panel-wrapper">
       <div className="glass-panel workspace-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)', maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}>
         
-        {/* Calendar Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Viewing Calendar</h2>
-            <span style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '12px', color: 'rgba(255,255,255,0.6)' }}>
-              {videos.filter(v => (v as any).lastPlayedDate).length} tracked events
-            </span>
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button onClick={handlePrevMonth} className="settings-close-btn" style={{ width: '28px', height: '28px' }}>
+        {/* Compact Month Navigation Bar */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '4px 12px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <button onClick={handlePrevMonth} className="settings-close-btn" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <ChevronLeft size={16} />
             </button>
-            <span style={{ fontSize: '1.05rem', fontWeight: 600, minWidth: '130px', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: '130px', textAlign: 'center', color: '#fff' }}>
               {monthNames[month]} {year}
             </span>
-            <button onClick={handleNextMonth} className="settings-close-btn" style={{ width: '28px', height: '28px' }}>
+            <button onClick={handleNextMonth} className="settings-close-btn" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <ChevronRight size={16} />
             </button>
           </div>

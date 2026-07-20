@@ -926,22 +926,25 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
         }
         .scrub-bar-premium::-webkit-slider-thumb {
           -webkit-appearance: none;
-          width: 12px;
-          height: 12px;
+          width: 14px;
+          height: 14px;
           border-radius: 50%;
           background: #8b5cf6;
           cursor: pointer;
-          transition: transform 0.15s;
           transform: scale(0);
+          opacity: 0;
+          transition: transform 0.15s, opacity 0.15s;
         }
-        .scrub-container-premium:hover .scrub-bar-premium::-webkit-slider-thumb {
+        .scrub-container-premium:hover .scrub-bar-premium::-webkit-slider-thumb,
+        .scrub-bar-premium:active::-webkit-slider-thumb {
           transform: scale(1.3);
+          opacity: 1;
         }
         .scrub-track-progress {
           position: absolute;
           height: 4px;
           background: #8b5cf6;
-          border-radius: 2px;
+          border-radius: 2px 0 0 2px;
           z-index: 8;
           pointer-events: none;
         }
