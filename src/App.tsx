@@ -12,17 +12,24 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 
   componentDidCatch(error: any, errorInfo: any) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    console.error("ErrorBoundary caught error details:", error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
+      const errMsg = this.state.error instanceof Error ? this.state.error.message : String(this.state.error || 'Unknown error');
+      const errStack = this.state.error instanceof Error ? this.state.error.stack : '';
       return (
-        <div style={{ padding: '2rem', textAlign: 'center', background: '#0b0b10', color: '#fff', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ padding: '2rem', textAlign: 'center', background: '#0b0b10', color: '#fff', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ef4444' }}>Something went wrong</h2>
-          <p style={{ color: 'rgba(255,255,255,0.7)', maxWidth: '500px', margin: '1rem 0' }}>
-            {this.state.error?.toString() || 'An unexpected error occurred.'}
+          <p style={{ color: 'rgba(255,255,255,0.85)', maxWidth: '600px', margin: '1rem 0', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+            {errMsg}
           </p>
+          {errStack && (
+            <pre style={{ maxWidth: '700px', maxHeight: '200px', overflow: 'auto', background: '#121218', padding: '1rem', borderRadius: '8px', fontSize: '0.75rem', color: '#aaa', textAlign: 'left', margin: '0 0 1.5rem 0' }}>
+              {errStack}
+            </pre>
+          )}
           <button 
             onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
             style={{ background: '#8b5cf6', color: '#fff', border: 'none', padding: '0.65rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
@@ -1151,20 +1158,22 @@ function App() {
 
       if (saved) {
         const parsed = JSON.parse(saved);
-        return {
-          ...baseSettings,
-          ...parsed,
-          userId: activeUserId,
-          storageMode: isLocal ? ('localstorage' as const) : ('file' as const),
-          keybinds: {
-            ...defaultSettings.keybinds,
-            ...(parsed.keybinds || {})
-          },
-          subSettings: {
-            ...defaultSettings.subSettings,
-            ...(parsed.subSettings || {})
-          }
-        };
+        if (parsed && typeof parsed === 'object') {
+          return {
+            ...baseSettings,
+            ...parsed,
+            userId: activeUserId,
+            storageMode: isLocal ? ('localstorage' as const) : ('file' as const),
+            keybinds: {
+              ...defaultSettings.keybinds,
+              ...(parsed.keybinds && typeof parsed.keybinds === 'object' ? parsed.keybinds : {})
+            },
+            subSettings: {
+              ...defaultSettings.subSettings,
+              ...(parsed.subSettings && typeof parsed.subSettings === 'object' ? parsed.subSettings : {})
+            }
+          };
+        }
       }
       return baseSettings;
     } catch (err) {
