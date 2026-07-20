@@ -3,6 +3,17 @@ import {
   X, Link as LinkIcon, Calendar, MapPin, Star, Film, Tv, Sparkles, Filter, Search, ArrowUpDown 
 } from 'lucide-react';
 import type { VideoItem } from '../types/media';
+import { ActorPageSkeleton } from './SkeletonLoader';
+
+const cleanBiography = (rawBio: string | undefined, name: string): string => {
+  if (!rawBio) return `We don't have a biography for ${name} yet.`;
+  const cleaned = rawBio
+    .replace(/From Wikipedia, the free encyclopedia\.?/gi, '')
+    .replace(/\[\d+\]/g, '')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+  return cleaned || `We don't have a biography for ${name} yet.`;
+};
 
 // Bulletproof custom SVGs for social media icons
 const InstagramIcon = () => (
@@ -352,17 +363,12 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
   ).sort((a, b) => b.localeCompare(a));
 
   if (loading) {
-    return (
-      <div className="actor-details-overlay loading-view">
-        <div className="spinner" />
-        <p>Loading actor details...</p>
-      </div>
-    );
+    return <ActorPageSkeleton />;
   }
 
   if (error || !profile) {
     return (
-      <div className="actor-details-overlay error-view">
+      <div className="actor-page-container error-view" style={{ padding: '4rem', textAlign: 'center' }}>
         <h2>Error Loading Profile</h2>
         <p>{error || 'Unable to retrieve data.'}</p>
         <button onClick={onClose} className="btn-back">Close</button>
@@ -375,11 +381,11 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
     : '';
 
   return (
-    <div className="actor-details-overlay animate-fade-in">
+    <div className="actor-page-container animate-fade-in" style={{ padding: '2rem 3rem' }}>
       {/* Header bar */}
-      <div className="actor-details-header">
-        <button className="actor-close-btn" onClick={onClose} title="Close Profile">
-          <X size={24} />
+      <div className="actor-details-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="actor-close-btn" onClick={onClose} title="Close Profile" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', padding: '0.6rem 1.2rem', borderRadius: '0.75rem', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500 }}>
+          <X size={20} /> Close Profile
         </button>
       </div>
 
@@ -493,7 +499,7 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
               <div className="actor-bio-section">
                 <h3 className="section-title">Biography</h3>
                 <p className="actor-biography-text">
-                  {profile.biography || `We don't have a biography for ${profile.name} yet.`}
+                  {cleanBiography(profile.biography, profile.name)}
                 </p>
               </div>
             </div>
@@ -523,6 +529,7 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
                   <div className="filter-dropdown-wrapper">
                     <Filter size={14} className="filter-icon" />
                     <select 
+                      className="global-select-dropdown"
                       value={categoryFilter} 
                       onChange={e => setCategoryFilter(e.target.value as any)}
                     >
@@ -536,6 +543,7 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
                   <div className="filter-dropdown-wrapper">
                     <Calendar size={14} className="filter-icon" />
                     <select 
+                      className="global-select-dropdown"
                       value={yearFilter} 
                       onChange={e => setYearFilter(e.target.value)}
                     >
@@ -550,6 +558,7 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
                   <div className="filter-dropdown-wrapper">
                     <ArrowUpDown size={14} className="filter-icon" />
                     <select 
+                      className="global-select-dropdown"
                       value={sortOrder} 
                       onChange={e => setSortOrder(e.target.value as any)}
                     >

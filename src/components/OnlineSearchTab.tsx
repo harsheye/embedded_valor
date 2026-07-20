@@ -299,7 +299,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
       <div className="search-bar-row">
         <div className="category-select-wrapper">
           <select 
-            className="category-dropdown"
+            className="category-dropdown global-select-dropdown"
             value={category}
             onChange={(e) => {
               setCategory(e.target.value as any);
@@ -325,7 +325,7 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
           {loading && <div className="search-inline-spinner"></div>}
 
           {/* Autocomplete Sexier Recent Searches Dropdown inside search input */}
-          {isFocused && history.length > 0 && (
+          {isFocused && query.trim() === '' && history.length > 0 && (
             <div className="search-history-dropdown">
               <div className="dropdown-header">
                 <span className="header-title-text">

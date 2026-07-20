@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Play, Star, Calendar, Clock, Film, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import { X, Play, Star, Calendar, Clock, Film, ChevronLeft, ChevronRight, User, LayoutGrid, List, AlignLeft } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 import { ActorDetailsPage } from './ActorDetailsPage';
+import { MediaPageSkeleton, EpisodeGridSkeleton, CarouselSkeleton } from './SkeletonLoader';
 
 interface OnlineDetailsPageProps {
   video: VideoItem;
   onClose: () => void;
   onPlay: (video: VideoItem, season?: number, episode?: number) => void;
   onSelectMedia?: (video: VideoItem) => void;
+  onSelectActor?: (actor: { id: number; name: string; profilePath?: string }) => void;
   tmdbApiKey?: string;
 }
 
@@ -32,6 +34,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   onClose,
   onPlay,
   onSelectMedia,
+  onSelectActor,
   tmdbApiKey
 }) => {
   const [details, setDetails] = useState<any>(null);
@@ -41,9 +44,11 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   const [episodes, setEpisodes] = useState<EpisodeItem[]>([]);
   const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [episodeViewMode, setEpisodeViewMode] = useState<'list' | 'grid' | 'detailed'>('grid');
   
   const [loading, setLoading] = useState(true);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const castScrollRef = useRef<HTMLDivElement>(null);
@@ -319,15 +324,7 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
   };
 
   if (loading) {
-    return (
-      <div className="details-page-loading">
-        <div className="dragon-spinner">
-          <div className="dragon-ring"></div>
-          <div className="dragon-core"></div>
-        </div>
-        <p>Loading media catalog details...</p>
-      </div>
-    );
+    return <MediaPageSkeleton />;
   }
 
   if (error || !details) {
@@ -502,7 +499,13 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                 <div 
                   className="actor-card-item" 
                   key={actor.id}
-                  onClick={() => setSelectedActor({ id: actor.id, name: actor.name, profilePath: actor.profilePath })}
+                  onClick={() => {
+                    if (onSelectActor) {
+                      onSelectActor({ id: actor.id, name: actor.name, profilePath: actor.profilePath });
+                    } else {
+                      setSelectedActor({ id: actor.id, name: actor.name, profilePath: actor.profilePath });
+                    }
+                  }}
                   style={{ cursor: 'pointer' }}
                 >
                   <div className="actor-profile-image-wrapper">
@@ -526,100 +529,252 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
 
         {/* Episodes Section for TV Shows and Anime */}
         {!isMovie && (
-          <div className="media-details-section">
-            <div className="section-header-row tv-selector-row">
-              <h2>Episodes</h2>
-              
-              {video.type === 'online_tv' && seasons.length > 0 && (
-                <div className="season-selector-dropdown-wrapper">
-                  <select 
-                     value={currentSeason}
-                     onChange={(e) => setCurrentSeason(Number(e.target.value))}
-                     className="season-details-dropdown"
-                  >
-                    {seasons
-                      .filter((s: any) => s.season_number > 0) // Exclude Specials/Season 0
-                      .map((s: any) => (
-                        <option key={s.id} value={s.season_number}>
-                          Season {s.season_number} ({s.episode_count} Episodes)
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
+          <div className="media-details-section" style={{ marginTop: '2.5rem' }}>
+            <div className="section-header-row tv-selector-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Episodes</h2>
+                
+                {video.type === 'online_tv' && seasons.length > 0 && (
+                  <div className="season-selector-dropdown-wrapper">
+                    <select 
+                       value={currentSeason}
+                       onChange={(e) => setCurrentSeason(Number(e.target.value))}
+                       className="season-details-dropdown global-select-dropdown"
+                    >
+                      {seasons
+                        .filter((s: any) => s.season_number > 0) // Exclude Specials/Season 0
+                        .map((s: any) => (
+                          <option key={s.id} value={s.season_number}>
+                            Season {s.season_number} ({s.episode_count} Episodes)
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* View Mode Toggle Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255, 255, 255, 0.05)', padding: '4px', borderRadius: '0.65rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <button
+                  title="Grid Tiles View"
+                  onClick={() => setEpisodeViewMode('grid')}
+                  style={{
+                    background: episodeViewMode === 'grid' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                    border: 'none',
+                    color: episodeViewMode === 'grid' ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                    padding: '6px 12px',
+                    borderRadius: '0.45rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600
+                  }}
+                >
+                  <LayoutGrid size={15} /> Tiles
+                </button>
+
+                <button
+                  title="Compact List View"
+                  onClick={() => setEpisodeViewMode('list')}
+                  style={{
+                    background: episodeViewMode === 'list' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                    border: 'none',
+                    color: episodeViewMode === 'list' ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                    padding: '6px 12px',
+                    borderRadius: '0.45rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600
+                  }}
+                >
+                  <List size={15} /> List
+                </button>
+
+                <button
+                  title="Detailed Overview View"
+                  onClick={() => setEpisodeViewMode('detailed')}
+                  style={{
+                    background: episodeViewMode === 'detailed' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                    border: 'none',
+                    color: episodeViewMode === 'detailed' ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                    padding: '6px 12px',
+                    borderRadius: '0.45rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600
+                  }}
+                >
+                  <AlignLeft size={15} /> Detailed
+                </button>
+              </div>
             </div>
 
             {loadingEpisodes ? (
-              <div className="episodes-loading-container">
-                <div className="dragon-spinner">
-                  <div className="dragon-ring"></div>
-                </div>
-                <span>Fetching season episodes...</span>
-              </div>
+              <EpisodeGridSkeleton count={8} />
             ) : (
-              <div className="details-episodes-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {episodes.map((ep) => (
-                  <div 
-                    className="details-episode-list-item" 
-                    key={ep.episodeNumber}
-                    onClick={() => onPlay(video, currentSeason, ep.episodeNumber)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '16px',
-                      padding: '10px 14px',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.05)',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.08)';
-                      e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.2)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
-                    }}
-                  >
-                    <div 
-                      style={{
-                        width: '70px',
-                        height: '40px',
-                        borderRadius: '4px',
-                        overflow: 'hidden',
-                        background: '#121212',
-                        flexShrink: 0,
-                        position: 'relative'
-                      }}
-                    >
-                      {(ep.stillPath || posterUrl) ? (
-                        <img 
-                          src={ep.stillPath || posterUrl} 
-                          alt={ep.name} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        />
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)' }}>
-                          <Play size={14} />
+              <div>
+                {/* View Mode 1: Grid Tiles View */}
+                {episodeViewMode === 'grid' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.25rem' }}>
+                    {episodes.map((ep) => (
+                      <div
+                        key={ep.episodeNumber}
+                        onClick={() => onPlay(video, currentSeason, ep.episodeNumber)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          borderRadius: '1rem',
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          transition: 'all 0.25s ease',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-4px)';
+                          e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+                          e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'none';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', background: '#121218' }}>
+                          {(ep.stillPath || posterUrl) ? (
+                            <img src={ep.stillPath || posterUrl} alt={ep.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)' }}>
+                              <Play size={28} />
+                            </div>
+                          )}
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 60%)', display: 'flex', alignItems: 'flex-end', padding: '0.75rem' }}>
+                            <span style={{ background: '#8b5cf6', color: '#fff', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '4px' }}>
+                              EP {ep.episodeNumber}
+                            </span>
+                          </div>
                         </div>
-                      )}
-                      <div style={{ position: 'absolute', bottom: '2px', right: '4px', background: 'rgba(0,0,0,0.7)', padding: '1px 3px', borderRadius: '3px', fontSize: '9px', fontWeight: 700, color: 'white' }}>
-                        EP {ep.episodeNumber}
+                        <div style={{ padding: '0.85rem 1rem' }}>
+                          <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '0.9rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {ep.name}
+                          </h4>
+                          <p style={{ margin: 0, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {ep.overview || 'No overview available.'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ flexGrow: 1, minWidth: 0 }}>
-                      <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {ep.name}
-                      </h4>
-                      <p style={{ margin: '3px 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', lineHeight: '1.2' }}>
-                        {ep.overview || "No overview available."}
-                      </p>
-                    </div>
-                    <Play size={14} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {/* View Mode 2: Compact List View */}
+                {episodeViewMode === 'list' && (
+                  <div className="details-episodes-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {episodes.map((ep) => (
+                      <div 
+                        className="details-episode-list-item" 
+                        key={ep.episodeNumber}
+                        onClick={() => onPlay(video, currentSeason, ep.episodeNumber)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '16px',
+                          padding: '10px 14px',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <div 
+                          style={{
+                            width: '70px',
+                            height: '40px',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            background: '#121212',
+                            flexShrink: 0,
+                            position: 'relative'
+                          }}
+                        >
+                          {(ep.stillPath || posterUrl) ? (
+                            <img 
+                              src={ep.stillPath || posterUrl} 
+                              alt={ep.name} 
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                            />
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)' }}>
+                              <Play size={14} />
+                            </div>
+                          )}
+                          <div style={{ position: 'absolute', bottom: '2px', right: '4px', background: 'rgba(0,0,0,0.7)', padding: '1px 3px', borderRadius: '3px', fontSize: '9px', fontWeight: 700, color: 'white' }}>
+                            EP {ep.episodeNumber}
+                          </div>
+                        </div>
+                        <div style={{ flexGrow: 1, minWidth: 0 }}>
+                          <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {ep.name}
+                          </h4>
+                        </div>
+                        <Play size={14} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* View Mode 3: Detailed Overview View */}
+                {episodeViewMode === 'detailed' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {episodes.map((ep) => (
+                      <div
+                        key={ep.episodeNumber}
+                        onClick={() => onPlay(video, currentSeason, ep.episodeNumber)}
+                        style={{
+                          display: 'flex',
+                          gap: '1.25rem',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          borderRadius: '1rem',
+                          padding: '1rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.25s ease'
+                        }}
+                      >
+                        <div style={{ width: '180px', height: '105px', borderRadius: '0.75rem', overflow: 'hidden', flexShrink: 0, position: 'relative', background: '#121218' }}>
+                          {(ep.stillPath || posterUrl) ? (
+                            <img src={ep.stillPath || posterUrl} alt={ep.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)' }}>
+                              <Play size={24} />
+                            </div>
+                          )}
+                          <div style={{ position: 'absolute', bottom: '6px', left: '6px', background: '#8b5cf6', color: '#fff', fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px' }}>
+                            EP {ep.episodeNumber}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                          <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                            {ep.name}
+                          </h4>
+                          <p style={{ margin: 0, fontSize: '0.825rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+                            {ep.overview || 'No overview available for this episode.'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -629,66 +784,70 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
         {recommendations.length > 0 && (
           <div className="media-details-section" style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '2rem' }}>
             <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 1.25rem 0' }}>More Like This</h2>
-            <div 
-              style={{
-                display: 'flex',
-                gap: '16px',
-                overflowX: 'auto',
-                paddingBottom: '1rem',
-              }}
-              className="search-results-section" // reuse the thin scrollbar styling
-            >
-              {recommendations.map((rec) => (
-                <div 
-                  key={rec.id} 
-                  onClick={() => {
-                    if (onSelectMedia) {
-                      onSelectMedia({
-                        id: `${rec.type === 'movie' ? 'movie' : (rec.type === 'tv' ? 'tv' : 'anime')}-${rec.id}`,
-                        title: rec.title,
-                        url: '',
-                        type: rec.type === 'movie' ? 'online_movie' : (rec.type === 'tv' ? 'online_tv' : 'online_anime'),
-                        isRemote: true,
-                        posterPath: rec.posterPath,
-                        tmdbId: rec.type !== 'anime' ? Number(rec.id) : undefined,
-                        anilistId: rec.type === 'anime' ? Number(rec.id) : undefined,
-                        audioTracks: [],
-                        subtitleTracks: []
-                      });
-                    }
-                  }}
-                  style={{
-                    width: '120px',
-                    flexShrink: 0,
-                    cursor: 'pointer',
-                    transition: 'transform 0.2s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
-                  onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
-                >
-                  <div style={{ width: '120px', height: '180px', borderRadius: '8px', overflow: 'hidden', background: '#1c1c24', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    {rec.posterPath ? (
-                      <img src={rec.posterPath} alt={rec.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', padding: '10px', textAlign: 'center' }}>
-                        {rec.title}
-                      </div>
-                    )}
+            {loadingRecommendations ? (
+              <CarouselSkeleton count={7} />
+            ) : (
+              <div 
+                style={{
+                  display: 'flex',
+                  gap: '16px',
+                  overflowX: 'auto',
+                  paddingBottom: '1rem',
+                }}
+                className="search-results-section" // reuse the thin scrollbar styling
+              >
+                {recommendations.map((rec) => (
+                  <div 
+                    key={rec.id} 
+                    onClick={() => {
+                      if (onSelectMedia) {
+                        onSelectMedia({
+                          id: `${rec.type === 'movie' ? 'movie' : (rec.type === 'tv' ? 'tv' : 'anime')}-${rec.id}`,
+                          title: rec.title,
+                          url: '',
+                          type: rec.type === 'movie' ? 'online_movie' : (rec.type === 'tv' ? 'online_tv' : 'online_anime'),
+                          isRemote: true,
+                          posterPath: rec.posterPath,
+                          tmdbId: rec.type !== 'anime' ? Number(rec.id) : undefined,
+                          anilistId: rec.type === 'anime' ? Number(rec.id) : undefined,
+                          audioTracks: [],
+                          subtitleTracks: []
+                        });
+                      }
+                    }}
+                    style={{
+                      width: '120px',
+                      flexShrink: 0,
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+                  >
+                    <div style={{ width: '120px', height: '180px', borderRadius: '8px', overflow: 'hidden', background: '#1c1c24', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      {rec.posterPath ? (
+                        <img src={rec.posterPath} alt={rec.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', padding: '10px', textAlign: 'center' }}>
+                          {rec.title}
+                        </div>
+                      )}
+                    </div>
+                    <h4 style={{ margin: '8px 0 2px 0', fontSize: '0.8rem', fontWeight: 600, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rec.title}>
+                      {rec.title}
+                    </h4>
+                    <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
+                      {rec.year}
+                    </span>
                   </div>
-                  <h4 style={{ margin: '8px 0 2px 0', fontSize: '0.8rem', fontWeight: 600, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rec.title}>
-                    {rec.title}
-                  </h4>
-                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
-                    {rec.year}
-                  </span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {selectedActor && (
+      {!onSelectActor && selectedActor && (
         <ActorDetailsPage
           actorId={selectedActor.id}
           actorName={selectedActor.name}

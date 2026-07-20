@@ -6,6 +6,7 @@ import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
 import { OnlineSearchTab } from './components/OnlineSearchTab';
 import { OnlineEmbedPlayer } from './components/OnlineEmbedPlayer';
 import { OnlineDetailsPage } from './components/OnlineDetailsPage';
+import { ActorDetailsPage } from './components/ActorDetailsPage';
 import { OnlineVideoPlayer } from './components/OnlineVideoPlayer';
 import { CustomSelect } from './components/CustomSelect';
 import { Onboarding01 } from './components/Onboarding01';
@@ -182,6 +183,7 @@ function App() {
     }
   });
   const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
+  const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>(() => {
     const saved = localStorage.getItem('valor_active_tab');
     return (saved as any) || 'home';
@@ -2612,6 +2614,22 @@ function App() {
     );
   }
 
+  if (selectedActor) {
+    return (
+      <ActorDetailsPage
+        actorId={selectedActor.id}
+        actorName={selectedActor.name}
+        onClose={() => setSelectedActor(null)}
+        onSelectMedia={(clickedMedia) => {
+          setSelectedActor(null);
+          setSelectedDetailsMedia(clickedMedia);
+        }}
+        tmdbApiKey={settings.tmdbApiKey}
+        profilePath={selectedActor.profilePath}
+      />
+    );
+  }
+
   if (selectedDetailsMedia) {
     return (
       <OnlineDetailsPage
@@ -2634,6 +2652,7 @@ function App() {
           handlePlayVideo(toPlay);
         }}
         onSelectMedia={setSelectedDetailsMedia}
+        onSelectActor={(actor) => setSelectedActor(actor)}
         tmdbApiKey={settings.tmdbApiKey}
       />
     );
