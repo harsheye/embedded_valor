@@ -58,7 +58,7 @@ import { ApiSettingsView } from './components/ApiSettingsView';
 import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
-  Film, UploadCloud, Play, Settings, X,
+  Film, UploadCloud, Play, Settings, X, Calendar,
   History, Home, Layers, Type, Clock, Sliders, Volume2,
   Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft
 } from 'lucide-react';
