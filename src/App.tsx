@@ -56,6 +56,7 @@ import { CalendarView } from './components/CalendarView';
 import { LibraryView } from './components/LibraryView';
 import { ApiSettingsView } from './components/ApiSettingsView';
 import { VlrLiveScores } from './components/VlrLiveScores';
+import { EsportsLiveOverlay } from './components/EsportsLiveOverlay';
 import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
@@ -2788,6 +2789,9 @@ function App() {
           </button>
         </div>
       </aside>
+
+      {/* Floating Right Side Midways Live Scores Overlay */}
+      <EsportsLiveOverlay />
 
       {/* Main Content Area */}
       <div className="main-layout-wrapper">
