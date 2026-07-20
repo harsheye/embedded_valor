@@ -3286,7 +3286,7 @@ function App() {
                                 <span className="pref-label">Application Theme</span>
                                 <CustomSelect 
                                   value={settings.theme || 'dark'} 
-                                  onChange={(val) => setSettings(prev => ({ ...prev, theme: val }))}
+                                  onChange={(val) => handleDefaultLangChange('theme' as any, val)}
                                   options={[
                                     { value: 'dark', label: '🌙 Dark Mode (Default)' },
                                     { value: 'black-and-white', label: '🏁 Black & White (Monochrome Noir)' },
