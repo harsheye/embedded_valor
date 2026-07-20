@@ -151,12 +151,23 @@ export const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({
         <div className="premium-glass-card card-accent-theintrodb glow-hover-theintrodb" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-              <div style={{ height: '48px', display: 'flex', alignItems: 'center' }}>
-                <img
-                  src="/logo-theintrodb.png"
-                  alt="TheIntroDB Logo"
-                  style={{ height: '38px', width: 'auto', objectFit: 'contain' }}
-                />
+              <div style={{ height: '40px', display: 'flex', alignItems: 'center' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  padding: '4px 12px',
+                  borderRadius: '8px',
+                  color: '#22c55e',
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  letterSpacing: '0.5px'
+                }}>
+                  <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
+                  <span>TheIntroDB</span>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <span className="pulse-dot pulse-green" />
@@ -259,12 +270,23 @@ export const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({
         <div className="premium-glass-card card-accent-trakt glow-hover-trakt" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-              <div style={{ height: '48px', display: 'flex', alignItems: 'center' }}>
-                <img
-                  src="/logo-trakt.png"
-                  alt="Trakt Logo"
-                  style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
-                />
+              <div style={{ height: '40px', display: 'flex', alignItems: 'center' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(237, 28, 36, 0.15)',
+                  border: '1px solid rgba(237, 28, 36, 0.3)',
+                  padding: '4px 12px',
+                  borderRadius: '8px',
+                  color: '#ed1c24',
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  letterSpacing: '0.5px'
+                }}>
+                  <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ed1c24', boxShadow: '0 0 8px #ed1c24' }}></span>
+                  <span>TRAKT.TV</span>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <span className={`pulse-dot ${settings.traktAccessToken ? 'pulse-green' : 'pulse-gray'}`} />
@@ -388,12 +410,23 @@ export const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({
         <div className="premium-glass-card card-accent-opensubtitles glow-hover-opensubtitles" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-              <div style={{ height: '48px', display: 'flex', alignItems: 'center' }}>
-                <img
-                  src="/logo-opensubtitles.png"
-                  alt="OpenSubtitles Logo"
-                  style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
-                />
+              <div style={{ height: '40px', display: 'flex', alignItems: 'center' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  padding: '4px 12px',
+                  borderRadius: '8px',
+                  color: '#f59e0b',
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  letterSpacing: '0.5px'
+                }}>
+                  <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 8px #f59e0b' }}></span>
+                  <span>OpenSubtitles</span>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <span className={`pulse-dot ${settings.openSubtitlesApiKey ? 'pulse-green' : 'pulse-gray'}`} />
@@ -486,12 +519,23 @@ export const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({
         <div className="premium-glass-card card-accent-tmdb glow-hover-tmdb" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-              <div style={{ height: '48px', display: 'flex', alignItems: 'center' }}>
-                <img
-                  src="/logo-tmdb.png"
-                  alt="TMDB Logo"
-                  style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
-                />
+              <div style={{ height: '40px', display: 'flex', alignItems: 'center' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(1, 180, 228, 0.15)',
+                  border: '1px solid rgba(1, 180, 228, 0.3)',
+                  padding: '4px 12px',
+                  borderRadius: '8px',
+                  color: '#01b4e4',
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  letterSpacing: '0.5px'
+                }}>
+                  <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#01b4e4', boxShadow: '0 0 8px #01b4e4' }}></span>
+                  <span>TMDB</span>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <span className={`pulse-dot ${settings.getOverlayDataFromTmdb ? 'pulse-green' : 'pulse-gray'}`} />

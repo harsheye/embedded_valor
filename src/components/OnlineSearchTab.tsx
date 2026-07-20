@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Film, Tv, Play, History, Clock, X } from 'lucide-react';
+import { CustomSelect } from './CustomSelect';
+
+const categoryOptions = [
+  { value: 'all', label: '🎬 Movies/TV' },
+  { value: 'anime', label: '🌸 Anime' }
+];
+import { Search, Play, History, Clock, X } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 
 interface OnlineSearchTabProps {
@@ -298,18 +304,17 @@ export const OnlineSearchTab: React.FC<OnlineSearchTabProps> = ({ onSelectMedia,
       {/* Search Header Row (Dropdown on LEFT "start" next to Search Bar, NO hero title/container card) */}
       <div className="search-bar-row">
         <div className="category-select-wrapper">
-          <select 
-            className="category-dropdown global-select-dropdown"
+          <CustomSelect
             value={category}
-            onChange={(e) => {
-              setCategory(e.target.value as any);
+            onChange={(val) => {
+              setCategory(val);
               setQuery('');
               setResults([]);
             }}
-          >
-            <option value="all">🎬 Movies/TV</option>
-            <option value="anime">🌸 Anime</option>
-          </select>
+            options={categoryOptions}
+            hideSearch={true}
+            width="150px"
+          />
         </div>
 
         <div className="search-input-wrapper" ref={searchWrapperRef}>

@@ -7,6 +7,7 @@ import {
 import type { VideoItem, Bookmark } from '../types/media';
 import { BookmarkPanel } from './BookmarkPanel';
 import { BookmarkModal } from './BookmarkModal';
+import { CustomSelect } from './CustomSelect';
 import { logger } from '../utils/logger';
 
 interface OnlineVideoPlayerProps {
@@ -627,72 +628,58 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
       onMouseLeave={() => !interactWithNative && isPlaying && setShowControls(false)}
       style={{ background: 'black', fontFamily: 'Outfit, sans-serif' }}
     >
-      {/* Floating control panel: exit & server selection */}
-      <div 
+      {/* Standalone Source Selector Dropdown (Unnested) */}
+      <div style={{ position: 'fixed', top: '20px', right: '70px', zIndex: 2200, pointerEvents: 'auto' }}>
+        <CustomSelect
+          value={server}
+          onChange={(val) => setServer(val as 'videasy' | 'vidking')}
+          options={[
+            { value: 'videasy', label: 'Source 1' },
+            { value: 'vidking', label: 'Source 2' }
+          ]}
+          hideSearch={true}
+          width="130px"
+        />
+      </div>
+
+      {/* Standalone Exit Button (Unnested) */}
+      <button 
+        onClick={onBack}
         style={{
           position: 'fixed',
           top: '20px',
           right: '20px',
           zIndex: 2200,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
+          width: '36px',
+          height: '36px',
+          borderRadius: '50%',
           background: 'rgba(10, 10, 15, 0.85)',
           backdropFilter: 'blur(15px)',
           WebkitBackdropFilter: 'blur(15px)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
-          padding: '6px 12px',
-          borderRadius: '10px',
+          color: 'rgba(255, 255, 255, 0.85)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          transition: 'all 0.2s ease',
           pointerEvents: 'auto'
         }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = '#fff';
+          e.currentTarget.style.background = '#e50914';
+          e.currentTarget.style.borderColor = '#e50914';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = 'rgba(255, 255, 255, 0.85)';
+          e.currentTarget.style.background = 'rgba(10, 10, 15, 0.85)';
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+        }}
+        title="Exit Player"
       >
-        {/* Source Selector Dropdown */}
-        <div className="season-selector-dropdown-wrapper" style={{ position: 'relative' }}>
-          <select 
-            value={server} 
-            onChange={(e) => setServer(e.target.value as 'videasy' | 'vidking')}
-            className="season-details-dropdown"
-            style={{
-              padding: '0.2rem 1.8rem 0.2rem 0.6rem',
-              fontSize: '0.8rem',
-              borderRadius: '6px',
-              height: '28px',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'white',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="videasy">Source 1</option>
-            <option value="vidking">Source 2</option>
-          </select>
-        </div>
-
-        {/* Separator */}
-        <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)' }} />
-
-        {/* Exit Button */}
-        <button 
-          onClick={onBack}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'rgba(255, 255, 255, 0.8)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.2s ease',
-            padding: '4px'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.color = '#e50914'}
-          onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.8)'}
-          title="Exit Player"
-        >
-          <X size={18} />
-        </button>
-      </div>
+        <X size={18} />
+      </button>
 
       <style>{`
         .local-player-container {
@@ -1163,7 +1150,11 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
               <div className="synopsis-box">
                 <span className="synopsis-tag">PAUSED</span>
                 <h3>{video.title}</h3>
-                <p>Streaming online via direct CDN node selector. Change audio track, subtitles, or server via the Stream Config native selector if required.</p>
+                {video.type !== 'online_movie' && (
+                  <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                    {video.type === 'online_tv' ? `Season ${currentSeason} • Episode ${currentEpisode}` : `Episode ${currentEpisode}`}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -1293,6 +1284,7 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
                       addToast("Mark Start Set. Seek to end and click again to save.");
                     }}
                     title="Mark Skip Section"
+                    style={{ background: 'transparent', border: 'none', boxShadow: 'none', padding: '8px', cursor: 'pointer' }}
                   >
                     <BookmarkIcon size={18} />
                   </button>
@@ -1304,9 +1296,9 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
                       setShowAddDialog(true);
                     }}
                     title="Complete Skip Section Mark"
-                    style={{ background: '#ff7a00', color: 'white', borderRadius: '4px' }}
+                    style={{ background: 'transparent', border: 'none', boxShadow: 'none', color: '#ff7a00', padding: '8px', cursor: 'pointer' }}
                   >
-                    <BookmarkIcon size={18} fill="white" />
+                    <BookmarkIcon size={18} fill="#ff7a00" />
                   </button>
                 )}
 

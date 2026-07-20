@@ -707,8 +707,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  const submitToTheIntroDb = async (bookmark: any) => {
-    if (hadTidbDataRef.current) {
+  const submitToTheIntroDb = async (bookmark: any, force = false) => {
+    if (hadTidbDataRef.current && !force) {
       logger.player('[TheIntroDB Submit] Skipping submission: TIDB already has data for this video.');
       return;
     }
@@ -729,7 +729,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         mode = parsed.theIntroDbMode || "fetch";
       } catch {}
     }
-    if (mode === 'fetch') {
+    if (mode === 'fetch' && !force) {
       logger.player('[TheIntroDB Submit] Skipping submission: TheIntroDB Mode is set to Fetch Only.');
       return;
     }
@@ -742,15 +742,15 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     const isTV = seriesInfo.type === 'series';
 
     let segment = "intro";
-    if (bookmark.isOutro) {
+    if (bookmark.isOutro || bookmark.category === "Outro") {
       segment = "credits";
-    } else if (bookmark.isIntro) {
+    } else if (bookmark.isIntro || bookmark.category === "Intro") {
       const labelLower = (bookmark.label || "").toLowerCase();
       if (labelLower.includes("recap")) {
         segment = "recap";
       }
     } else {
-      return;
+      segment = bookmark.category ? bookmark.category.toLowerCase() : (bookmark.label ? bookmark.label.toLowerCase() : "bookmark");
     }
 
     const payload: any = {
@@ -820,7 +820,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     if (newBookmark.favorite) {
       syncFavoriteToTrakt(true);
     }
-    submitToTheIntroDb(newBookmark);
+    submitToTheIntroDb(newBookmark, true);
     syncBookmarksToServer(updatedBookmarks);
 
     setShowAddDialog(false);
@@ -1292,6 +1292,12 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState<string | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
+  const isScrubbingRef = useRef(false);
+  isScrubbingRef.current = isScrubbing;
+  const scrubTimeRef = useRef<number | null>(null);
+  scrubTimeRef.current = scrubTime;
+  const debouncedSeekTimeoutRef = useRef<any>(null);
   const [systemTime, setSystemTime] = useState(new Date());
 
   useEffect(() => {
@@ -1301,37 +1307,44 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-skip logic for Intro/Outro and Sex/Nudity scenes
+  // Global mouseup/touchend listener to safely complete scrubbing free hand with 500ms debounce
   useEffect(() => {
-    if (isScrubbing || !videoRef.current || duration <= 0) return;
-    const time = currentTime;
-    
-    const skippableBookmark = bookmarks.find(bm => {
-      // Check if it's an Intro/Outro and auto-skip is enabled
-      const isIntroOutro = bm.category === 'Intro' || bm.category === 'Outro' || bm.isIntro || bm.isOutro;
-      if (isIntroOutro && playerSettings.autoSkipIntroOutro) {
-        if (bm.category === 'Outro' || bm.isOutro) {
-          return time >= bm.time && time < (duration - 1);
-        }
-        return bm.endTime && time >= bm.time && time < bm.endTime;
-      }
-      
-      // Check if it's a Sex scene and auto-skip sex scenes is enabled
-      const isSexScene = bm.category === 'Sex' || bm.category === 'Nudity';
-      if (isSexScene && playerSettings.autoSkipSexScenes) {
-        return bm.endTime && time >= bm.time && time < bm.endTime;
-      }
-      
-      return false;
-    });
+    if (!isScrubbing) return;
 
-    if (skippableBookmark) {
-      const targetTime = (skippableBookmark.category === 'Outro' || skippableBookmark.isOutro) ? duration : skippableBookmark.endTime!;
-      videoRef.current.currentTime = targetTime;
-      setCurrentTime(targetTime);
-      triggerSwitchToast(`Auto-Skipped ${skippableBookmark.category || 'Scene'}`);
-    }
-  }, [currentTime, bookmarks, duration, isScrubbing, playerSettings.autoSkipIntroOutro, playerSettings.autoSkipSexScenes]);
+    const handleScrubEnd = () => {
+      setIsScrubbing(false);
+      if (debouncedSeekTimeoutRef.current) {
+        clearTimeout(debouncedSeekTimeoutRef.current);
+      }
+      const targetTime = scrubTimeRef.current;
+      if (targetTime !== null && targetTime !== undefined && videoRef.current) {
+        debouncedSeekTimeoutRef.current = setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = targetTime;
+            setCurrentTime(targetTime);
+            if (playbackControllerRef.current) {
+              playbackControllerRef.current.seek(targetTime).catch(console.error);
+            }
+            onUpdateVideoRef.current((prev: any) => ({
+              ...prev,
+              currentTime: targetTime
+            }), false, video.id);
+          }
+          setScrubTime(null);
+        }, 250);
+      } else {
+        setScrubTime(null);
+      }
+    };
+
+    window.addEventListener('mouseup', handleScrubEnd);
+    window.addEventListener('touchend', handleScrubEnd);
+
+    return () => {
+      window.removeEventListener('mouseup', handleScrubEnd);
+      window.removeEventListener('touchend', handleScrubEnd);
+    };
+  }, [isScrubbing, video.id]);
 
   // Tracks Selection State
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<CustomAudioTrack | null>(null);
@@ -1800,7 +1813,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     const tick = () => {
       if (videoRef.current && !videoRef.current.paused) {
         const shouldUpdate = !video.currentTime || hasSeekedRef.current || videoRef.current.currentTime > 0;
-        if (shouldUpdate) {
+        if (shouldUpdate && !isScrubbingRef.current && !debouncedSeekTimeoutRef.current) {
+          console.log("[Timeline]", "source=raf", videoRef.current.currentTime);
           setCurrentTime(videoRef.current.currentTime);
         }
 
@@ -2057,6 +2071,9 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       const codec = subStream?.codec || 'srt';
       const subDuration = video.isRemote ? 60 : 300;
 
+      let startOffset = 0;
+      let endOffset = 0;
+
       if (!video.isRemote && video.file) {
         offsetTime = Math.max(0, time - 10);
       } else {
@@ -2193,11 +2210,14 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!videoRef.current) return;
     const newTime = videoRef.current.currentTime;
 
-    // Immediately save seeked position to parent state so seek states don't drift or restore old positions
-    onUpdateVideo({
-      ...video,
-      currentTime: newTime
-    });
+    // Suppress parent history state updates while user is actively freehand scrubbing
+    if (!isScrubbingRef.current) {
+      console.log("[Timeline]", "source=seekComplete", newTime);
+      onUpdateVideo({
+        ...video,
+        currentTime: newTime
+      });
+    }
 
     if (remoteHardSeekActiveRef.current) {
       return;
@@ -2453,27 +2473,34 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (uiConfig.blockSeekingCompletely) return;
-    if (!videoRef.current) return;
     const seekTime = parseFloat(e.target.value);
-    if (video.isRemote) {
-      performRemoteHardSeek(seekTime);
+    console.log("[Timeline]", "source=drag", seekTime);
+    if (isScrubbingRef.current) {
+      setScrubTime(seekTime);
+      if (previewVideoRef.current) {
+        previewVideoRef.current.currentTime = seekTime;
+      }
+    } else {
+      if (video.isRemote) {
+        performRemoteHardSeek(seekTime);
+        setCurrentTime(seekTime);
+        resetControlsTimeout();
+        if (previewVideoRef.current) {
+          previewVideoRef.current.currentTime = seekTime;
+        }
+        return;
+      }
+      cancelRemoteDownloadWindow();
+      if (playbackControllerRef.current) {
+        playbackControllerRef.current.seek(seekTime);
+      } else if (videoRef.current) {
+        videoRef.current.currentTime = seekTime;
+      }
       setCurrentTime(seekTime);
       resetControlsTimeout();
       if (previewVideoRef.current) {
         previewVideoRef.current.currentTime = seekTime;
       }
-      return;
-    }
-    cancelRemoteDownloadWindow();
-    if (playbackControllerRef.current) {
-      playbackControllerRef.current.seek(seekTime);
-    } else {
-      videoRef.current.currentTime = seekTime;
-    }
-    setCurrentTime(seekTime);
-    resetControlsTimeout();
-    if (previewVideoRef.current) {
-      previewVideoRef.current.currentTime = seekTime;
     }
   };
 
@@ -2956,11 +2983,13 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       e.preventDefault();
       if (activeSkipBookmarkRef.current) {
         const bm = activeSkipBookmarkRef.current;
-        const targetTime = (bm.isOutro || bm.category === 'Outro') ? duration : bm.endTime!;
+        const targetTime = (bm.isOutro || bm.category === 'Outro') 
+          ? duration 
+          : (bm.endTime !== undefined && bm.endTime !== null ? bm.endTime : bm.time + 90);
         if (videoRef.current) {
           videoRef.current.currentTime = targetTime;
           setCurrentTime(targetTime);
-          triggerSwitchToast(`Skipped ${bm.title || bm.label}`);
+          triggerSwitchToast(`Skipped ${bm.label || bm.title || bm.category || 'Scene'}`);
         }
       }
     } else if (pressedKey === nextSubKey) {
@@ -3771,7 +3800,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
             if (videoRef.current) {
               const time = videoRef.current.currentTime;
               const shouldUpdate = !video.currentTime || hasSeekedRef.current || time > 0;
-              if (shouldUpdate) {
+              if (shouldUpdate && !isScrubbingRef.current && !debouncedSeekTimeoutRef.current) {
+                console.log("[Timeline]", "source=playback", time);
                 setCurrentTime(time);
                 latestTimeRef.current = time;
               }
@@ -4376,15 +4406,21 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           }}
           onClick={(e) => {
             e.stopPropagation();
-            const targetTime = (activeSkipBookmark.isOutro || activeSkipBookmark.category === 'Outro') ? duration : activeSkipBookmark.endTime!;
+            const targetTime = (activeSkipBookmark.isOutro || activeSkipBookmark.category === 'Outro') 
+              ? duration 
+              : (activeSkipBookmark.endTime !== undefined && activeSkipBookmark.endTime !== null ? activeSkipBookmark.endTime : activeSkipBookmark.time + 90);
             if (videoRef.current) {
               videoRef.current.currentTime = targetTime;
               setCurrentTime(targetTime);
-              triggerSwitchToast(`Skipped ${activeSkipBookmark.title || activeSkipBookmark.label}`);
+              triggerSwitchToast(`Skipped ${activeSkipBookmark.label || activeSkipBookmark.title || activeSkipBookmark.category || 'Scene'}`);
             }
           }}
         >
-          Skip {activeSkipBookmark.category === 'Intro' || activeSkipBookmark.isIntro ? 'Intro' : activeSkipBookmark.category === 'Outro' || activeSkipBookmark.isOutro ? 'Outro' : 'Scene'} (C)
+          Skip {
+            activeSkipBookmark.category === 'Intro' || activeSkipBookmark.isIntro ? 'Intro' 
+            : activeSkipBookmark.category === 'Outro' || activeSkipBookmark.isOutro ? 'Outro' 
+            : activeSkipBookmark.label || activeSkipBookmark.category || 'Scene'
+          } (C)
         </button>
       )}
 
@@ -4502,7 +4538,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Hover / Scrub Preview Tooltip (Always rendered to keep preview video loaded and warm) */}
                   <div 
                     className={`scrub-hover-tooltip ${(hoverTime || isScrubbing) ? 'visible' : ''}`} 
-                    style={{ left: `${isScrubbing ? (currentTime / (duration || 1)) * 100 : hoverPercent}%` }}
+                    style={{ left: `${isScrubbing ? ((scrubTime !== null ? scrubTime : currentTime) / (duration || 1)) * 100 : hoverPercent}%` }}
                   >
                     <div className="scrub-hover-preview-box">
                       <video
@@ -4516,7 +4552,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
                     {showTimeDisplay && (
                       <div className="scrub-hover-time">
-                        {isScrubbing ? formatTime(currentTime) : hoverTime}
+                        {isScrubbing ? formatTime(scrubTime !== null ? scrubTime : currentTime) : hoverTime}
                       </div>
                     )}
                   </div>
@@ -4526,14 +4562,24 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
                     min={0}
                     max={duration || 100}
                     step={0.1}
-                    value={currentTime}
+                    value={isScrubbing && scrubTime !== null ? scrubTime : currentTime}
                     onChange={handleSeek}
                     onMouseMove={handleProgressMouseMove}
                     onMouseLeave={handleProgressMouseLeave}
-                    onMouseDown={() => setIsScrubbing(true)}
-                    onMouseUp={() => setIsScrubbing(false)}
-                    onTouchStart={() => setIsScrubbing(true)}
-                    onTouchEnd={() => setIsScrubbing(false)}
+                    onMouseDown={() => {
+                      if (debouncedSeekTimeoutRef.current) {
+                        clearTimeout(debouncedSeekTimeoutRef.current);
+                      }
+                      setIsScrubbing(true);
+                      setScrubTime(currentTime);
+                    }}
+                    onTouchStart={() => {
+                      if (debouncedSeekTimeoutRef.current) {
+                        clearTimeout(debouncedSeekTimeoutRef.current);
+                      }
+                      setIsScrubbing(true);
+                      setScrubTime(currentTime);
+                    }}
                     className="scrub-bar-premium"
                   />
                 </div>

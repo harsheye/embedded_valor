@@ -1513,9 +1513,9 @@ a:hover {
 /* Responsive Media Queries */
 @media (max-width: 768px) {
   .search-bar-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
   }
   
   .category-dropdown {
@@ -2226,22 +2226,19 @@ a:hover {
 .actor-card-item {
   width: 140px;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  box-shadow: none;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .actor-card-item:hover {
   transform: translateY(-8px);
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(139, 92, 246, 0.35);
-  box-shadow: 0 15px 30px rgba(139, 92, 246, 0.2);
 }
 
 .actor-profile-image-wrapper {
@@ -2249,7 +2246,9 @@ a:hover {
   width: 100%;
   background: #19191d;
   overflow: hidden;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
 }
 
 .actor-profile-image {
@@ -2519,15 +2518,48 @@ a:hover {
 
 .actor-layout-grid {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 290px 1fr;
   gap: 3.5rem;
   height: 100%;
 }
 
 @media (max-width: 900px) {
+  .actor-details-container {
+    padding: 0 1rem 3rem !important;
+  }
   .actor-layout-grid {
     grid-template-columns: 1fr;
-    gap: 2.5rem;
+    gap: 1.75rem;
+  }
+  .actor-left-col {
+    position: static !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    width: 100% !important;
+  }
+  .actor-right-col {
+    overflow-y: visible !important;
+    width: 100% !important;
+  }
+  .credits-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .credits-filter-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .filter-search-wrapper {
+    width: 100% !important;
+  }
+  .filter-dropdown-wrapper {
+    width: 100% !important;
+  }
+  .filter-dropdown-wrapper select {
+    width: 100% !important;
   }
 }
 
@@ -2550,7 +2582,8 @@ a:hover {
 }
 
 .actor-portrait-card {
-  width: 100%;
+  width: 180px;
+  max-width: 180px;
   aspect-ratio: 2/3;
   border-radius: 20px;
   overflow: hidden;
@@ -2698,6 +2731,31 @@ a:hover {
   line-height: 1.65;
   color: rgba(255,255,255,0.7);
   margin: 0;
+  transition: all 0.3s ease;
+}
+
+.actor-biography-text.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bio-show-more-btn {
+  background: transparent;
+  border: none;
+  color: #ff7a00;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 0 0 0;
+  display: inline-block;
+  transition: color 0.2s;
+}
+
+.bio-show-more-btn:hover {
+  color: #ffa040;
+  text-decoration: underline;
 }
 
 .credits-header-row {
@@ -3268,8 +3326,11 @@ a:hover {
   color: var(--accent-color) !important;
 }
 
-/* Top Absolute Overlay Icon-Only Calendar Button */
 .dom-calendar-btn {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 100;
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -3294,6 +3355,136 @@ a:hover {
 
 .dom-calendar-btn:active {
   transform: translateY(0) scale(0.95);
+}
+
+@media (max-width: 576px) {
+  .search-results-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+  .card-poster-wrapper {
+    height: 200px !important;
+  }
+  .search-result-card.skeleton .card-poster-wrapper {
+    height: 200px !important;
+  }
+}
+
+/* Responsive Skeleton Shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.5s infinite ease-in-out !important;
+}
+
+/* Actor Portrait Card Default Desktop (Matches 290px Media Poster) */
+.actor-portrait-card {
+  width: 290px !important;
+  max-width: 290px !important;
+  aspect-ratio: 2/3 !important;
+  height: auto !important;
+  border-radius: 20px !important;
+  overflow: hidden !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+  background: #141418;
+  margin: 0 auto 1.25rem auto;
+}
+
+.actor-profile-image {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: top center !important;
+}
+
+.credits-filter-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Squeezed 3-in-1 Dropdowns Row */
+.credits-dropdowns-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.credits-dropdowns-row > * {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+.credits-dropdowns-row .custom-select-container {
+  width: 100% !important;
+}
+
+/* Library Series Grid Full Width on Mobile, Grid on Desktop */
+.library-series-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .credits-filter-actions {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  .filter-search-wrapper {
+    width: 100% !important;
+  }
+  .actor-left-col {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+  }
+  .actor-portrait-card {
+    width: 260px !important;
+    max-width: 85vw !important;
+    aspect-ratio: 2/3 !important;
+    margin: 0 auto 1.5rem auto !important;
+  }
+  .actor-quick-meta {
+    align-items: center !important;
+    text-align: center !important;
+  }
+  .actor-dept-badge {
+    align-self: center !important;
+  }
+  .dom-calendar-btn {
+    position: fixed !important;
+    bottom: 1.5rem !important;
+    right: 1rem !important;
+    top: auto !important;
+    z-index: 999999 !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .library-series-grid {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+  .actor-credits-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.5rem !important;
+  }
+  .credit-card-poster {
+    height: 180px !important;
+  }
 }
 
 

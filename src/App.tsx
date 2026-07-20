@@ -60,7 +60,8 @@ import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
   Film, UploadCloud, Play, Settings, X, Calendar, List,
   History, Home, Layers, Type, Clock, Sliders, Volume2,
-  Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft
+  Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft,
+  LogOut, Trash2, Plus, Download, UserPlus
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
 import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './services/remote/remoteByteSource';
@@ -1592,9 +1593,6 @@ function App() {
         const seriesTitle = isSeries ? seriesInfo.seriesTitle : undefined;
         const targetBookmarks = targetVideo.bookmarks || [];
 
-        const introBm = targetBookmarks.find((b) => b.isIntro);
-        const outroBm = targetBookmarks.find((b) => b.isOutro);
-
         nextVideos = prev.map((v) => {
           const isTarget = v.id === targetVideo!.id;
           if (isTarget) {
@@ -1610,24 +1608,24 @@ function App() {
               const otherBookmarks = v.bookmarks || [];
               let updatedOtherBookmarks = [...otherBookmarks];
 
-              if (introBm) {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
-                updatedOtherBookmarks.push({
-                  ...introBm,
-                  id: `bm-intro-${v.id}`
-                });
-              } else {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
-              }
+              if (targetBookmarks.length > 0) {
+                targetBookmarks.forEach((tb) => {
+                  const isIntro = tb.isIntro || tb.category === 'Intro';
+                  const isOutro = tb.isOutro || tb.category === 'Outro';
+                  
+                  if (isIntro) {
+                    updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro && b.category !== 'Intro');
+                  } else if (isOutro) {
+                    updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro && b.category !== 'Outro');
+                  } else if (tb.label) {
+                    updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => b.label !== tb.label);
+                  }
 
-              if (outroBm) {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
-                updatedOtherBookmarks.push({
-                  ...outroBm,
-                  id: `bm-outro-${v.id}`
+                  updatedOtherBookmarks.push({
+                    ...tb,
+                    id: `bm-${tb.isIntro ? 'intro' : tb.isOutro ? 'outro' : tb.id || Date.now()}-${v.id}`
+                  });
                 });
-              } else {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
               }
 
               return {
@@ -2664,62 +2662,24 @@ function App() {
     );
   }
 
-  if (selectedActor) {
-    return (
-      <ActorDetailsPage
-        actorId={selectedActor.id}
-        actorName={selectedActor.name}
-        onClose={() => setSelectedActor(null)}
-        onSelectMedia={(clickedMedia) => {
-          setSelectedActor(null);
-          setSelectedDetailsMedia(clickedMedia);
-        }}
-        tmdbApiKey={settings.tmdbApiKey}
-        profilePath={selectedActor.profilePath}
-      />
-    );
-  }
-
-  if (selectedDetailsMedia) {
-    return (
-      <OnlineDetailsPage
-        video={selectedDetailsMedia}
-        onClose={() => setSelectedDetailsMedia(null)}
-        onPlay={(selectedVideo, season, episode) => {
-          const match = videos.find(v => {
-            if (selectedVideo.type === 'online_movie') {
-              return v.id === selectedVideo.id;
-            } else {
-              return v.id === selectedVideo.id && v.season === season && v.episode === episode;
-            }
-          });
-          const toPlay = {
-            ...selectedVideo,
-            season,
-            episode,
-            currentTime: match ? (match.currentTime || 0) : 0
-          };
-          handlePlayVideo(toPlay);
-        }}
-        onSelectMedia={setSelectedDetailsMedia}
-        onSelectActor={(actor) => setSelectedActor(actor)}
-        tmdbApiKey={settings.tmdbApiKey}
-      />
-    );
-  }
+  const isSidebarCollapsed = !!selectedActor || !!selectedDetailsMedia;
 
   return (
-    <div className={`app-layout ${settings.disableAnimations ? 'no-animations' : ''} ${activeTab === 'settings' ? 'settings-active' : ''}`}>
+    <div className={`app-layout ${settings.disableAnimations ? 'no-animations' : ''} ${activeTab === 'settings' ? 'settings-active' : ''} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {/* Sidebar - Desktop and Tablet */}
-      <aside className="app-sidebar">
+      <aside className={`app-sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <div className="sidebar-logo">Valor</div>
+          <div className="sidebar-logo">{isSidebarCollapsed ? 'V' : 'Valor'}</div>
         </div>
         
         <nav className="sidebar-menu">
           <button 
             className={`sidebar-menu-item ${activeTab === 'home' ? 'active' : ''}`}
-            onClick={() => setActiveTab('home')}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('home');
+            }}
             title="Select Media"
           >
             <Home size={20} />
@@ -2727,7 +2687,11 @@ function App() {
           </button>
           <button 
             className={`sidebar-menu-item ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => setActiveTab('history')}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('history');
+            }}
             title="History"
           >
             <History size={20} />
@@ -2735,7 +2699,11 @@ function App() {
           </button>
           <button 
             className={`sidebar-menu-item ${activeTab === 'library' ? 'active' : ''}`}
-            onClick={() => setActiveTab('library')}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('library');
+            }}
             title="Library"
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
@@ -2743,7 +2711,11 @@ function App() {
           </button>
           <button 
             className={`sidebar-menu-item ${activeTab === 'online' ? 'active' : ''}`}
-            onClick={() => setActiveTab('online')}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('online');
+            }}
             title="Online Stream"
           >
             <Play size={20} />
@@ -2791,7 +2763,11 @@ function App() {
         <div className="sidebar-footer">
           <button 
             className={`sidebar-settings-btn ${activeTab === 'settings' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('settings')} 
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('settings');
+            }} 
             title="Preferences"
           >
             <Settings size={16} />
@@ -2803,14 +2779,51 @@ function App() {
       {/* Main Content Area */}
       <div className="main-layout-wrapper">
         {/* Main Content Pane */}
-        <main className="main-content container animate-fade-in">
-          <div className="workspace-container">
-            {activeTab === 'home' && (
+        <main className={`main-content ${isSidebarCollapsed ? 'full-width-details' : 'container'} animate-fade-in`}>
+          {selectedActor ? (
+            <ActorDetailsPage
+              actorId={selectedActor.id}
+              actorName={selectedActor.name}
+              onClose={() => setSelectedActor(null)}
+              onSelectMedia={(clickedMedia) => {
+                setSelectedActor(null);
+                setSelectedDetailsMedia(clickedMedia);
+              }}
+              tmdbApiKey={settings.tmdbApiKey}
+              profilePath={selectedActor.profilePath}
+            />
+          ) : selectedDetailsMedia ? (
+            <OnlineDetailsPage
+              video={selectedDetailsMedia}
+              onClose={() => setSelectedDetailsMedia(null)}
+              onPlay={(selectedVideo, season, episode) => {
+                const match = videos.find(v => {
+                  if (selectedVideo.type === 'online_movie') {
+                    return v.id === selectedVideo.id;
+                  } else {
+                    return v.id === selectedVideo.id && v.season === season && v.episode === episode;
+                  }
+                });
+                const toPlay = {
+                  ...selectedVideo,
+                  season,
+                  episode,
+                  currentTime: match ? (match.currentTime || 0) : 0
+                };
+                handlePlayVideo(toPlay);
+              }}
+              onSelectMedia={setSelectedDetailsMedia}
+              onSelectActor={(actor) => setSelectedActor(actor)}
+              tmdbApiKey={settings.tmdbApiKey}
+            />
+          ) : (
+            <div className="workspace-container">
+              {activeTab === 'home' && (
               <div className="workspace-panel-wrapper">
                 {(() => {
-                  const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
-                  if (continueWatchingList.length === 0) return null;
-                  const primaryContinue = continueWatchingList[0];
+                  const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 2 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
+                  const primaryContinue = continueWatchingList.length > 0 ? continueWatchingList[0] : (videos.length > 0 ? videos[0] : null);
+                  if (!primaryContinue) return null;
 
                   return (
                     <div className="continue-watching-section animate-fade-in" style={{ marginBottom: '1.5rem', width: '100%' }}>
@@ -2904,9 +2917,10 @@ function App() {
                   );
                 })()}
                 <div className="glass-panel workspace-panel">
-                  <div className="panel-header">
-                    <h2>Select Media</h2>
-                    <p className="text-muted">Drop a local video file here, browse your files, or enter a video stream URL below to start playing.</p>
+                  {/* Select Media Section Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <UploadCloud size={22} color="#e50914" />
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>Select Media</h2>
                   </div>
 
                   {/* Combined Drop Zone & URL Injector */}
@@ -2975,23 +2989,24 @@ function App() {
             )}
 
             {activeTab === 'history' && (
-              <div className="workspace-panel-wrapper" style={{ position: 'relative', height: '100%' }}>
-                <div className="glass-panel workspace-panel" style={{ position: 'relative', minHeight: '100%' }}>
-                  {historyViewMode === 'calendar' ? (
-                    <div>
-                      {settings.calendarStyle === 'list' ? (
-                        <Calendar02 videos={videos} onPlayVideo={handlePlayVideo} isInstantlyPlayable={isInstantlyPlayable} />
-                      ) : (
-                        <CalendarView videos={videos} onPlayVideo={handlePlayVideo} />
-                      )}
-                    </div>
-                  ) : (
-                    <>
+              <>
+                <div className="workspace-panel-wrapper">
+                  <div className="glass-panel workspace-panel" style={{ position: 'relative', minHeight: '100%' }}>
+                    {historyViewMode === 'calendar' ? (
+                      <div>
+                        {settings.calendarStyle === 'list' ? (
+                          <Calendar02 videos={videos} onPlayVideo={handlePlayVideo} isInstantlyPlayable={isInstantlyPlayable} />
+                        ) : (
+                          <CalendarView videos={videos} onPlayVideo={handlePlayVideo} />
+                        )}
+                      </div>
+                    ) : (
+                      <>
 
                   {(() => {
-                    const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
-                    if (continueWatchingList.length === 0) return null;
-                    const primaryContinue = continueWatchingList[0];
+                    const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 2 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
+                    const primaryContinue = continueWatchingList.length > 0 ? continueWatchingList[0] : (videos.length > 0 ? videos[0] : null);
+                    if (!primaryContinue) return null;
                     return (
                       <div 
                         onClick={() => handlePlayVideo(primaryContinue)}
@@ -2999,8 +3014,8 @@ function App() {
                           width: '100%', 
                           background: 'linear-gradient(135deg, #e50914 0%, #9b040c 100%)', 
                           borderRadius: '12px', 
-                          padding: '1.5rem', 
-                          marginBottom: '1.5rem',
+                          padding: '0.85rem 1.1rem', 
+                          marginBottom: '1rem',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
@@ -3008,10 +3023,7 @@ function App() {
                           boxShadow: '0 8px 24px rgba(229, 9, 20, 0.25)',
                           border: '1px solid rgba(255, 255, 255, 0.1)',
                           transition: 'transform 0.2s, box-shadow 0.2s',
-                          boxSizing: 'border-box',
-                          position: 'sticky',
-                          top: '0',
-                          zIndex: 10
+                          boxSizing: 'border-box'
                         }}
                         className="premium-red-banner"
                       >
@@ -3179,28 +3191,23 @@ function App() {
                           </div>
                         </div>
                       ))}
-                    </div>
-                  )}
-                    </>
-                  )}
-
-                  {/* Absolute Top Overlay Icon-Only Calendar Button */}
-                  <button
-                    className="dom-calendar-btn"
-                    onClick={() => setHistoryViewMode(historyViewMode === 'calendar' ? 'list' : 'calendar')}
-                    title={historyViewMode === 'calendar' ? 'Switch to History List' : 'Switch to Calendar View'}
-                    style={{
-                      position: 'absolute',
-                      top: '1.5rem',
-                      right: '1.5rem',
-                      zIndex: 100
-                    }}
-                  >
-                    {historyViewMode === 'calendar' ? <List size={20} color="#ffffff" /> : <Calendar size={20} color="#ffffff" />}
-                  </button>
-                </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* Floating Calendar Toggle Button */}
+            <button
+              className="dom-calendar-btn"
+              onClick={() => setHistoryViewMode(historyViewMode === 'calendar' ? 'list' : 'calendar')}
+              title={historyViewMode === 'calendar' ? 'Switch to History List' : 'Switch to Calendar View'}
+            >
+              {historyViewMode === 'calendar' ? <List size={20} color="#ffffff" /> : <Calendar size={20} color="#ffffff" />}
+            </button>
+          </>
+        )}
 
 
 
@@ -4104,120 +4111,146 @@ function App() {
                                 </div>
                               </div>
 
-                              <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
-                                {/* Logout Button (Only if using server profile) */}
-                                {(settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) && (
+                              <div className="profile-button-management" style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '0.75rem',
+                                width: '100%',
+                                marginTop: '1rem',
+                                borderTop: '1px solid rgba(255,255,255,0.06)',
+                                paddingTop: '1.25rem'
+                              }}>
+                                {/* Left Side: Primary Sync Actions */}
+                                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', flex: 1, minWidth: '280px' }}>
+                                  {(!settings.userId || settings.userId === 'local' || settings.userId.startsWith('local_')) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openAuthModal('signup')}
+                                      className="btn btn-primary"
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 20px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        background: '#e50914',
+                                        color: '#fff',
+                                        border: 'none',
+                                        transition: 'background 0.2s',
+                                        fontFamily: 'Outfit, sans-serif'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = '#ff0914'}
+                                      onMouseLeave={e => e.currentTarget.style.background = '#e50914'}
+                                    >
+                                      <UserPlus size={14} />
+                                      <span>Create Server Profile & Sync</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm('Are you sure you want to logout? Your watch history and settings will remain on the server, and you will switch back to local browser storage.')) {
+                                          localStorage.setItem('valor_active_user_id', 'local');
+                                          setSettings(prev => ({
+                                            ...prev,
+                                            userId: 'local',
+                                            storageMode: 'localstorage'
+                                          }));
+                                          const savedVideos = localStorage.getItem('valor_videos');
+                                          if (savedVideos) {
+                                            try { setVideos(JSON.parse(savedVideos)); } catch {}
+                                          }
+                                          addToast('Logged out of server profile successfully', 'success');
+                                        }
+                                      }}
+                                      className="btn"
+                                      style={{
+                                        background: 'rgba(255,255,255,0.04)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        color: '#fff',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 20px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        fontFamily: 'Outfit, sans-serif'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                                    >
+                                      <LogOut size={14} />
+                                      <span>Logout</span>
+                                    </button>
+                                  )}
+
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (confirm('Are you sure you want to logout? Your watch history and settings will remain on the server, and you will switch back to local browser storage.')) {
-                                        localStorage.setItem('valor_active_user_id', 'local');
-                                        setSettings(prev => ({
-                                          ...prev,
-                                          userId: 'local',
-                                          storageMode: 'localstorage'
-                                        }));
-                                        const savedVideos = localStorage.getItem('valor_videos');
-                                        if (savedVideos) {
-                                          try { setVideos(JSON.parse(savedVideos)); } catch {}
-                                        }
-                                        addToast('Logged out of server profile successfully', 'success');
-                                      }
+                                      const curProfile = availableProfiles.find(p => p.userId === settings.userId) || {
+                                        userId: settings.userId || 'local',
+                                        name: settings.profileName || 'Local Browser Saves',
+                                        storageMode: 'localstorage'
+                                      };
+                                      setDeleteTargetProfile(curProfile);
+                                      setDeleteConfirmText('');
+                                      setIsDeleteModalOpen(true);
                                     }}
-                                    style={{ 
-                                      background: 'rgba(255,255,255,0.04)', 
-                                      border: '1px solid rgba(255,255,255,0.08)', 
-                                      color: '#fff', 
-                                      padding: '8px 20px', 
-                                      fontSize: '0.8rem', 
-                                      borderRadius: '999px', 
-                                      cursor: 'pointer',
+                                    className="btn"
+                                    style={{
+                                      background: 'rgba(239,68,68,0.06)',
+                                      border: '1px solid rgba(239,68,68,0.25)',
+                                      color: '#ef4444',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '8px 20px',
+                                      fontSize: '0.8rem',
                                       fontWeight: 600,
-                                      transition: 'background 0.2s',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
                                       fontFamily: 'Outfit, sans-serif'
                                     }}
-                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'}
                                   >
-                                    Logout
+                                    <Trash2 size={14} />
+                                    <span>Delete Profile</span>
                                   </button>
-                                )}
+                                </div>
 
-                                {/* Delete Profile Button (Always show) */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const curProfile = availableProfiles.find(p => p.userId === settings.userId) || {
-                                      userId: settings.userId || 'local',
-                                      name: settings.profileName || 'Local Browser Saves',
-                                      storageMode: 'localstorage'
-                                    };
-                                    setDeleteTargetProfile(curProfile);
-                                    setDeleteConfirmText('');
-                                    setIsDeleteModalOpen(true);
-                                  }}
-                                  style={{ 
-                                    background: 'rgba(239,68,68,0.06)', 
-                                    border: '1px solid rgba(239,68,68,0.25)', 
-                                    color: '#ef4444', 
-                                    padding: '8px 20px', 
-                                    fontSize: '0.8rem', 
-                                    borderRadius: '999px', 
-                                    cursor: 'pointer',
-                                    fontWeight: 600,
-                                    transition: 'background 0.2s',
-                                    fontFamily: 'Outfit, sans-serif'
-                                  }}
-                                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
-                                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'}
-                                >
-                                  Delete Profile & Data
-                                </button>
-
-                                {/* Create Server Profile / Sync (Only if using local profile) */}
-                                {(!settings.userId || settings.userId === 'local' || settings.userId.startsWith('local_')) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openAuthModal('signup')}
-                                    style={{ 
-                                      background: '#ffffff', 
-                                      border: 'none', 
-                                      color: '#000000', 
-                                      padding: '8px 20px', 
-                                      fontSize: '0.8rem', 
-                                      borderRadius: '999px', 
-                                      cursor: 'pointer',
-                                      fontWeight: 600,
-                                      fontFamily: 'Outfit, sans-serif',
-                                      transition: 'background-color 0.2s'
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)'}
-                                    onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
-                                  >
-                                    Create Server Profile & Sync
-                                  </button>
-                                )}
-
+                                {/* Right Side: Data Actions */}
                                 <button
                                   type="button"
                                   onClick={handleExportData}
-                                  style={{ 
-                                    background: 'rgba(255,255,255,0.04)', 
-                                    border: '1px solid rgba(255,255,255,0.08)', 
-                                    color: '#fff', 
-                                    padding: '8px 20px', 
-                                    fontSize: '0.8rem', 
-                                    borderRadius: '999px', 
+                                  className="btn"
+                                  style={{
+                                    background: 'rgba(255,255,255,0.04)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '8px 20px',
+                                    fontSize: '0.8rem',
+                                    borderRadius: '6px',
                                     cursor: 'pointer',
                                     fontWeight: 600,
                                     transition: 'background 0.2s',
-                                    marginLeft: 'auto',
                                     fontFamily: 'Outfit, sans-serif'
                                   }}
                                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                                   onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
                                 >
-                                  Export Data (CSV)
+                                  <Download size={14} />
+                                  <span>Export Data</span>
                                 </button>
                               </div>
                             </div>
@@ -4995,6 +5028,7 @@ function App() {
               </div>
             )}
           </div>
+          )}
         </main>
       </div>
 
@@ -5002,35 +5036,55 @@ function App() {
       <div className="mobile-bottom-nav">
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'home' ? 'active' : ''}`}
-          onClick={() => setActiveTab('home')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('home');
+          }}
         >
           <Home size={20} />
           <span>Home</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'history' ? 'active' : ''}`}
-          onClick={() => setActiveTab('history')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('history');
+          }}
         >
           <History size={20} />
           <span>History</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'online' ? 'active' : ''}`}
-          onClick={() => setActiveTab('online')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('online');
+          }}
         >
           <Play size={20} />
           <span>Online</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'library' ? 'active' : ''}`}
-          onClick={() => setActiveTab('library')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('library');
+          }}
         >
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 2px auto' }}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           <span>Library</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('settings');
+          }}
         >
           <Settings size={20} />
           <span>Settings</span>
@@ -5145,6 +5199,86 @@ function App() {
           transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           z-index: 100;
           overflow: hidden;
+        }
+        .app-sidebar.collapsed {
+          width: 80px;
+          padding: 1.5rem 0.5rem;
+        }
+        /* Sub-page layout space overrides to reclaim wasted space */
+        .sidebar-collapsed .media-details-page-container,
+        .sidebar-collapsed .actor-page-container {
+          position: relative !important;
+          top: auto !important;
+          left: auto !important;
+          width: 100% !important;
+          height: auto !important;
+          min-height: 100% !important;
+          z-index: 1 !important;
+          background: transparent !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          overflow: visible !important;
+        }
+        .sidebar-collapsed .media-details-content-wrapper,
+        .sidebar-collapsed .actor-details-container {
+          max-width: 100% !important;
+          padding: 1rem 3rem 4rem !important;
+          margin: 0 !important;
+          box-sizing: border-box !important;
+        }
+        .sidebar-collapsed .actor-details-header,
+        .sidebar-collapsed .media-details-header {
+          height: 60px !important;
+          padding: 0 3rem !important;
+        }
+        .sidebar-collapsed .main-content {
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+        }
+        .full-width-details {
+          max-width: 100% !important;
+          width: 100% !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+        .workspace-panel-wrapper {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding-top: 1rem !important;
+        }
+        .workspace-panel {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding: 1.25rem !important;
+        }
+        @media (max-width: 576px) {
+          .workspace-panel {
+            padding: 0.85rem 0.75rem !important;
+          }
+          .container {
+            padding: 0.5rem 0.5rem !important;
+          }
+        }
+        .app-sidebar.collapsed .sidebar-header {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 2.5rem;
+        }
+        .app-sidebar.collapsed .sidebar-logo {
+          font-size: 1.8rem;
+          font-weight: 900;
+          text-align: center;
+        }
+        .app-sidebar.collapsed .sidebar-menu-text,
+        .app-sidebar.collapsed .sidebar-history-section,
+        .app-sidebar.collapsed .sidebar-settings-btn span {
+          display: none;
+        }
+        .app-sidebar.collapsed .sidebar-menu-item,
+        .app-sidebar.collapsed .sidebar-settings-btn {
+          justify-content: center;
+          padding: 0.75rem;
+          gap: 0;
         }
         .sidebar-header {
           margin-bottom: 2rem;
@@ -5462,10 +5596,23 @@ function App() {
         }
         .settings-tab-nav {
           display: flex;
-          gap: 1.5rem;
+          gap: 1.25rem;
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          padding-bottom: 0.5rem;
-          margin-bottom: 1.5rem;
+          padding-bottom: 0.75rem;
+          margin-bottom: 2rem !important;
+          margin-top: 0.5rem !important;
+          overflow: visible !important;
+          flex-wrap: nowrap !important;
+          width: 100%;
+          box-sizing: border-box;
+          position: relative;
+          z-index: 100;
+        }
+        .settings-tab-nav::-webkit-scrollbar {
+          display: none;
+        }
+        .settings-nav-btn {
+          flex-shrink: 0;
         }
         .settings-nav-btn {
           background: none;
@@ -5507,12 +5654,19 @@ function App() {
           color: #ffffff !important;
         }
         .settings-nav-select .custom-select-dropdown {
-          min-width: 150px;
+          min-width: 160px;
           right: auto;
+          z-index: 999999 !important;
+          top: 100% !important;
+          background: #18181c !important;
+          border: 1px solid rgba(255, 255, 255, 0.2) !important;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95) !important;
         }
         /* Override the global 220px !important for this specific nav dropdown */
         .settings-panel .custom-select-container.settings-nav-select {
           width: 140px !important;
+          position: relative !important;
+          z-index: 99999 !important;
         }
         .custom-toggle-switch {
           position: relative;
@@ -6088,12 +6242,12 @@ function App() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: clamp(0.75rem, 2vw, 1.1rem) clamp(1rem, 2.5vw, 1.5rem);
+          padding: 0.6rem 0.85rem;
           background: rgba(24, 24, 24, 0.65);
           border: 1px solid rgba(255, 255, 255, 0.04);
           border-radius: 8px;
           transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-          gap: 1rem;
+          gap: 0.75rem;
           cursor: pointer;
         }
         .history-item:hover {

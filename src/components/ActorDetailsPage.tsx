@@ -3,6 +3,7 @@ import {
   X, Link as LinkIcon, Calendar, MapPin, Star, Film, Tv, Sparkles, Filter, Search, ArrowUpDown 
 } from 'lucide-react';
 import type { VideoItem } from '../types/media';
+import { CustomSelect } from './CustomSelect';
 import { ActorPageSkeleton } from './SkeletonLoader';
 
 const cleanBiography = (rawBio: string | undefined, name: string): string => {
@@ -106,6 +107,12 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'movie' | 'tv'>('all');
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'year_desc' | 'year_asc' | 'popularity_desc' | 'rating_desc'>('year_desc');
+  const [isBioExpanded, setIsBioExpanded] = useState(false);
+  const [displayCount, setDisplayCount] = useState(24);
+
+  useEffect(() => {
+    setDisplayCount(24);
+  }, [searchQuery, categoryFilter, yearFilter, sortOrder]);
 
   useEffect(() => {
     const fetchActorData = async () => {
@@ -381,34 +388,60 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
     : '';
 
   return (
-    <div className="actor-page-container animate-fade-in" style={{ padding: '2rem 3rem' }}>
-      {/* Header bar */}
-      <div className="actor-details-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
-        <button className="actor-close-btn" onClick={onClose} title="Close Profile" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', padding: '0.6rem 1.2rem', borderRadius: '0.75rem', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500 }}>
-          <X size={20} /> Close Profile
-        </button>
-      </div>
+    <div className="media-details-page-container actor-page-container animate-fade-in" style={{ position: 'relative', minHeight: '100vh', padding: '2rem 3rem' }}>
+      {/* Ambient Blurred Profile Cover Backdrop */}
+      {profileImageUrl && (
+        <div 
+          className="media-details-backdrop"
+          style={{ backgroundImage: `url(${profileImageUrl})` }}
+        />
+      )}
+      <div className="media-details-backdrop-overlay" />
 
-      <div className="actor-details-container">
+      {/* Translucent Glass Close Button */}
+      <button 
+        className="details-close-btn" 
+        onClick={onClose} 
+        title="Close Profile"
+        style={{ 
+          position: 'fixed', 
+          top: '1.25rem', 
+          right: '1.25rem', 
+          zIndex: 2000
+        }}
+      >
+        <X size={20} />
+      </button>
+
+      <div className="media-details-content-wrapper actor-details-container">
         <div className="actor-layout-grid">
           
           {/* Left Column: Portrait & Info */}
           <div className="actor-left-col">
-            <div className="actor-portrait-card">
+            <div className="media-details-poster-wrapper actor-portrait-card">
               {profileImageUrl ? (
-                <img src={profileImageUrl} alt={profile.name} className="actor-profile-image" />
+                <img src={profileImageUrl} alt={profile.name} className="actor-profile-image media-details-poster" />
               ) : (
-                <div className="actor-profile-image-fallback">
-                  <Sparkles size={64} />
+                <div className="media-details-poster-fallback">
+                  <Sparkles size={48} />
                 </div>
               )}
             </div>
 
-            <div className="actor-quick-meta">
-              <h2>{profile.name}</h2>
-              {profile.known_for_department && (
-                <span className="actor-dept-badge">{profile.known_for_department}</span>
-              )}
+            <div className="actor-quick-meta" style={{ alignItems: 'center', textAlign: 'center', width: '100%' }}>
+              <h1 className="media-details-title" style={{ fontSize: '1.8rem', margin: '0 0 0.6rem 0', textAlign: 'center' }}>{profile.name}</h1>
+              
+              <div className="media-details-badges" style={{ justifyContent: 'center', marginBottom: '1rem' }}>
+                {profile.known_for_department && (
+                  <span className="meta-badge type-label">{profile.known_for_department}</span>
+                )}
+                {profile.popularity > 0 && (
+                  <span className="meta-badge rating">
+                    <Star size={13} fill="#fbbf24" color="#fbbf24" style={{ marginRight: '4px' }} />
+                    <span>{profile.popularity.toFixed(1)}</span>
+                  </span>
+                )}
+              </div>
 
               {/* Social Links */}
               {externalIds && (
@@ -498,9 +531,17 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
               {/* Biography */}
               <div className="actor-bio-section">
                 <h3 className="section-title">Biography</h3>
-                <p className="actor-biography-text">
+                <p className={`actor-biography-text ${!isBioExpanded ? 'clamped' : ''}`}>
                   {cleanBiography(profile.biography, profile.name)}
                 </p>
+                {profile.biography && profile.biography.length > 160 && (
+                  <button 
+                    className="bio-show-more-btn"
+                    onClick={() => setIsBioExpanded(!isBioExpanded)}
+                  >
+                    {isBioExpanded ? 'Show Less' : 'Show More'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -513,7 +554,7 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
               <div className="credits-header-row">
                 <h3 className="section-title">Known For ({filteredCredits.length})</h3>
                 
-                <div className="credits-filter-actions">
+                <div className="credits-filter-actions" style={{ marginRight: '2.5rem' }}>
                   {/* Search Bar */}
                   <div className="filter-search-wrapper">
                     <Search size={16} className="search-icon" />
@@ -525,107 +566,159 @@ export const ActorDetailsPage: React.FC<ActorDetailsPageProps> = ({
                     />
                   </div>
 
-                  {/* Category select */}
-                  <div className="filter-dropdown-wrapper">
-                    <Filter size={14} className="filter-icon" />
-                    <select 
-                      className="global-select-dropdown"
-                      value={categoryFilter} 
-                      onChange={e => setCategoryFilter(e.target.value as any)}
-                    >
-                      <option value="all">All Formats</option>
-                      <option value="movie">Movies</option>
-                      <option value="tv">TV Shows</option>
-                    </select>
-                  </div>
+                  {/* 3 Dropdowns Squeezed into 1 Single Row */}
+                  <div className="credits-dropdowns-row">
+                    <CustomSelect
+                      value={categoryFilter}
+                      onChange={(val) => setCategoryFilter(val as any)}
+                      options={[
+                        { value: 'all', label: 'Formats' },
+                        { value: 'movie', label: 'Movies' },
+                        { value: 'tv', label: 'TV' }
+                      ]}
+                      hideSearch={true}
+                    />
 
-                  {/* Year filter select */}
-                  <div className="filter-dropdown-wrapper">
-                    <Calendar size={14} className="filter-icon" />
-                    <select 
-                      className="global-select-dropdown"
-                      value={yearFilter} 
-                      onChange={e => setYearFilter(e.target.value)}
-                    >
-                      <option value="all">All Years</option>
-                      {uniqueYears.map(y => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
-                  </div>
+                    <CustomSelect
+                      value={yearFilter}
+                      onChange={(val) => setYearFilter(val)}
+                      options={[
+                        { value: 'all', label: 'Years' },
+                        ...uniqueYears.map(y => ({ value: y, label: y }))
+                      ]}
+                      hideSearch={uniqueYears.length < 8}
+                    />
 
-                  {/* Sorting select */}
-                  <div className="filter-dropdown-wrapper">
-                    <ArrowUpDown size={14} className="filter-icon" />
-                    <select 
-                      className="global-select-dropdown"
-                      value={sortOrder} 
-                      onChange={e => setSortOrder(e.target.value as any)}
-                    >
-                      <option value="popularity_desc">Popularity</option>
-                      <option value="year_desc">Year (Newest)</option>
-                      <option value="year_asc">Year (Oldest)</option>
-                      <option value="rating_desc">Rating</option>
-                    </select>
+                    <CustomSelect
+                      value={sortOrder}
+                      onChange={(val) => setSortOrder(val as any)}
+                      options={[
+                        { value: 'popularity_desc', label: 'Popularity' },
+                        { value: 'year_desc', label: 'Newest' },
+                        { value: 'year_asc', label: 'Oldest' },
+                        { value: 'rating_desc', label: 'Rating' }
+                      ]}
+                      hideSearch={true}
+                    />
                   </div>
                 </div>
               </div>
 
               {/* Credits Grid */}
               {filteredCredits.length > 0 ? (
-                <div className="actor-credits-grid">
-                  {filteredCredits.map(c => {
-                    const posterUrl = c.poster_path
-                      ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w185${c.poster_path}`
-                      : '';
-                    const titleStr = c.title || c.name || 'Untitled';
-                    const dateStr = c.release_date || c.first_air_date || '';
-                    const yearStr = dateStr ? dateStr.substring(0, 4) : 'N/A';
+                <>
+                  <div className="actor-credits-grid">
+                    {filteredCredits.slice(0, displayCount).map(c => {
+                      const posterUrl = c.poster_path
+                        ? `https://images.weserv.nl/?url=https://image.tmdb.org/t/p/w185${c.poster_path}`
+                        : '';
+                      const titleStr = c.title || c.name || 'Untitled';
+                      const dateStr = c.release_date || c.first_air_date || '';
+                      const yearStr = dateStr ? dateStr.substring(0, 4) : 'N/A';
 
-                    return (
-                      <div 
-                        key={`${c.media_type}-${c.id}`} 
-                        className="actor-credit-card"
-                        onClick={() => {
-                          onSelectMedia({
-                            id: `online-${c.media_type}-${c.id}`,
-                            tmdbId: String(c.id),
-                            type: c.media_type === 'movie' ? 'online_movie' : 'online_tv',
-                            title: titleStr,
-                            backdrop_path: '',
-                            poster_path: c.poster_path ? `https://image.tmdb.org/t/p/w500${c.poster_path}` : ''
-                          } as any);
-                        }}
-                      >
-                        <div className="credit-card-poster">
-                          {posterUrl ? (
-                            <img src={posterUrl} alt={titleStr} />
-                          ) : (
-                            <div className="credit-card-poster-fallback">
-                              {c.media_type === 'movie' ? <Film size={28} /> : <Tv size={28} />}
-                            </div>
-                          )}
-                          <div className="credit-card-type-badge">
-                            {c.media_type === 'movie' ? 'Movie' : 'TV'}
+                      return (
+                        <div 
+                          key={`${c.media_type}-${c.id}`} 
+                          className="actor-credit-card"
+                          onClick={() => {
+                            onSelectMedia({
+                              id: `online-${c.media_type}-${c.id}`,
+                              tmdbId: String(c.id),
+                              type: c.media_type === 'movie' ? 'online_movie' : 'online_tv',
+                              title: titleStr,
+                              backdrop_path: '',
+                              poster_path: c.poster_path ? `https://image.tmdb.org/t/p/w500${c.poster_path}` : ''
+                            } as any);
+                          }}
+                        >
+                          <div className="credit-card-poster">
+                            {posterUrl ? (
+                              <img src={posterUrl} alt={titleStr} loading="lazy" />
+                            ) : (
+                              <div className="credit-card-poster-fallback">
+                                {c.media_type === 'movie' ? <Film size={28} /> : <Tv size={28} />}
+                              </div>
+                            )}
+                            
+                            {/* Overlay Rating Badge (Top Left) */}
+                            {c.vote_average > 0 && (
+                              <div className="card-rating-badge" style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 5 }}>
+                                <Star size={10} fill="#f59e0b" stroke="#f59e0b" />
+                                <span>{c.vote_average.toFixed(1)}</span>
+                              </div>
+                            )}
+
+                            {/* Overlay Year Badge (Top Right) */}
+                            {yearStr && yearStr !== 'N/A' && (
+                              <div className="card-year-badge" style={{
+                                position: 'absolute',
+                                top: '8px',
+                                right: '8px',
+                                background: 'rgba(0, 0, 0, 0.85)',
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.68rem',
+                                fontWeight: '800',
+                                color: '#fff',
+                                textTransform: 'uppercase',
+                                zIndex: 5
+                              }}>
+                                {yearStr}
+                              </div>
+                            )}
                           </div>
-                          {c.vote_average > 0 && (
-                            <div className="credit-card-rating">
-                              <Star size={10} fill="#fbbf24" stroke="none" />
-                              <span>{c.vote_average.toFixed(1)}</span>
+
+                          <div className="credit-card-info" style={{ padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <h4 className="credit-card-title" style={{ fontSize: '0.85rem', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={titleStr}>
+                              {titleStr}
+                            </h4>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+                                {yearStr !== 'N/A' ? yearStr : ''}
+                              </span>
+                              <span style={{ 
+                                fontSize: '0.62rem', 
+                                fontWeight: 800, 
+                                textTransform: 'uppercase', 
+                                padding: '1px 5px', 
+                                borderRadius: '3px', 
+                                background: c.media_type === 'movie' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)', 
+                                color: c.media_type === 'movie' ? '#22c55e' : '#3b82f6',
+                                border: c.media_type === 'movie' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'
+                              }}>
+                                {c.media_type === 'movie' ? 'MOVIE' : 'TV'}
+                              </span>
                             </div>
-                          )}
+                          </div>
                         </div>
-                        <div className="credit-card-info">
-                          <span className="credit-card-year">{yearStr}</span>
-                          <h4 className="credit-card-title">{titleStr}</h4>
-                          {c.character && (
-                            <p className="credit-card-character">as {c.character}</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+
+                  {filteredCredits.length > displayCount && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', width: '100%' }}>
+                      <button
+                        onClick={() => setDisplayCount(prev => prev + 24)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          color: '#fff',
+                          padding: '0.6rem 1.5rem',
+                          borderRadius: '8px',
+                          fontSize: '0.85rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'}
+                      >
+                        Load More ({filteredCredits.length - displayCount} remaining)
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="no-credits-found">
                   <p>No matching movies or shows found for this filter combination.</p>

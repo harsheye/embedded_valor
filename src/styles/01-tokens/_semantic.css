@@ -1,0 +1,196 @@
+/* ==========================================================================
+   TIER 2: SEMANTIC TOKENS (Theme Engine)
+   Maps purpose-driven intent variables to Tier 1 Primitives based on data-theme.
+   Maintains 100% backward compatibility with legacy app variables.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   DEFAULT / DARK THEME
+   -------------------------------------------------------------------------- */
+:root,
+[data-theme="dark"] {
+  /* Semantic Tokens */
+  --color-bg-canvas:       var(--pr-slate-950);
+  --color-bg-surface:      var(--pr-slate-900);
+  --color-bg-surface-alt:  var(--pr-slate-800);
+  --color-bg-card:         #161622;
+  --color-bg-card-hover:   #222234;
+
+  --color-text-primary:    var(--pr-white);
+  --color-text-secondary:  #d1d5db;
+  --color-text-muted:      var(--pr-slate-400);
+
+  --color-brand-primary:   var(--pr-purple-500);
+  --color-brand-hover:     var(--pr-purple-600);
+  --color-brand-glow:      rgba(139, 92, 246, 0.4);
+
+  --color-border-subtle:   rgba(255, 255, 255, 0.1);
+  --color-border-focus:    rgba(139, 92, 246, 0.5);
+
+  --glass-bg-surface:      rgba(18, 18, 28, 0.75);
+  --glass-blur-radius:     blur(14px);
+  --glass-border-color:    rgba(255, 255, 255, 0.12);
+  --glass-elevation:       0 8px 32px 0 rgba(0, 0, 0, 0.6);
+
+  --theme-radius-base:     var(--radius-md);
+
+  /* Legacy Variable Aliases for Backward Compatibility */
+  --bg-color:              var(--color-bg-canvas);
+  --bg-primary:            var(--color-bg-canvas);
+  --bg-secondary:          var(--color-bg-surface);
+  --card-bg:               var(--color-bg-card);
+  --card-hover-bg:         var(--color-bg-card-hover);
+  --accent-color:          var(--color-brand-primary);
+  --accent-hover:          var(--color-brand-hover);
+  --accent-glow:           var(--color-brand-glow);
+  --border-color:          var(--color-border-subtle);
+  --border-focus:          var(--color-border-focus);
+  --glass-bg:              var(--glass-bg-surface);
+  --glass-blur:            var(--glass-blur-radius);
+  --glass-border:          var(--glass-border-color);
+  --glass-shadow:          var(--glass-elevation);
+
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------------------------------
+   LIGHT THEME
+   -------------------------------------------------------------------------- */
+[data-theme="light"] {
+  --color-bg-canvas:       var(--pr-slate-50);
+  --color-bg-surface:      var(--pr-slate-100);
+  --color-bg-surface-alt:  var(--pr-slate-200);
+  --color-bg-card:         var(--pr-white);
+  --color-bg-card-hover:   #e2e8f0;
+
+  --color-text-primary:    var(--pr-slate-900);
+  --color-text-secondary:  var(--pr-slate-700);
+  --color-text-muted:      var(--pr-slate-500);
+
+  --color-brand-primary:   var(--pr-indigo-500);
+  --color-brand-hover:     var(--pr-indigo-600);
+  --color-brand-glow:      rgba(99, 102, 241, 0.3);
+
+  --color-border-subtle:   rgba(0, 0, 0, 0.12);
+  --color-border-focus:    rgba(99, 102, 241, 0.5);
+
+  --glass-bg-surface:      rgba(255, 255, 255, 0.85);
+  --glass-blur-radius:     blur(16px);
+  --glass-border-color:    rgba(0, 0, 0, 0.08);
+  --glass-elevation:       0 8px 24px 0 rgba(0, 0, 0, 0.12);
+
+  --theme-radius-base:     var(--radius-md);
+
+  /* Legacy Variable Aliases */
+  --bg-color:              var(--color-bg-canvas);
+  --bg-primary:            var(--color-bg-canvas);
+  --bg-secondary:          var(--color-bg-surface);
+  --card-bg:               var(--color-bg-card);
+  --card-hover-bg:         var(--color-bg-card-hover);
+  --accent-color:          var(--color-brand-primary);
+  --accent-hover:          var(--color-brand-hover);
+  --accent-glow:           var(--color-brand-glow);
+  --border-color:          var(--color-border-subtle);
+  --border-focus:          var(--color-border-focus);
+  --glass-bg:              var(--glass-bg-surface);
+  --glass-blur:            var(--glass-blur-radius);
+  --glass-border:          var(--glass-border-color);
+  --glass-shadow:          var(--glass-elevation);
+
+  color-scheme: light;
+}
+
+/* --------------------------------------------------------------------------
+   OLED / BLACK AND WHITE THEME
+   -------------------------------------------------------------------------- */
+[data-theme="black-and-white"],
+[data-theme="oled"] {
+  --color-bg-canvas:       var(--pr-black);
+  --color-bg-surface:      #0a0a0a;
+  --color-bg-surface-alt:  #141414;
+  --color-bg-card:         #111111;
+  --color-bg-card-hover:   #1c1c1c;
+
+  --color-text-primary:    var(--pr-white);
+  --color-text-secondary:  #cccccc;
+  --color-text-muted:      #777777;
+
+  --color-brand-primary:   var(--pr-white);
+  --color-brand-hover:     #e5e5e5;
+  --color-brand-glow:      rgba(255, 255, 255, 0.3);
+
+  --color-border-subtle:   rgba(255, 255, 255, 0.18);
+  --color-border-focus:    rgba(255, 255, 255, 0.7);
+
+  --glass-bg-surface:      rgba(12, 12, 12, 0.85);
+  --glass-blur-radius:     blur(16px);
+  --glass-border-color:    rgba(255, 255, 255, 0.2);
+  --glass-elevation:       0 10px 40px 0 rgba(0, 0, 0, 0.9);
+
+  --theme-radius-base:     var(--radius-sm);
+
+  /* Legacy Variable Aliases */
+  --bg-color:              var(--color-bg-canvas);
+  --bg-primary:            var(--color-bg-canvas);
+  --bg-secondary:          var(--color-bg-surface);
+  --card-bg:               var(--color-bg-card);
+  --card-hover-bg:         var(--color-bg-card-hover);
+  --accent-color:          var(--color-brand-primary);
+  --accent-hover:          var(--color-brand-hover);
+  --accent-glow:           var(--color-brand-glow);
+  --border-color:          var(--color-border-subtle);
+  --border-focus:          var(--color-border-focus);
+  --glass-bg:              var(--glass-bg-surface);
+  --glass-blur:            var(--glass-blur-radius);
+  --glass-border:          var(--glass-border-color);
+  --glass-shadow:          var(--glass-elevation);
+
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------------------------------
+   CYBERPUNK THEME
+   -------------------------------------------------------------------------- */
+[data-theme="cyberpunk"] {
+  --color-bg-canvas:       var(--pr-cyber-dark);
+  --color-bg-surface:      var(--pr-cyber-card);
+  --color-bg-surface-alt:  #241640;
+  --color-bg-card:         #1a1036;
+  --color-bg-card-hover:   #2d1b5a;
+
+  --color-text-primary:    var(--pr-neon-yellow);
+  --color-text-secondary:  #f472b6;
+  --color-text-muted:      var(--pr-neon-pink);
+
+  --color-brand-primary:   var(--pr-neon-yellow);
+  --color-brand-hover:     #fff566;
+  --color-brand-glow:      rgba(255, 238, 0, 0.4);
+
+  --color-border-subtle:   var(--pr-neon-pink);
+  --color-border-focus:    var(--pr-neon-yellow);
+
+  --glass-bg-surface:      rgba(18, 14, 36, 0.85);
+  --glass-blur-radius:     blur(12px);
+  --glass-border-color:    rgba(255, 0, 127, 0.4);
+  --glass-elevation:       0 0 20px rgba(255, 0, 127, 0.3);
+
+  --theme-radius-base:     0px; /* Cyberpunk sharp edges */
+
+  /* Legacy Variable Aliases */
+  --bg-color:              var(--color-bg-canvas);
+  --bg-primary:            var(--color-bg-canvas);
+  --bg-secondary:          var(--color-bg-surface);
+  --card-bg:               var(--color-bg-card);
+  --card-hover-bg:         var(--color-bg-card-hover);
+  --accent-color:          var(--color-brand-primary);
+  --accent-hover:          var(--color-brand-hover);
+  --accent-glow:           var(--color-brand-glow);
+  --border-color:          var(--color-border-subtle);
+  --border-focus:          var(--color-border-focus);
+  --glass-bg:              var(--glass-bg-surface);
+  --glass-blur:            var(--glass-blur-radius);
+  --glass-border:          var(--glass-border-color);
+  --glass-shadow:          var(--glass-elevation);
+
+  color-scheme: dark;
+}

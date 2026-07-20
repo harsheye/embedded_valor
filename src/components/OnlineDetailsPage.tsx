@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Play, Star, Calendar, Clock, Film, ChevronLeft, ChevronRight, User, LayoutGrid, List, AlignLeft } from 'lucide-react';
+import { X, Play, Star, Calendar, Clock, Film, ChevronLeft, ChevronRight, User, LayoutGrid, List, AlignLeft, ListFilter } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 import { ActorDetailsPage } from './ActorDetailsPage';
+import { CustomSelect } from './CustomSelect';
 import { MediaPageSkeleton, EpisodeGridSkeleton, CarouselSkeleton } from './SkeletonLoader';
 
 interface OnlineDetailsPageProps {
@@ -359,12 +360,19 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
       )}
       <div className="media-details-backdrop-overlay" />
 
-      {/* Header bar */}
-      <div className="media-details-header">
-        <button className="details-close-btn" onClick={onClose} title="Back to search">
-          <X size={24} />
-        </button>
-      </div>
+      <button 
+        className="details-close-btn" 
+        onClick={onClose} 
+        title="Back to search"
+        style={{ 
+          position: 'absolute', 
+          top: '1.5rem', 
+          right: '1.5rem', 
+          zIndex: 100 
+        }}
+      >
+        <X size={24} />
+      </button>
 
       <div className="media-details-content-wrapper">
         {/* Main Banner / Meta section */}
@@ -516,10 +524,27 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                         <User size={24} />
                       </div>
                     )}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%)',
+                      padding: '8px 10px',
+                      color: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      textAlign: 'center',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      zIndex: 2
+                    }}>
+                      {actor.character}
+                    </div>
                   </div>
-                  <div className="actor-card-details">
-                    <span className="actor-real-name">{actor.name}</span>
-                    <span className="actor-character-name">{actor.character}</span>
+                  <div className="actor-card-details" style={{ padding: '0 4px', textAlign: 'center' }}>
+                    <span className="actor-real-name" style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', fontWeight: 600 }}>{actor.name}</span>
                   </div>
                 </div>
               ))}
@@ -529,102 +554,81 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
 
         {/* Episodes Section for TV Shows and Anime */}
         {!isMovie && (
-          <div className="media-details-section" style={{ marginTop: '2.5rem' }}>
-            <div className="section-header-row tv-selector-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Episodes</h2>
+          <div className="media-details-section" style={{ marginTop: '2rem' }}>
+            <div className="section-header-row tv-selector-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0 }}>Episodes</h2>
                 
                 {video.type === 'online_tv' && seasons.length > 0 && (
                   <div className="season-selector-dropdown-wrapper">
-                    <select 
-                       value={currentSeason}
-                       onChange={(e) => setCurrentSeason(Number(e.target.value))}
-                       className="season-details-dropdown global-select-dropdown"
-                    >
-                      {seasons
-                        .filter((s: any) => s.season_number > 0) // Exclude Specials/Season 0
-                        .map((s: any) => (
-                          <option key={s.id} value={s.season_number}>
-                            Season {s.season_number} ({s.episode_count} Episodes)
-                          </option>
-                        ))}
-                    </select>
+                    <CustomSelect
+                      value={currentSeason}
+                      onChange={(val) => setCurrentSeason(Number(val))}
+                      options={seasons
+                        .filter((s: any) => s.season_number > 0)
+                        .map((s: any) => ({
+                          value: s.season_number,
+                          label: `Season ${s.season_number}`
+                        }))}
+                      hideSearch={true}
+                      width="130px"
+                    />
                   </div>
                 )}
               </div>
 
-              {/* View Mode Toggle Controls */}
-              <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255, 255, 255, 0.05)', padding: '4px', borderRadius: '0.65rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              {/* View Mode Toggle Controls (Icon-only buttons in 1 row) */}
+              <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255, 255, 255, 0.05)', padding: '3px', borderRadius: '0.65rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
                 <button
-                  title="Grid Tiles View"
+                  title="Tiles View"
                   onClick={() => setEpisodeViewMode('grid')}
                   style={{
                     background: episodeViewMode === 'grid' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
                     border: 'none',
                     color: episodeViewMode === 'grid' ? '#a78bfa' : 'rgba(255,255,255,0.5)',
-                    padding: '6px 12px',
+                    padding: '6px 10px',
                     borderRadius: '0.45rem',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.8rem',
-                    fontWeight: 600
+                    justifyContent: 'center'
                   }}
                 >
-                  <LayoutGrid size={15} /> Tiles
+                  <LayoutGrid size={16} />
                 </button>
-
                 <button
-                  title="Compact List View"
+                  title="List View"
                   onClick={() => setEpisodeViewMode('list')}
                   style={{
                     background: episodeViewMode === 'list' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
                     border: 'none',
                     color: episodeViewMode === 'list' ? '#a78bfa' : 'rgba(255,255,255,0.5)',
-                    padding: '6px 12px',
+                    padding: '6px 10px',
                     borderRadius: '0.45rem',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    background: episodeViewMode === 'list' ? 'var(--accent-glow)' : 'transparent',
-                    border: 'none',
-                    color: episodeViewMode === 'list' ? 'var(--accent-color)' : 'var(--text-muted)',
-                    padding: '6px 12px',
-                    borderRadius: '0.45rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    transition: 'all 0.2s'
+                    justifyContent: 'center'
                   }}
                 >
-                  <ListFilter size={15} />
-                  <span>List</span>
+                  <List size={16} />
                 </button>
-
                 <button
-                  title="Detailed View"
-                  onClick={() => setEpisodeViewMode('detailed')}
+                  title="Compact View"
+                  onClick={() => setEpisodeViewMode('compact')}
                   style={{
-                    background: episodeViewMode === 'detailed' ? 'var(--accent-glow)' : 'transparent',
+                    background: episodeViewMode === 'compact' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
                     border: 'none',
-                    color: episodeViewMode === 'detailed' ? 'var(--accent-color)' : 'var(--text-muted)',
-                    padding: '6px 12px',
+                    color: episodeViewMode === 'compact' ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                    padding: '6px 10px',
                     borderRadius: '0.45rem',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    transition: 'all 0.2s'
+                    justifyContent: 'center'
                   }}
                 >
-                  <LayoutGrid size={15} />
-                  <span>Detailed</span>
+                  <AlignLeft size={16} />
                 </button>
               </div>
             </div>
@@ -745,8 +749,8 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                   </div>
                 )}
 
-                {/* View Mode 3: Detailed Overview View */}
-                {episodeViewMode === 'detailed' && (
+                {/* View Mode 3: Compact / Detailed View */}
+                {(episodeViewMode === 'compact' || episodeViewMode === 'detailed') && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {episodes.map((ep) => (
                       <div

@@ -58,7 +58,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
 
   return (
     <div 
-      className={`custom-select-container ${className}`} 
+      className={`custom-select-container ${isOpen ? 'is-open' : ''} ${className}`} 
       ref={containerRef}
       style={width ? { width } : undefined}
     >
@@ -73,7 +73,6 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         <span className="trigger-label">
           {activeOption ? activeOption.label : placeholder}
         </span>
-        <ChevronsUpDown className="trigger-chevron" />
       </button>
       
       {isOpen && (
@@ -122,16 +121,20 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           width: 250px; /* Standardize length for all dropdowns to be consistent */
           user-select: none;
           text-align: left;
+          z-index: 50;
+        }
+        .custom-select-container.is-open {
+          z-index: 9999 !important;
         }
         .custom-select-trigger {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: center;
           background: var(--dropdown-bg);
           border: 1px solid var(--dropdown-border);
           border-radius: 8px;
           color: var(--dropdown-text);
-          padding: 0.55rem 0.85rem;
+          padding: 0.45rem 0.65rem;
           font-size: 0.88rem;
           cursor: pointer;
           transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -147,7 +150,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          margin-right: 0.5rem;
+          margin-right: 0;
+          text-align: center;
         }
         .trigger-chevron {
           width: 16px;
@@ -163,8 +167,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           background: var(--dropdown-bg);
           border: 1px solid var(--dropdown-border);
           border-radius: 8px;
-          z-index: 1000;
-          box-shadow: 0 12px 36px rgba(0,0,0,0.9);
+          z-index: 99999 !important;
+          box-shadow: 0 16px 40px rgba(0,0,0,0.95);
           overflow: hidden;
           animation: dropdown-fade-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
         }
