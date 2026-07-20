@@ -32,7 +32,7 @@ export interface EsportsMatch {
 }
 
 export const EsportsLiveOverlay: React.FC = () => {
-  // Collapsed by default as requested
+  // Collapsed by default
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [matches, setMatches] = useState<EsportsMatch[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -44,7 +44,6 @@ export const EsportsLiveOverlay: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          // Map real live matches from API
           const realMatches: EsportsMatch[] = data.map((d: any) => ({
             id: d.id || String(Math.random()),
             game: d.game || 'valorant',
@@ -72,7 +71,7 @@ export const EsportsLiveOverlay: React.FC = () => {
         }
       }
     } catch (e) {
-      // Keep state clean - no fake data
+      // Keep empty - NO fake data!
     } finally {
       setIsLoading(false);
     }
@@ -80,12 +79,12 @@ export const EsportsLiveOverlay: React.FC = () => {
 
   useEffect(() => {
     fetchLiveScoresSilently();
-    // Silent auto-refresh every 30 seconds (no visible timer text)
+    // Silent background auto-refresh every 30 seconds
     const interval = setInterval(fetchLiveScoresSilently, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Filter ONLY Live matches OR Matches starting in <= 10 mins. OMIT ALL OLD/COMPLETED MATCHES!
+  // Filter ONLY Live ongoing matches OR matches starting in <= 10 mins. OMIT OLD/COMPLETED MATCHES!
   const liveMatches = matches.filter((m) => {
     if (selectedGameFilter !== 'all' && m.game !== selectedGameFilter) return false;
     if (m.status === 'ongoing') return true;
@@ -104,6 +103,8 @@ export const EsportsLiveOverlay: React.FC = () => {
     }
   };
 
+  const primaryLiveMatch = liveMatches.length > 0 ? liveMatches[0] : null;
+
   return (
     <div 
       className="esports-live-overlay-container"
@@ -117,14 +118,14 @@ export const EsportsLiveOverlay: React.FC = () => {
         alignItems: 'center'
       }}
     >
-      {/* Collapsed View: Rounded Pill Badge Button */}
+      {/* Collapsed Button: Live Match Map & Scores PINNED Directly on the Pill Button */}
       {!isExpanded && (
         <button
           onClick={() => setIsExpanded(true)}
           title="Expand Live Scores Overlay"
           style={{
-            background: 'rgba(12, 12, 18, 0.92)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
+            background: 'rgba(12, 12, 18, 0.94)',
+            border: '1px solid rgba(255, 255, 255, 0.16)',
             color: '#fff',
             padding: '10px 16px',
             borderRadius: '24px',
@@ -132,21 +133,43 @@ export const EsportsLiveOverlay: React.FC = () => {
             alignItems: 'center',
             gap: '10px',
             cursor: 'pointer',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
             transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
           }}
         >
           <Radio size={16} color="#e50914" className="pulsing" />
-          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff', letterSpacing: '0.3px' }}>
-            LIVE {liveMatches.length > 0 ? `(${liveMatches.length})` : ''}
-          </span>
+
+          {/* PINNED LIVE SCORES & MAP NAME */}
+          {primaryLiveMatch && primaryLiveMatch.currentMapRoundScore ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 800 }}>
+              <span style={{ color: '#fff' }}>{primaryLiveMatch.teamA.tag}</span>
+              <span style={{ background: 'rgba(46,204,113,0.2)', border: '1px solid rgba(46,204,113,0.4)', color: '#2ecc71', padding: '1px 6px', borderRadius: '4px', fontSize: '0.78rem' }}>
+                {primaryLiveMatch.currentMapRoundScore.teamA}
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>:</span>
+              <span style={{ background: 'rgba(231,76,60,0.2)', border: '1px solid rgba(231,76,60,0.4)', color: '#e74c3c', padding: '1px 6px', borderRadius: '4px', fontSize: '0.78rem' }}>
+                {primaryLiveMatch.currentMapRoundScore.teamB}
+              </span>
+              <span style={{ color: '#fff' }}>{primaryLiveMatch.teamB.tag}</span>
+              {primaryLiveMatch.currentMapName && (
+                <span style={{ color: '#3b82f6', fontSize: '0.7rem', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', padding: '2px 7px', borderRadius: '6px' }}>
+                  {primaryLiveMatch.currentMapName}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff', letterSpacing: '0.3px' }}>
+              LIVE {liveMatches.length > 0 ? `(${liveMatches.length})` : ''}
+            </span>
+          )}
+
           <ChevronLeft size={16} color="rgba(255,255,255,0.7)" />
         </button>
       )}
 
-      {/* Expanded View: High Aesthetic Glass Overlay Panel */}
+      {/* Expanded View: Glass Overlay Panel */}
       {isExpanded && (
         <div 
           className="glass-panel"
@@ -181,7 +204,6 @@ export const EsportsLiveOverlay: React.FC = () => {
               )}
             </div>
 
-            {/* Collapse Close Chevron */}
             <button
               onClick={() => setIsExpanded(false)}
               title="Collapse Overlay"
@@ -264,7 +286,6 @@ export const EsportsLiveOverlay: React.FC = () => {
                       gap: '0.6rem'
                     }}
                   >
-                    {/* Event Tag Header */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
                       <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '190px' }}>
                         {m.eventName}
@@ -274,7 +295,6 @@ export const EsportsLiveOverlay: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Series Score Row */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 0' }}>
                       <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff' }}>
                         {m.teamA.name} <span style={{ color: '#e50914', margin: '0 4px' }}>{m.teamA.score}</span>
@@ -285,7 +305,6 @@ export const EsportsLiveOverlay: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Map Name & Live Round Score */}
                     {m.status === 'ongoing' && m.currentMapName && m.currentMapRoundScore && (
                       <div style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                         <span style={{ color: '#3b82f6', fontWeight: 700 }}>{m.currentMapName}</span>
@@ -295,7 +314,6 @@ export const EsportsLiveOverlay: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Upcoming Match in <= 10m Tag */}
                     {m.status === 'upcoming' && m.startsInMinutes !== undefined && (
                       <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px', padding: '5px 10px', textAlign: 'center', fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>
                         Starts in {m.startsInMinutes} mins
