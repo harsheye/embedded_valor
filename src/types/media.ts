@@ -26,7 +26,7 @@ export interface VideoItem {
   id: string;
   title: string;
   url: string;
-  type: 'local' | 'url';
+  type: 'local' | 'url' | 'online_movie' | 'online_tv' | 'online_anime';
   file?: File;
   fileName?: string;
   duration?: string;
@@ -41,6 +41,7 @@ export interface VideoItem {
   hlsPlaylist?: any;
   thumbnailUrl?: string;
   currentTime?: number;
+  resumeTime?: number;
   probingError?: string;
   playbackMode?: 'advanced' | 'native';
   lastPlayedDate?: string;
@@ -51,6 +52,11 @@ export interface VideoItem {
   timeToFinish?: number;
   bookmarks?: Bookmark[];
   tmdbId?: number;
+  anilistId?: number;
+  posterPath?: string;
+  season?: number;
+  episode?: number;
+  hasScrobbledTrakt?: boolean;
 }
 
 export interface Bookmark {
@@ -72,4 +78,5 @@ export interface Bookmark {
   episode?: number;
   season?: number;
   color?: string;
+  createdBy?: 'theintrodb' | 'manual' | 'system';
 }

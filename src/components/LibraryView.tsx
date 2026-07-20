@@ -120,7 +120,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
                 <span>No movies in library yet.</span>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
                 {movies.map((item, idx) => {
                   const rating = (item.video as any).rating || 0;
                   const durationStr = typeof item.video.duration === 'number' ? formatTime(item.video.duration) : item.video.duration || 'Unknown';
@@ -134,10 +134,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
                       className="glass-panel" 
                       onClick={() => onPlayVideo(item.video)}
                       style={{ 
-                        padding: '1rem', 
+                        padding: '0.85rem 1rem', 
                         background: 'rgba(255,255,255,0.02)', 
                         border: '1px solid rgba(255,255,255,0.06)', 
-                        borderRadius: '8px', 
+                        borderRadius: '10px', 
                         display: 'flex', 
                         flexDirection: 'column', 
                         gap: '0.5rem',
@@ -149,17 +149,19 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
                       onMouseEnter={(e) => {
                         e.currentTarget.style.transform = 'translateY(-2px)';
                         e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                        e.currentTarget.style.borderColor = 'rgba(229, 9, 20, 0.3)';
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'translateY(0)';
                         e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
                       }}
                     >
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.displayTitle}>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.displayTitle}>
                         {item.displayTitle}
                       </div>
                       
-                      <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', display: 'flex', justifyContent: 'space-between', marginTop: 'auto', alignItems: 'center' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', display: 'flex', justifyContent: 'space-between', marginTop: 'auto', alignItems: 'center' }}>
                         <span>Length: {durationStr}</span>
                         {watchedProgress > 0 && <span style={{ color: '#3b82f6', fontWeight: 600 }}>{watchedProgress}% watched</span>}
                       </div>
@@ -173,11 +175,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
                         ) : <div />}
                         
                         <span style={{ 
-                          fontSize: '0.65rem', 
+                          fontSize: '0.7rem', 
                           fontWeight: 700, 
                           color: isInstantlyPlayable(item.video) ? '#2ecc71' : '#f59e0b',
                           background: isInstantlyPlayable(item.video) ? 'rgba(46,204,113,0.1)' : 'rgba(245,158,11,0.1)',
-                          padding: '2px 6px',
+                          padding: '3px 8px',
                           borderRadius: '4px',
                           border: isInstantlyPlayable(item.video) ? '1px solid rgba(46,204,113,0.2)' : '1px solid rgba(245,158,11,0.2)'
                         }}>
@@ -191,7 +193,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
             )
           )}
 
-          {/* Series Groups */}
+          {/* Series Groups - Restored commit 56aea42 layout */}
           {activeSubTab === 'series' && (
             Object.keys(groupedSeries).length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
@@ -199,12 +201,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
                 <span>No series in library yet.</span>
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: '1.25rem', height: '100%' }}>
+              <div style={{ display: 'flex', gap: '1.25rem', height: '100%', minHeight: '350px' }}>
                 
                 {/* Series List Sidebar Tabs */}
                 <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: '6px', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '1rem', overflowY: 'auto' }}>
                   {Object.entries(groupedSeries).map(([sTitle, episodes]) => {
-                    const isSelected = selectedSeries === sTitle;
+                    const isSelected = (selectedSeries || Object.keys(groupedSeries)[0]) === sTitle;
                     return (
                       <button
                         key={sTitle}
@@ -218,16 +220,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          textAlign: 'left',
                           color: isSelected ? '#fff' : 'rgba(255,255,255,0.6)',
-                          fontSize: '0.88rem',
-                          fontWeight: isSelected ? 600 : 500,
-                          transition: 'all 0.15s ease'
+                          transition: 'all 0.2s',
+                          textAlign: 'left'
                         }}
                       >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
-                          {sTitle}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <Tv size={16} color={isSelected ? '#e50914' : 'rgba(255,255,255,0.4)'} />
+                          <span style={{ fontSize: '0.85rem', fontWeight: isSelected ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {sTitle}
+                          </span>
+                        </div>
                         <span style={{ fontSize: '0.75rem', color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.4)', background: isSelected ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '10px' }}>
                           {episodes.length}
                         </span>
@@ -238,119 +241,110 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ videos, onPlayVideo, i
 
                 {/* Episodes Panel */}
                 <div style={{ flex: 2, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {!selectedSeries ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
-                      <List size={36} style={{ marginBottom: '0.75rem', opacity: 0.5 }} />
-                      <span style={{ fontSize: '0.85rem' }}>Select a series to view episodes.</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', fontWeight: 600, color: '#fff' }}>
-                        {selectedSeries}
-                      </h3>
-                      
-                      {(() => {
-                        const episodesBySeason: Record<number, typeof seriesItems> = {};
-                        groupedSeries[selectedSeries].forEach(epItem => {
-                          const sNum = epItem.season || 1;
-                          if (!episodesBySeason[sNum]) {
-                            episodesBySeason[sNum] = [];
-                          }
-                          episodesBySeason[sNum].push(epItem);
-                        });
+                  {(() => {
+                    const currentSelected = selectedSeries || Object.keys(groupedSeries)[0];
+                    if (!currentSelected || !groupedSeries[currentSelected]) return null;
 
-                        const sortedSeasons = Object.keys(episodesBySeason).map(Number).sort((a, b) => a - b);
+                    const episodesBySeason: Record<number, typeof seriesItems> = {};
+                    groupedSeries[currentSelected].forEach(epItem => {
+                      const sNum = epItem.season || 1;
+                      if (!episodesBySeason[sNum]) {
+                        episodesBySeason[sNum] = [];
+                      }
+                      episodesBySeason[sNum].push(epItem);
+                    });
 
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                            {sortedSeasons.map(seasonNum => (
-                              <div key={seasonNum} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                {/* Season breadcrumb header */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', paddingBottom: '0.35rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                  <span>{selectedSeries}</span>
-                                  <span>&gt;</span>
-                                  <span style={{ color: '#3b82f6' }}>Season {seasonNum}</span>
-                                </div>
+                    const sortedSeasons = Object.keys(episodesBySeason).map(Number).sort((a, b) => a - b);
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                  {episodesBySeason[seasonNum].map((epItem, idx) => {
-                                    const durationStr = typeof epItem.video.duration === 'number' ? formatTime(epItem.video.duration) : epItem.video.duration || 'Unknown';
-                                    const progress = epItem.video.currentTime && typeof epItem.video.duration === 'number' && epItem.video.duration > 0
-                                      ? Math.round((epItem.video.currentTime / epItem.video.duration) * 100)
-                                      : 0;
-                                    const rating = (epItem.video as any).rating || 0;
+                    return (
+                      <>
+                        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', fontWeight: 600, color: '#fff' }}>
+                          {currentSelected}
+                        </h3>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                          {sortedSeasons.map(seasonNum => (
+                            <div key={seasonNum} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {/* Season breadcrumb header */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', paddingBottom: '0.35rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                <span>{currentSelected}</span>
+                                <span>&gt;</span>
+                                <span style={{ color: '#3b82f6' }}>Season {seasonNum}</span>
+                              </div>
 
-                                    return (
-                                      <div 
-                                        key={idx}
-                                        onClick={() => onPlayVideo(epItem.video)}
-                                        style={{
-                                          background: 'rgba(255,255,255,0.01)',
-                                          border: '1px solid rgba(255,255,255,0.05)',
-                                          borderRadius: '6px',
-                                          padding: '0.65rem 0.85rem',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'space-between',
-                                          cursor: 'pointer',
-                                          transition: 'background-color 0.2s'
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.01)'}
-                                      >
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>
-                                            Episode {epItem.episode}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {(episodesBySeason[seasonNum] || []).map((epItem, idx) => {
+                                  const durationStr = typeof epItem.video.duration === 'number' ? formatTime(epItem.video.duration) : epItem.video.duration || 'Unknown';
+                                  const progress = epItem.video.currentTime && typeof epItem.video.duration === 'number' && epItem.video.duration > 0
+                                    ? Math.round((epItem.video.currentTime / epItem.video.duration) * 100)
+                                    : 0;
+                                  const rating = (epItem.video as any).rating || 0;
+
+                                  return (
+                                    <div 
+                                      key={idx}
+                                      onClick={() => onPlayVideo(epItem.video)}
+                                      style={{
+                                        background: 'rgba(255,255,255,0.01)',
+                                        border: '1px solid rgba(255,255,255,0.05)',
+                                        borderRadius: '6px',
+                                        padding: '0.65rem 0.85rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        transition: 'background-color 0.2s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.01)'}
+                                    >
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>
+                                          Episode {epItem.episode}
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                          <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
+                                            Length: {durationStr}
                                           </span>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
-                                              Length: {durationStr}
-                                            </span>
-                                            {epItem.video.lastPlayedDate && (
-                                              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
-                                                • Played: {new Date(epItem.video.lastPlayedDate).toLocaleDateString()}
-                                              </span>
-                                            )}
-                                            {rating > 0 && (
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#f59e0b' }}>
-                                                <Star size={9} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
-                                                <span>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                        
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                          {progress > 0 && (
-                                            <span style={{ fontSize: '0.72rem', color: '#3b82f6', fontWeight: 600 }}>
-                                              {progress}% watched
-                                            </span>
+                                          {rating > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#f59e0b' }}>
+                                              <Star size={9} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
+                                              <span>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</span>
+                                            </div>
                                           )}
-                                          <button className="btn btn-primary btn-sm play-btn-compact" style={{ padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer' }}>
-                                            {isInstantlyPlayable(epItem.video) ? (
-                                              <>
-                                                <Play size={10} fill="white" />
-                                                <span style={{ fontSize: '0.75rem' }}>Play</span>
-                                              </>
-                                            ) : (
-                                              <>
-                                                <UploadCloud size={10} />
-                                                <span style={{ fontSize: '0.75rem' }}>Select Media</span>
-                                              </>
-                                            )}
-                                          </button>
                                         </div>
                                       </div>
-                                    );
-                                  })}
-                                </div>
+                                      
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        {progress > 0 && (
+                                          <span style={{ fontSize: '0.72rem', color: '#3b82f6', fontWeight: 600 }}>
+                                            {progress}% watched
+                                          </span>
+                                        )}
+                                        <button className="btn btn-primary btn-sm play-btn-compact" style={{ padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer' }}>
+                                          {isInstantlyPlayable(epItem.video) ? (
+                                            <>
+                                              <Play size={10} fill="white" />
+                                              <span style={{ fontSize: '0.75rem' }}>Play</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <UploadCloud size={10} />
+                                              <span style={{ fontSize: '0.75rem' }}>Select Media</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </>
-                  )}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
               </div>

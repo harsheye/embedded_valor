@@ -1,4 +1,4 @@
-import type { ByteSource } from './remoteByteSource';
+import type { ByteSource } from '../services/local/localByteSource';
 import { cleanSubtitleText } from './subtitleParser';
 import type { SubtitleCue } from './subtitleParser';
 

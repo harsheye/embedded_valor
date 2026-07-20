@@ -1,21 +1,27 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Play, Pause, RotateCcw, RotateCw, Cast, X, 
   MessageSquare, Maximize, Minimize, MonitorPlay,
-  Volume2, Volume1, VolumeX, AlertCircle, Lock, Pencil, Trash,
-  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft, Eye, Settings
+  Volume2, Volume1, VolumeX, AlertCircle, Lock,
+  Layers, Type, Clock, Sliders, SkipForward, Ban, FastForward, Zap, Coffee, ChevronRight, ChevronLeft, Eye, Settings, Bookmark as BookmarkIcon
 } from 'lucide-react';
-import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from '../types/media';
+import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack, Bookmark } from '../types/media';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSubPopover } from './AudioSubPopover';
 import { BookmarkPanel } from './BookmarkPanel';
 import { BookmarkModal } from './BookmarkModal';
-import { AudioSyncEngine } from '../utils/audioSync';
+import { AudioSyncEngine } from '../services/remote/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParser';
 import { ffmpegService } from '../services/ffmpeg';
-import { HttpByteSource, CachedByteSource, FileByteSource } from '../utils/remoteByteSource';
+import { HttpByteSource, CachedByteSource } from '../services/remote/remoteByteSource';
+import { FileByteSource } from '../services/local/localByteSource';
+import { extractLocalAudioSegment, extractLocalSubtitleSegment } from '../services/local/ffmpegLocal';
+import { extractRemoteAudioSegment, extractRemoteSubtitleSegment, extractHlsAudioSegment } from '../services/remote/ffmpegRemote';
+import { FFmpegManager } from '../services/ffmpeg/FFmpegManager';
+import { DemuxManager } from '../services/ffmpeg/DemuxManager';
+import { PlaybackController } from '../services/playback/PlaybackController';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
 
@@ -24,7 +30,7 @@ interface VideoPlayerProps {
   userId?: string;
   videos?: VideoItem[];
   onBack: () => void;
-  onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean, targetVideoId?: string) => void;
+  onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean, targetVideoId?: string, forceSave?: boolean) => void;
   hideUIOverlays?: boolean;
   hideVideoName?: boolean;
   toastDuration?: number;
@@ -50,6 +56,7 @@ interface VideoPlayerProps {
   allowUiSkipping?: boolean;
   blockSeekingCompletely?: boolean;
   autoSkipIntroOutro?: boolean;
+  autoSkipSexScenes?: boolean;
   lockModeActive?: boolean;
   settingsOrder?: string[];
   uiHideTimeout?: number;
@@ -122,7 +129,7 @@ export interface MediaDetails {
   rating?: number;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
+export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video, 
   videos,
   onBack, 
@@ -152,6 +159,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   allowUiSkipping = true,
   blockSeekingCompletely = false,
   autoSkipIntroOutro = true,
+  autoSkipSexScenes = true,
   lockModeActive: propLockModeActive = false,
   settingsOrder,
   uiHideTimeout = 1.5
@@ -352,12 +360,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBookmarksPopover, setShowBookmarksPopover] = useState(false);
-  const bookmarksTimeoutRef = useRef<any>(null);
   const [bookmarks, setBookmarks] = useState<any[]>(() => video.bookmarks || []);
   const [editingBookmark, setEditingBookmark] = useState<Bookmark | undefined>(undefined);
-  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
-  const [startTimeStr, setStartTimeStr] = useState('');
-  const [endTimeStr, setEndTimeStr] = useState('');
+  const [markingStartTime, setMarkingStartTime] = useState<number | null>(null);
 
   const [hoveredSetting, setHoveredSetting] = useState<string | null>(null);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
@@ -373,6 +378,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     allowUiSkipping: boolean;
     blockSeekingCompletely: boolean;
     autoSkipIntroOutro: boolean;
+    autoSkipSexScenes: boolean;
     lockModeActive: boolean;
     disableAnimations: boolean;
     pauseOnFocusChange: boolean;
@@ -389,6 +395,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     allowUiSkipping: allowUiSkipping !== false,
     blockSeekingCompletely: !!blockSeekingCompletely,
     autoSkipIntroOutro: autoSkipIntroOutro !== false,
+    autoSkipSexScenes: autoSkipSexScenes !== false,
     lockModeActive: !!propLockModeActive,
     disableAnimations: !!disableAnimations,
     pauseOnFocusChange: !!pauseOnFocusChange
@@ -407,11 +414,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       allowUiSkipping: allowUiSkipping !== false,
       blockSeekingCompletely: !!blockSeekingCompletely,
       autoSkipIntroOutro: autoSkipIntroOutro !== false,
+      autoSkipSexScenes: autoSkipSexScenes !== false,
       lockModeActive: !!propLockModeActive,
       disableAnimations: !!disableAnimations,
       pauseOnFocusChange: !!pauseOnFocusChange
     }));
-  }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen, allowUiSkipping, blockSeekingCompletely, autoSkipIntroOutro, propLockModeActive, disableAnimations, pauseOnFocusChange]);
+  }, [propHideUIOverlays, propHideVideoName, propShowPlayButton, propShowTimeDisplay, propShowPlayBar, propShowVolumeControl, propShowFullscreen, allowUiSkipping, blockSeekingCompletely, autoSkipIntroOutro, autoSkipSexScenes, propLockModeActive, disableAnimations, pauseOnFocusChange]);
 
   const updatePlayerSetting = (key: keyof typeof playerSettings, value: any) => {
     setPlayerSettings(prev => {
@@ -432,7 +440,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const uiConfig = {
     allowUiSkipping: playerSettings.allowUiSkipping,
     blockSeekingCompletely: playerSettings.blockSeekingCompletely,
-    autoSkipIntroOutro: playerSettings.autoSkipIntroOutro
+    autoSkipIntroOutro: playerSettings.autoSkipIntroOutro,
+    autoSkipSexScenes: playerSettings.autoSkipSexScenes
   };
 
   // Helper to determine mode (enable, hide, disable)
@@ -598,7 +607,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           let updated = false;
 
           if (introToCopy && !hasIntro) {
-            newBms.push({ ...introToCopy, id: `bm-intro-${video.id}` });
+            newBms.push({ ...introToCopy, id: `bm-intro-${video.id}`, createdBy: 'system' });
             updated = true;
           }
           if (outroToCopy && !hasOutro) {
@@ -606,7 +615,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             const newOutroTime = (outroOffset !== null && duration) 
               ? Math.max(0, Math.round(duration - outroOffset)) 
               : outroToCopy.time;
-            newBms.push({ ...outroToCopy, time: newOutroTime, id: `bm-outro-${video.id}` });
+            newBms.push({ ...outroToCopy, time: newOutroTime, id: `bm-outro-${video.id}`, createdBy: 'system' });
             updated = true;
           }
 
@@ -654,7 +663,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         label: bm.label || '',
         isIntro: bm.isIntro || false,
         isOutro: bm.isOutro || false,
-        skipEnabled: bm.skipEnabled || false
+        skipEnabled: bm.skipEnabled || false,
+        title: bm.title || '',
+        description: bm.description || '',
+        category: bm.category || 'Custom',
+        thumbnail: bm.thumbnail || '',
+        favorite: bm.favorite || false,
+        createdAt: bm.createdAt || new Date().toISOString(),
+        updatedAt: bm.updatedAt || new Date().toISOString()
       }));
       
       const response = await fetch('http://127.0.0.1:50001/api/graphql', {
@@ -682,7 +698,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (hadTidbDataRef.current) return; // TIDB already has data
     
     const introOutroBookmarks = currentBookmarks.filter(
-      bm => bm.isIntro || bm.isOutro
+      bm => bm.isIntro || bm.isOutro || bm.category === 'Intro' || bm.category === 'Outro'
     );
     if (introOutroBookmarks.length === 0) return; // No intro/outro bookmarks to submit
     
@@ -782,13 +798,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     let newBookmark: Bookmark;
     let updatedBookmarks: Bookmark[];
     
-    if (editingBookmark) {
+    if (editingBookmark && editingBookmark.id) {
       newBookmark = { ...editingBookmark, ...bmData };
       updatedBookmarks = bookmarks.map(b => b.id === newBookmark.id ? newBookmark : b).sort((a, b) => a.time - b.time);
     } else {
       newBookmark = {
         ...bmData,
-        id: `bm-${Date.now()}`
+        id: `bm-${Date.now()}`,
+        createdBy: bmData.createdBy || 'manual'
       };
       updatedBookmarks = [...bookmarks, newBookmark].sort((a, b) => a.time - b.time);
     }
@@ -832,6 +849,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     latestTimeRef.current = currentTime;
   }, [currentTime]);
+
+
   const [duration, setDuration] = useState(0);
 
   const totalTimeWatchedRef = useRef<number>((video as any).totalTimeWatched || 0);
@@ -1173,7 +1192,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               label: 'Intro',
               isIntro: true,
               isOutro: false,
-              skipEnabled: true
+              skipEnabled: true,
+              createdBy: 'theintrodb'
             });
           });
         }
@@ -1187,7 +1207,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               label: 'Recap',
               isIntro: true,
               isOutro: false,
-              skipEnabled: true
+              skipEnabled: true,
+              createdBy: 'theintrodb'
             });
           });
         }
@@ -1201,7 +1222,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               label: 'Credits/Outro',
               isIntro: false,
               isOutro: true,
-              skipEnabled: true
+              skipEnabled: true,
+              createdBy: 'theintrodb'
             });
           });
         }
@@ -1269,6 +1291,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState<string | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
+  const isScrubbingRef = useRef(false);
+  isScrubbingRef.current = isScrubbing;
+  const scrubTimeRef = useRef<number | null>(null);
+  scrubTimeRef.current = scrubTime;
+  const debouncedSeekTimeoutRef = useRef<any>(null);
   const [systemTime, setSystemTime] = useState(new Date());
 
   useEffect(() => {
@@ -1277,6 +1305,45 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Global mouseup/touchend listener to safely complete scrubbing free hand with 500ms debounce
+  useEffect(() => {
+    if (!isScrubbing) return;
+
+    const handleScrubEnd = () => {
+      setIsScrubbing(false);
+      if (debouncedSeekTimeoutRef.current) {
+        clearTimeout(debouncedSeekTimeoutRef.current);
+      }
+      const targetTime = scrubTimeRef.current;
+      if (targetTime !== null && targetTime !== undefined && videoRef.current) {
+        debouncedSeekTimeoutRef.current = setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = targetTime;
+            setCurrentTime(targetTime);
+            if (playbackControllerRef.current) {
+              playbackControllerRef.current.seek(targetTime).catch(console.error);
+            }
+            onUpdateVideoRef.current((prev: any) => ({
+              ...prev,
+              currentTime: targetTime
+            }), false, video.id);
+          }
+          setScrubTime(null);
+        }, 250);
+      } else {
+        setScrubTime(null);
+      }
+    };
+
+    window.addEventListener('mouseup', handleScrubEnd);
+    window.addEventListener('touchend', handleScrubEnd);
+
+    return () => {
+      window.removeEventListener('mouseup', handleScrubEnd);
+      window.removeEventListener('touchend', handleScrubEnd);
+    };
+  }, [isScrubbing, video.id]);
 
   // Tracks Selection State
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<CustomAudioTrack | null>(null);
@@ -1428,10 +1495,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, toastDuration * 1000);
   };
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playbackControllerRef = useRef<PlaybackController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const syncEngineRef = useRef<AudioSyncEngine | null>(null);
   const controlsTimeoutRef = useRef<any>(null);
   const audioSubTimeoutRef = useRef<any>(null);
+  const bookmarksTimeoutRef = useRef<any>(null);
   const customAudioInputRef = useRef<HTMLInputElement>(null);
   const customSubInputRef = useRef<HTMLInputElement>(null);
 
@@ -1450,15 +1519,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   useEffect(() => {
     hasAutoSelectedRef.current = false;
-    activeAudioStartOffsetRef.current = 0;
-    activeSubtitleStartOffsetRef.current = 0;
-    setCurrentTime(video.currentTime || 0);
+    const resumeTime = video.currentTime || 0;
+    activeAudioStartOffsetRef.current = Math.floor(resumeTime / 10) * 10;
+    activeSubtitleStartOffsetRef.current = resumeTime;
+    setCurrentTime(resumeTime);
     setSelectedAudioTrack(null);
     setSelectedSubTrack(null);
     setActiveAudioStreamIndex(null);
     setActiveSubStreamIndex(null);
-    setActiveAudioStartOffset(0);
-    setActiveSubtitleStartOffset(0);
+    setActiveAudioStartOffset(Math.floor(resumeTime / 10) * 10);
+    setActiveSubtitleStartOffset(resumeTime);
   }, [video.id]);
 
   const onUpdateVideoRef = useRef(onUpdateVideo);
@@ -1537,17 +1607,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       
       const containerType = (video.containerType || '').toLowerCase();
       const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
-      const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
+      const subDuration = isRemote ? (isMkv ? 300 : 60) : 300;
 
       if (activeAudioStreamIndex !== null && selectedAudioTrack && selectedAudioTrack.streamIndex === activeAudioStreamIndex && selectedAudioTrack.url) {
-        if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 5) {
+        if (currentTime - activeAudioStartOffsetRef.current > audioDuration - 15) {
           logger.player(`Playback crossed audio chunk boundary. Loading next chunk at ${currentTime}s.`);
           const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
-          loadAudioChunk(currentTime, activeAudioStreamIndex, activeStream?.codec || 'mp3');
+          loadAudioChunk(currentTime, activeAudioStreamIndex, activeStream?.codec || 'mp3', false);
         }
       }
 
-      if (activeSubStreamIndex !== null && (isRemote || isMkv) && selectedSubTrack && selectedSubTrack.streamIndex === activeSubStreamIndex && (selectedSubTrack.url || selectedSubTrack.cues.length > 0)) {
+      if (activeSubStreamIndex !== null && selectedSubTrack && selectedSubTrack.streamIndex === activeSubStreamIndex && (selectedSubTrack.url || selectedSubTrack.cues.length > 0)) {
         if (currentTime - activeSubtitleStartOffsetRef.current > subDuration - 10) {
           logger.player(`Playback crossed subtitle chunk boundary. Loading next subtitles at ${currentTime}s.`);
           loadSubtitleChunk(currentTime, activeSubStreamIndex);
@@ -1586,6 +1656,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     return () => {
       if (audioSubTimeoutRef.current) clearTimeout(audioSubTimeoutRef.current);
+      if (bookmarksTimeoutRef.current) clearTimeout(bookmarksTimeoutRef.current);
       logger.player('VideoPlayer resetting FFmpeg worker and lock queue due to unmount or video change');
       ffmpegService.reset();
       console.clear();
@@ -1702,56 +1773,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     autoProbe();
   }, [video.id, video.type, video.file]);
 
-  // Synchronize Audio Engine
-  useEffect(() => {
-    if (selectedAudioTrack && selectedAudioTrack.url && videoRef.current && audioRef.current) {
-      logger.player(`Initializing sync engine for track: ${selectedAudioTrack.name} with offset: ${activeAudioStartOffset}`);
-      const engine = new AudioSyncEngine(videoRef.current, audioRef.current, activeAudioStartOffset);
-      syncEngineRef.current = engine;
-
-      // Sync initial volume
-      audioRef.current.volume = volume;
-      audioRef.current.muted = isMuted;
-
-      return () => {
-        engine.destroy();
-        syncEngineRef.current = null;
-      };
-    } else {
-      if (videoRef.current) {
-        videoRef.current.muted = isMuted;
-        videoRef.current.volume = volume;
-      }
-    }
-  }, [selectedAudioTrack, activeAudioStartOffset]);
-
+  // Synchronize Audio Volume / Muted State to video element and PlaybackController
   useEffect(() => {
     if (saveVolume) {
       localStorage.setItem('valor_volume', volume.toString());
-    } else {
-      localStorage.removeItem('valor_volume');
-    }
-    if (videoRef.current) {
-      videoRef.current.volume = (selectedAudioTrack && selectedAudioTrack.url) ? 0 : volume;
-    }
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
-  }, [volume, saveVolume, selectedAudioTrack]);
-
-  useEffect(() => {
-    if (saveVolume) {
       localStorage.setItem('valor_muted', isMuted ? 'true' : 'false');
     } else {
+      localStorage.removeItem('valor_volume');
       localStorage.removeItem('valor_muted');
     }
+
+    const hasAlternateAudio = audioStreams.length > 0 || audioTracks.length > 0;
+
     if (videoRef.current) {
-      videoRef.current.muted = (selectedAudioTrack || activeAudioStreamIndex !== null) ? true : isMuted;
+      videoRef.current.volume = hasAlternateAudio ? 0 : volume;
+      videoRef.current.muted = hasAlternateAudio ? true : isMuted;
     }
-    if (audioRef.current) {
-      audioRef.current.muted = isMuted;
+
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.setVolume(volume, isMuted);
     }
-  }, [isMuted, saveVolume, selectedAudioTrack, activeAudioStreamIndex]);
+  }, [volume, isMuted, saveVolume, activeAudioStreamIndex]);
 
   // RequestAnimationFrame tick loop for micro-fine time updates (essential for subtitles)
   useEffect(() => {
@@ -1760,7 +1802,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const tick = () => {
       if (videoRef.current && !videoRef.current.paused) {
         const shouldUpdate = !video.currentTime || hasSeekedRef.current || videoRef.current.currentTime > 0;
-        if (shouldUpdate) {
+        if (shouldUpdate && !isScrubbingRef.current && !debouncedSeekTimeoutRef.current) {
+          console.log("[Timeline]", "source=raf", videoRef.current.currentTime);
           setCurrentTime(videoRef.current.currentTime);
         }
 
@@ -1881,159 +1924,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   // Audio/subtitle segment chunk loading on demand
-  const loadAudioChunk = async (time: number, streamIndex: number, codec: string) => {
-    // Seek optimization: abort any active remote fetches
-    if (audioAbortControllerRef.current) {
-      audioAbortControllerRef.current.abort();
-    }
-    audioAbortControllerRef.current = new AbortController();
-    const signal = audioAbortControllerRef.current.signal;
-
-    // CRITICAL: Immediately silence old audio to prevent stale chunk playback
-    if (syncEngineRef.current) {
-      syncEngineRef.current.setSyncEnabled(false);
-    }
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute('src');
-      audioRef.current.load(); // Force browser to release old blob
-    }
-
-    // Pause video during extraction so user doesn't hear silence gap
-    const wasPlaying = videoRef.current ? !videoRef.current.paused : false;
-    if (wasPlaying && videoRef.current) {
-      videoRef.current.pause();
-    }
-
-    setExtractingStreamIndex(streamIndex);
-
-    try {
-      if (!ffmpegService.isReady()) {
-        await ffmpegService.load(video.id);
-      }
-
-      let audioUrl = '';
-      let offsetTime = time;
-
-      const cachedSource = cachedSourceRef.current || (
-        video.file
-          ? new CachedByteSource(new FileByteSource(video.file), 4 * 1024 * 1024, 16)
-          : new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16)
-      );
-
-      if (video.containerType === 'hls' && video.hlsPlaylist) {
-        const segments = video.hlsPlaylist.segments || [];
-        const segIdx = segments.findIndex((s: any) => s.startTime <= time && time < s.startTime + s.duration);
-        const segment = segIdx !== -1 ? segments[segIdx] : segments[0];
-        
-        if (segment) {
-          offsetTime = segment.startTime;
-          logger.remote(`HLS segment time: ${offsetTime}, url: ${segment.uri}`);
-          
-          setActiveAudioStartOffset(offsetTime);
-          activeAudioStartOffsetRef.current = offsetTime;
-
-          const result = await ffmpegService.extractHlsAudioSegment(video.id, segment.uri, {
-            index: streamIndex,
-            codec: codec || 'aac'
-          }, signal);
-          audioUrl = result.url;
-        }
-      } else if (!video.isRemote && video.file) {
-        // LOCAL FILE FLOW: Extract chunk directly from mounted file
-        const audioDuration = 30;
-        offsetTime = Math.max(0, time - 5);
-        logger.player(`Local file seek/load audio chunk starting at ${offsetTime}s`);
-        
-        setActiveAudioStartOffset(offsetTime);
-        activeAudioStartOffsetRef.current = offsetTime;
-
-        const result = await ffmpegService.extractLocalAudioSegment(
-          video.id,
-          video.file,
-          offsetTime,
-          audioDuration,
-          { index: streamIndex, codec },
-          signal
-        );
-        audioUrl = result.url;
-      } else {
-        const isRemote = video.isRemote;
-        const audioDuration = isRemote ? 30 : 120;
-        const { startOffset, endOffset, offsetTime: resolvedOffsetTime } = await getByteRangeForTimeRange(time, audioDuration, cachedSource);
-        offsetTime = resolvedOffsetTime;
-
-        logger.remote(`Range: ${startOffset}-${endOffset}, time: ${offsetTime}`);
-        
-        setActiveAudioStartOffset(offsetTime);
-        activeAudioStartOffsetRef.current = offsetTime;
-
-        const result = await ffmpegService.extractRemoteAudioSegment(
-          video.id,
-          cachedSource,
-          startOffset,
-          endOffset,
-          { index: streamIndex, codec },
-          signal
-        );
-        audioUrl = result.url;
-      }
-
-      if (audioUrl) {
-        const newTrack: CustomAudioTrack = {
-          id: `remote-aud-${streamIndex}-${offsetTime}`,
-          name: `Remote Audio (${offsetTime.toFixed(0)}s)`,
-          url: audioUrl,
-          isExtracted: true,
-          streamIndex,
-          codec: 'mp3'
-        };
-        setSelectedAudioTrack(newTrack);
-
-        // Auto-resume video after a short delay to let sync engine initialize
-        if (wasPlaying) {
-          // Wait for React to render the new src, then wait for canplay
-          setTimeout(() => {
-            if (audioRef.current) {
-              const tryResume = () => {
-                if (audioRef.current && audioRef.current.readyState >= 2 && videoRef.current) {
-                  // Sync audio time before resuming
-                  const targetAudioTime = Math.max(0, videoRef.current.currentTime - offsetTime);
-                  audioRef.current.currentTime = targetAudioTime;
-                  videoRef.current.play().catch(() => {});
-                } else if (videoRef.current) {
-                  // Audio not ready yet, try again shortly
-                  setTimeout(tryResume, 100);
-                }
-              };
-              tryResume();
-            } else if (videoRef.current) {
-              videoRef.current.play().catch(() => {});
-            }
-          }, 50);
-        }
-      } else if (wasPlaying && videoRef.current) {
-        // No audio URL produced, resume video anyway
-        videoRef.current.play().catch(() => {});
-      }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        logger.remote('Load aborted');
-        // Resume video if it was playing before
-        if (wasPlaying && videoRef.current) {
-          videoRef.current.play().catch(() => {});
-        }
-        return;
-      }
-      logger.error('Failed to extract remote audio segment:', err);
-      // Resume video on error too
-      if (wasPlaying && videoRef.current) {
-        videoRef.current.play().catch(() => {});
-      }
-    } finally {
-      setExtractingStreamIndex(null);
-      setIsKeyInitiated(false);
-    }
+  const loadAudioChunk = async (time: number, streamIndex: number, codec: string, isSeek = false) => {
+    // Legacy Blob-based audio loading is disabled. Audio playback is handled entirely by PlaybackController via Web Audio API.
   };
 
   const loadSubtitleChunk = async (time: number, streamIndex: number) => {
@@ -2164,69 +2056,78 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       }
 
-      if (!ffmpegService.isReady()) {
-        await ffmpegService.load(video.id);
+      const subStream = subtitleStreams.find(s => s.index === streamIndex);
+      const codec = subStream?.codec || 'srt';
+      const subDuration = video.isRemote ? 60 : 300;
+
+      if (!video.isRemote && video.file) {
+        offsetTime = Math.max(0, time - 10);
+      } else {
+        const { startOffset: sOff, endOffset: eOff, offsetTime: resolvedOffsetTime } = await getByteRangeForTimeRange(time, subDuration, cachedSource);
+        offsetTime = resolvedOffsetTime;
+        startOffset = sOff;
+        endOffset = eOff;
       }
 
-      if (video.containerType === 'hls' && video.hlsPlaylist) {
-        const segments = video.hlsPlaylist.segments || [];
-        const segIdx = segments.findIndex((s: any) => s.startTime <= time && time < s.startTime + s.duration);
-        const segment = segIdx !== -1 ? segments[segIdx] : segments[0];
-        
-        if (segment) {
-          offsetTime = segment.startTime;
-          setActiveSubtitleStartOffset(offsetTime);
-          const res = await fetch(segment.uri);
-          const text = await res.text();
-          cues = parseSubtitles(text, 'segment.vtt');
-          format = 'vtt';
+      setActiveSubtitleStartOffset(offsetTime);
+      activeSubtitleStartOffsetRef.current = offsetTime;
+
+      let fetchedCues: any[] | null = null;
+
+      if (playbackControllerRef.current) {
+        const bm = playbackControllerRef.current.getBufferManager();
+        const ff = playbackControllerRef.current.getFFmpeg();
+        if (ff) {
+          fetchedCues = await bm.getOrFetchSubtitles(
+            video.id,
+            streamIndex,
+            offsetTime,
+            subDuration,
+            codec,
+            !!video.isRemote,
+            video.file || null,
+            cachedSource,
+            startOffset,
+            endOffset,
+            signal
+          );
+          const isAss = /ass|ssa/i.test(codec);
+          const isVtt = /webvtt/i.test(codec);
+          format = isAss ? 'ass' : (isVtt ? 'vtt' : 'srt');
         }
-      } else if (!video.isRemote && video.file) {
-        // LOCAL FILE FLOW: Extract full subtitle track at once
-        const subStream = subtitleStreams.find(s => s.index === streamIndex);
-        const codec = subStream?.codec || 'srt';
-        logger.player(`Local file: extracting entire subtitle track index ${streamIndex} (${codec})`);
-        
-        offsetTime = 0; // complete track loaded from 0s
-        setActiveSubtitleStartOffset(offsetTime);
-        activeSubtitleStartOffsetRef.current = offsetTime;
+      }
 
-        const subtitleText = await ffmpegService.extractLocalSubtitleTrack(
-          video.id,
-          video.file,
-          { index: streamIndex, codec }
-        );
-        const isAss = /ass|ssa/i.test(codec);
-        const isVtt = /webvtt/i.test(codec);
-        const formatExt = isAss ? 'ass' : (isVtt ? 'vtt' : 'srt');
-        
-        cues = parseSubtitles(subtitleText, `subtitles.${formatExt}`);
-        format = formatExt === 'vtt' ? 'vtt' : (formatExt === 'ass' ? 'ass' : 'srt');
+      if (fetchedCues !== null) {
+        cues = fetchedCues;
       } else {
-        const isRemote = video.isRemote;
-        const subDuration = isRemote ? 60 : 300;
-        const { startOffset, endOffset, offsetTime: resolvedOffsetTime } = await getByteRangeForTimeRange(time, subDuration, cachedSource);
-        offsetTime = resolvedOffsetTime;
-
-        setActiveSubtitleStartOffset(offsetTime);
-        activeSubtitleStartOffsetRef.current = offsetTime;
-
-        const subStream = subtitleStreams.find(s => s.index === streamIndex);
-        const codec = subStream?.codec || 'srt';
+        // Fallback if playback controller or FFmpeg is not loaded yet
+        if (!ffmpegService.isReady()) {
+          await ffmpegService.load(video.id);
+        }
         
-        const subtitleText = await ffmpegService.extractRemoteSubtitleSegment(
-          video.id,
-          cachedSource,
-          startOffset,
-          endOffset,
-          { index: streamIndex, codec },
-          signal
-        );
-        
+        let subtitleText = '';
+        if (!video.isRemote && video.file) {
+          subtitleText = await extractLocalSubtitleSegment(
+            video.id,
+            video.file,
+            offsetTime,
+            subDuration,
+            { index: streamIndex, codec },
+            signal
+          );
+        } else {
+          subtitleText = await extractRemoteSubtitleSegment(
+            video.id,
+            cachedSource,
+            startOffset,
+            endOffset,
+            { index: streamIndex, codec },
+            signal
+          );
+        }
         const isAss = /ass|ssa/i.test(codec);
         const isVtt = /webvtt/i.test(codec);
         const formatExt = isAss ? 'ass' : (isVtt ? 'vtt' : 'srt');
-        
         cues = parseSubtitles(subtitleText, `subtitles.${formatExt}`);
         format = formatExt === 'vtt' ? 'vtt' : (formatExt === 'ass' ? 'ass' : 'srt');
       }
@@ -2296,41 +2197,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!videoRef.current) return;
     const newTime = videoRef.current.currentTime;
 
-    // Immediately save seeked position to parent state so seek states don't drift or restore old positions
-    onUpdateVideo({
-      ...video,
-      currentTime: newTime
-    });
+    // Suppress parent history state updates while user is actively freehand scrubbing
+    if (!isScrubbingRef.current) {
+      console.log("[Timeline]", "source=seekComplete", newTime);
+      onUpdateVideo({
+        ...video,
+        currentTime: newTime
+      });
+    }
 
-    // Chunk-based dynamic loading on seek
-    if (activeAudioStreamIndex !== null && !audioDebounceTimeoutRef.current) {
-      let needLoad = false;
-      if (video.containerType === 'hls' && video.hlsPlaylist) {
-        const segments = video.hlsPlaylist.segments || [];
-        const oldSegIdx = segments.findIndex((s: any) => s.startTime <= activeAudioStartOffsetRef.current && activeAudioStartOffsetRef.current < s.startTime + s.duration);
-        const newSegIdx = segments.findIndex((s: any) => s.startTime <= newTime && newTime < s.startTime + s.duration);
-        if (oldSegIdx !== newSegIdx) {
-          needLoad = true;
-        }
-      } else {
-        const isRemote = video.isRemote;
-        const audioDuration = isRemote ? 30 : 120;
-        if (newTime < activeAudioStartOffsetRef.current || newTime > activeAudioStartOffsetRef.current + audioDuration - 2) {
-          needLoad = true;
-        }
-      }
-
-      if (needLoad) {
-        logger.player(`Seek detected to ${newTime}s outside current chunk range. Fetching new audio chunk.`);
-        const activeStream = audioStreams.find(s => s.index === activeAudioStreamIndex);
-        await loadAudioChunk(newTime, activeAudioStreamIndex, activeStream?.codec || 'mp3');
+    // Sync PlaybackController playhead on seek
+    if (playbackControllerRef.current) {
+      const ctrlTime = playbackControllerRef.current.getCurrentTime();
+      if (Math.abs(ctrlTime - newTime) > 0.2) {
+        logger.player(`Seek detected to ${newTime}s in player. Updating playback controller...`);
+        activeAudioStartOffsetRef.current = Math.floor(newTime / 10) * 10;
+        playbackControllerRef.current.seek(newTime).catch(console.error);
       }
     }
 
     const containerType = (video.containerType || '').toLowerCase();
     const isMkv = containerType.includes('mkv') || containerType.includes('matroska') || (video.format || '').toLowerCase().includes('mkv') || (video.format || '').toLowerCase().includes('matroska');
 
-    if (activeSubStreamIndex !== null && (video.isRemote || isMkv) && !subDebounceTimeoutRef.current) {
+    if (activeSubStreamIndex !== null && !subDebounceTimeoutRef.current) {
       let needLoad = false;
       if (video.containerType === 'hls' && video.hlsPlaylist) {
         const segments = video.hlsPlaylist.segments || [];
@@ -2341,7 +2230,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       } else {
         const isRemote = video.isRemote;
-        const subDuration = isMkv ? (isRemote ? 300 : 600) : (isRemote ? 60 : 300);
+        const subDuration = isRemote ? (isMkv ? 300 : 60) : 300;
         if (newTime < activeSubtitleStartOffsetRef.current || newTime > activeSubtitleStartOffsetRef.current + subDuration - 5) {
           needLoad = true;
         }
@@ -2376,7 +2265,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     });
     syncAudioRef(null, streamIndex);
     if (!skipLoad) {
-      await loadAudioChunk(currentTime, streamIndex, codec);
+      await loadAudioChunk(currentTime, streamIndex, codec, false);
     }
   };
 
@@ -2428,10 +2317,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (isPlaying) {
-      videoRef.current.pause();
+      if (playbackControllerRef.current) {
+        playbackControllerRef.current.pause();
+      } else {
+        videoRef.current.pause();
+      }
       setIsPlaying(false);
     } else {
-      videoRef.current.play().catch(console.error);
+      if (playbackControllerRef.current) {
+        playbackControllerRef.current.play().catch(console.error);
+      } else {
+        videoRef.current.play().catch(console.error);
+      }
       setIsPlaying(true);
     }
     resetControlsTimeout();
@@ -2439,27 +2336,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleRewind = () => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-    setCurrentTime(videoRef.current.currentTime);
+    const targetTime = Math.max(0, videoRef.current.currentTime - 10);
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.seek(targetTime);
+    } else {
+      videoRef.current.currentTime = targetTime;
+    }
+    setCurrentTime(targetTime);
     resetControlsTimeout();
   };
 
   const handleForward = () => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
-    setCurrentTime(videoRef.current.currentTime);
+    const targetTime = Math.min(duration, videoRef.current.currentTime + 10);
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.seek(targetTime);
+    } else {
+      videoRef.current.currentTime = targetTime;
+    }
+    setCurrentTime(targetTime);
     resetControlsTimeout();
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (uiConfig.blockSeekingCompletely) return;
-    if (!videoRef.current) return;
     const seekTime = parseFloat(e.target.value);
-    videoRef.current.currentTime = seekTime;
-    setCurrentTime(seekTime);
-    resetControlsTimeout();
-    if (previewVideoRef.current) {
-      previewVideoRef.current.currentTime = seekTime;
+    console.log("[Timeline]", "source=drag", seekTime);
+    if (isScrubbingRef.current) {
+      setScrubTime(seekTime);
+      if (previewVideoRef.current) {
+        previewVideoRef.current.currentTime = seekTime;
+      }
+    } else {
+      if (playbackControllerRef.current) {
+        playbackControllerRef.current.seek(seekTime);
+      } else if (videoRef.current) {
+        videoRef.current.currentTime = seekTime;
+      }
+      setCurrentTime(seekTime);
+      resetControlsTimeout();
+      if (previewVideoRef.current) {
+        previewVideoRef.current.currentTime = seekTime;
+      }
     }
   };
 
@@ -2547,7 +2465,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Helper to compile audio options
   const getAudioOptions = () => {
-    const list: any[] = [{ type: 'original', name: 'Original', track: null }];
+    const list: any[] = [];
+    if (audioStreams.length === 0 && audioTracks.length === 0) {
+      list.push({ type: 'original', name: 'Original', track: null });
+    }
     audioStreams.forEach((s) => {
       const label = getLangLabel(s.language, `Track #${s.index}`);
       list.push({
@@ -2596,14 +2517,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       audioDebounceTimeoutRef.current = null;
     }
     setSelectedAudioTrack(track);
+    const targetIdx = track === null ? -1 : (track.streamIndex !== undefined ? track.streamIndex : -1);
+    setActiveAudioStreamIndex(targetIdx === -1 ? null : targetIdx);
+    
+    if (targetIdx !== -1) {
+      playbackControllerRef.current?.switchAudioTrack(targetIdx);
+    }
+    
     if (track === null) {
-      setActiveAudioStreamIndex(null);
       syncAudioRef(null, null);
     } else if (track.streamIndex !== undefined) {
-      setActiveAudioStreamIndex(track.streamIndex);
       syncAudioRef(null, track.streamIndex);
     } else {
-      setActiveAudioStreamIndex(null);
       syncAudioRef(track, null);
     }
   };
@@ -2708,7 +2633,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       audioDebounceTimeoutRef.current = setTimeout(async () => {
         audioDebounceTimeoutRef.current = null;
         if (currentAudioOptionIndexRef.current === nextIndex) {
-          await loadAudioChunk(videoRef.current ? videoRef.current.currentTime : currentTime, nextOpt.streamIndex, nextOpt.codec);
+          await loadAudioChunk(videoRef.current ? videoRef.current.currentTime : currentTime, nextOpt.streamIndex, nextOpt.codec, true);
         }
       }, 350);
     } else if (nextOpt.type === 'custom') {
@@ -2797,21 +2722,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
       if (showAddDialog) {
         setShowAddDialog(false);
-      } else {
+        return;
+      }
+      if (markingStartTime !== null) {
         if (videoRef.current) {
-          const curTimeSecs = Math.round(videoRef.current.currentTime);
-          setNewBookmarkTime(curTimeSecs);
-          setNewBookmarkEndTime(curTimeSecs + 90);
-          setNewBookmarkLabel(`Bookmark @ ${formatTime(curTimeSecs)}`);
-          setIsIntro(false);
-          setIsOutro(false);
-          setSkipEnabled(false);
-          setBookmarkType('standard');
-          setTypeDropdownOpen(false);
-          setStartTimeStr(formatTime(curTimeSecs));
-          setEndTimeStr(formatTime(curTimeSecs + 90));
+          const endTime = Math.round(videoRef.current.currentTime);
+          const startTime = markingStartTime;
+          setMarkingStartTime(null);
+          setEditingBookmark({
+            id: '',
+            time: startTime,
+            endTime: endTime,
+            title: '',
+            label: '',
+            category: 'Nudity',
+            description: '',
+            createdAt: '',
+            updatedAt: ''
+          });
           setShowAddDialog(true);
         }
+        return;
+      }
+      if (markingStartTime === null) {
+        if (videoRef.current) {
+          setMarkingStartTime(Math.round(videoRef.current.currentTime));
+          setEditingBookmark(undefined);
+        }
+        return;
       }
       return;
     }
@@ -2922,11 +2860,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       e.preventDefault();
       if (activeSkipBookmarkRef.current) {
         const bm = activeSkipBookmarkRef.current;
-        const targetTime = (bm.isOutro || bm.category === 'Outro') ? duration : bm.endTime!;
+        const targetTime = (bm.isOutro || bm.category === 'Outro') 
+          ? duration 
+          : (bm.endTime !== undefined && bm.endTime !== null ? bm.endTime : bm.time + 90);
         if (videoRef.current) {
           videoRef.current.currentTime = targetTime;
           setCurrentTime(targetTime);
-          triggerSwitchToast(`Skipped ${bm.title || bm.label}`);
+          triggerSwitchToast(`Skipped ${bm.label || bm.title || bm.category || 'Scene'}`);
         }
       }
     } else if (pressedKey === nextSubKey) {
@@ -3077,16 +3017,55 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     hasSeekedRef.current = false;
   }, [video.url]);
 
-  // Autoplay (autostart) on load
+  // PlaybackController lifecycle hook
   useEffect(() => {
+    let active = true;
+    let controller: PlaybackController | null = null;
+
     if (videoRef.current) {
-      // Seek / resume is handled strictly and reliably in onLoadedMetadata.
-      // We only run autoplay playback trigger here.
-      videoRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch(err => logger.player('Autoplay blocked:', err));
+      const ffmpegMgr = new FFmpegManager(video.id);
+      const fileOrSource = video.file || new HttpByteSource(video.url);
+      const demuxMgr = new DemuxManager(ffmpegMgr, fileOrSource);
+      controller = new PlaybackController(ffmpegMgr, demuxMgr, video.seekMap);
+      
+      playbackControllerRef.current = controller;
+
+      controller.setBufferingCallback((buffering) => {
+        if (active) setIsBuffering(buffering);
+      });
+
+      controller.initialize(videoRef.current, activeAudioStreamIndex).then(() => {
+        if (active) {
+          const mediaName = (video.title || video.fileName || 'Unknown media')
+            .replace(/\.[a-z\d]{2,5}$/i, '')
+            .replace(/[._]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          logger.playback(`ready • ${mediaName}`);
+          if (controller) {
+            controller.play()
+              .then(() => setIsPlaying(true))
+              .catch(err => logger.player('Autoplay blocked:', err));
+          }
+        }
+      });
     }
-  }, [video.url]);
+
+    return () => {
+      active = false;
+      if (controller) {
+        controller.destroy();
+      }
+      playbackControllerRef.current = null;
+    };
+  }, [video.id, video.file, video.url]);
+
+  // Handle track switches on-the-fly without rebuilding the controller
+  useEffect(() => {
+    if (playbackControllerRef.current) {
+      playbackControllerRef.current.switchAudioTrack(activeAudioStreamIndex);
+    }
+  }, [activeAudioStreamIndex]);
 
   // Pause/Resume on Window Focus changes if enabled (Fullscreen only)
   useEffect(() => {
@@ -3097,7 +3076,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (!isCurrentFullscreen) return;
       if (videoRef.current && !videoRef.current.paused) {
         logger.player('Focus lost, auto-pausing video playback');
-        videoRef.current.pause();
+        if (playbackControllerRef.current) {
+          playbackControllerRef.current.pause();
+        } else {
+          videoRef.current.pause();
+        }
         setIsPlaying(false);
         wasPausedByFocusLossRef.current = true;
       }
@@ -3106,9 +3089,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const handleFocusGain = () => {
       if (wasPausedByFocusLossRef.current && videoRef.current && videoRef.current.paused) {
         logger.player('Focus regained, auto-resuming video playback');
-        videoRef.current.play()
-          .then(() => setIsPlaying(true))
-          .catch(err => logger.player('Autoplay play error on focus gain:', err));
+        const p = playbackControllerRef.current 
+          ? playbackControllerRef.current.play() 
+          : videoRef.current.play();
+        p.then(() => setIsPlaying(true))
+         .catch(err => logger.player('Autoplay play error on focus gain:', err));
         wasPausedByFocusLossRef.current = false;
       }
     };
@@ -3119,7 +3104,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (document.visibilityState === 'hidden') {
         if (videoRef.current && !videoRef.current.paused) {
           logger.player('Tab hidden, auto-pausing video playback');
-          videoRef.current.pause();
+          if (playbackControllerRef.current) {
+            playbackControllerRef.current.pause();
+          } else {
+            videoRef.current.pause();
+          }
           setIsPlaying(false);
           wasPausedByFocusLossRef.current = true;
         }
@@ -3225,7 +3214,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Periodically save current playback position to parent state
   useEffect(() => {
-    const intervalMs = (historySaveInterval || 5) * 1000;
+    const intervalMs = Math.max(5, historySaveInterval || 5) * 1000;
     const interval = setInterval(() => {
       if (videoRef.current && !videoRef.current.paused) {
         const exitTime = Date.now();
@@ -3268,7 +3257,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const targetAudio = settings.defaultAudio || 'ENG';
         const targetSub = settings.defaultSub || 'ENG';
 
-        // Auto-select audio stream
+        // Auto-select audio stream (for both local and remote)
         if (targetAudio !== 'Original' && !selectedAudioTrack) {
           const stream = audioStreams.find(s => (
             targetAudio === 'ENG' ? (s.language?.toLowerCase() === 'eng' || s.language?.toLowerCase() === 'en') :
@@ -3282,7 +3271,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         }
 
-        // Always auto-select the first audio track when available
+        // Always auto-select the first audio track when available (for both local and remote)
         // Browser native decoding from MKV container is unreliable, so always extract via FFmpeg
         if (!selectedAudioTrack && audioStreams.length > 0) {
           const firstAudio = audioStreams[0];
@@ -3379,18 +3368,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return `${mins}m`;
   };
 
-  const parseTimeStringToSeconds = (val: string): number => {
-    const clean = val.replace(/[^0-9:]/g, '');
-    const parts = clean.split(':').map(Number);
-    if (parts.length === 2) {
-      return (parts[0] * 60) + parts[1];
-    }
-    if (parts.length === 3) {
-      return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
-    }
-    const parsed = parseInt(clean, 10);
-    return isNaN(parsed) ? 0 : parsed;
-  };
 
   // Progress Bar Hover Indicator
   const handleProgressMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
@@ -3685,7 +3662,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (videoRef.current) {
               const time = videoRef.current.currentTime;
               const shouldUpdate = !video.currentTime || hasSeekedRef.current || time > 0;
-              if (shouldUpdate) {
+              if (shouldUpdate && !isScrubbingRef.current && !debouncedSeekTimeoutRef.current) {
+                console.log("[Timeline]", "source=playback", time);
                 setCurrentTime(time);
                 latestTimeRef.current = time;
               }
@@ -3693,7 +3671,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }
           }}
           onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onPause={() => {
+            setIsPlaying(false);
+            onUpdateVideoRef.current((prev: any) => ({
+              ...prev,
+              currentTime: latestTimeRef.current,
+              totalTimeWatched: Math.round(totalTimeWatchedRef.current)
+            }), false, video.id);
+          }}
           onWaiting={() => setIsBuffering(true)}
           onPlaying={() => setIsBuffering(false)}
           onSeeked={handleVideoSeeked}
@@ -3701,6 +3686,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onError={handleVideoError}
           onEnded={() => {
             scrobbleToTrakt();
+            if (!ratingPromptedRef.current) {
+              setShowRatingPrompt(true);
+              ratingPromptedRef.current = true;
+            }
+
+            const exitTime = Date.now();
+            const sessionDuration = (exitTime - mountTimeRef.current) / 1000;
+            const newSession = {
+              startedAt: new Date(mountTimeRef.current).toISOString(),
+              endedAt: new Date(exitTime).toISOString(),
+              durationWatched: Math.round(sessionDuration)
+            };
+            const existingSessions = (video as any).sessions || [];
+            const updatedSessions = [...existingSessions, newSession];
+
+            let timeToFinish = (video as any).timeToFinish;
+            if (!timeToFinish && duration > 0) {
+              const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
+              timeToFinish = (exitTime - firstPlay) / 1000;
+            }
+
+            onUpdateVideoRef.current((prev: any) => ({
+              ...prev,
+              currentTime: duration,
+              totalTimeWatched: Math.round(totalTimeWatchedRef.current),
+              sessions: updatedSessions,
+              timeToFinish: timeToFinish ? Math.round(timeToFinish) : prev.timeToFinish,
+              firstPlayTimestamp: prev.firstPlayTimestamp || mountTimeRef.current
+            }), true, video.id, true);
+
             // Auto-submit bookmarks to TheIntroDB when video finishes
             if (!hadTidbDataRef.current && bookmarks.length > 0) {
               logger.player('[TheIntroDB] Video ended. Auto-submitting existing bookmarks to TIDB...');
@@ -3711,19 +3726,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         />
       </div>
 
-      {/* Hidden Secondary Audio Tag for sync tracks */}
-      <audio 
-        ref={audioRef} 
-        src={selectedAudioTrack?.url || ''}
-        preload="auto"
-        onLoadStart={() => {
-          // Immediately pause when a new source starts loading to prevent playback from time 0
-          if (audioRef.current) {
-            audioRef.current.pause();
-          }
-        }}
-        style={{ display: 'none' }}
-      />
       {false && activeSubtitleStartOffset}
 
       {/* Subtitles Overlay */}
@@ -3950,7 +3952,72 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Buffering ring loader */}
       {isBuffering && (
         <div className="buffering-spinner-overlay" onClick={(e) => e.stopPropagation()}>
-          <div className="netflix-buffer-ring"></div>
+          <svg className="dragon-fire-spinner" viewBox="0 0 120 120" width="120" height="120">
+            <defs>
+              <linearGradient id="dragon-body-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ff3300" />
+                <stop offset="35%" stopColor="#ff6600" />
+                <stop offset="70%" stopColor="#ffcc00" />
+                <stop offset="100%" stopColor="#ff3300" />
+              </linearGradient>
+              <radialGradient id="fire-glow-grad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="30%" stopColor="#ffff66" stopOpacity="1" />
+                <stop offset="70%" stopColor="#ff5500" stopOpacity="0.85" />
+                <stop offset="100%" stopColor="#ff0000" stopOpacity="0" />
+              </radialGradient>
+              <filter id="glow-filter" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            
+            {/* Circular Fire Dragon Serpent */}
+            <g className="dragon-group" style={{ transformOrigin: '60px 60px' }}>
+              {/* Serpentine Flame Tail */}
+              <path 
+                d="M 60,20 A 40,40 0 1,1 25,48" 
+                fill="none" 
+                stroke="url(#dragon-body-grad)" 
+                strokeWidth="6.5" 
+                strokeLinecap="round" 
+                filter="url(#glow-filter)"
+              />
+              
+              {/* Snarling Snout and Open Mouth */}
+              <path 
+                d="M 28,32 C 26,30 20,31 18,35 C 16,39 20,43 23,42 C 20,44 16,49 20,51 C 23,52 26,46 30,43 Z" 
+                fill="url(#dragon-body-grad)" 
+                filter="url(#glow-filter)"
+              />
+              {/* Horn details */}
+              <path 
+                d="M 28,32 C 29,27 33,23 38,22 L 34,29 Z" 
+                fill="url(#dragon-body-grad)"
+                filter="url(#glow-filter)"
+              />
+              
+              {/* Spine Spikes / Flames */}
+              <path d="M 60,17 L 62,23 L 58,23 Z" fill="#ffcc00" filter="url(#glow-filter)" />
+              <path d="M 80,25 L 84,30 L 79,32 Z" fill="#ffcc00" filter="url(#glow-filter)" />
+              <path d="M 95,45 L 101,48 L 95,52 Z" fill="#ffcc00" filter="url(#glow-filter)" />
+              <path d="M 98,70 L 104,71 L 98,76 Z" fill="#ffcc00" filter="url(#glow-filter)" />
+              <path d="M 85,92 L 89,98 L 83,97 Z" fill="#ffcc00" filter="url(#glow-filter)" />
+              
+              {/* Tail Flame Tip */}
+              <path 
+                d="M 25,48 C 22,54 22,64 25,72 C 28,78 34,82 40,85" 
+                fill="none" 
+                stroke="url(#dragon-body-grad)" 
+                strokeWidth="3.5" 
+                strokeLinecap="round"
+                filter="url(#glow-filter)"
+              />
+            </g>
+          </svg>
         </div>
       )}
 
@@ -4141,7 +4208,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className="skip-btn"
           style={{
             position: 'absolute',
-            bottom: controlsVisible ? '120px' : '40px',
+            bottom: controlsVisible ? '160px' : '40px',
             right: '40px',
             zIndex: 90,
             background: 'rgba(0,0,0,0.7)',
@@ -4203,9 +4270,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Bookmark Timeline Dots */}
                   {bookmarks.map((bm) => {
                     const percent = (bm.time / (duration || 1)) * 100;
-                    const isOutroWithoutEnd = bm.isOutro && (bm.endTime === undefined || bm.endTime === null);
+                    const isOutro = bm.isOutro || bm.category === 'Outro';
+                    const isIntro = bm.isIntro || bm.category === 'Intro';
+                    const isOutroWithoutEnd = isOutro && (bm.endTime === undefined || bm.endTime === null);
                     const effectiveEndTime = isOutroWithoutEnd ? duration : bm.endTime;
-                    const hasRange = (effectiveEndTime !== undefined && effectiveEndTime !== null && effectiveEndTime > bm.time) || bm.isOutro;
+                    const hasRange = (effectiveEndTime !== undefined && effectiveEndTime !== null && effectiveEndTime > bm.time) || isOutro;
                     const endPercent = hasRange ? ((effectiveEndTime || duration) / (duration || 1)) * 100 : percent;
                     const widthPercent = Math.max(0, endPercent - percent);
                     
@@ -4213,13 +4282,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       return (
                         <div 
                           key={bm.id}
-                          className={`timeline-bookmark-range ${bm.isIntro ? 'intro-range' : bm.isOutro ? 'outro-range' : ''}`}
+                          className={`timeline-bookmark-range ${isIntro ? 'intro-range' : isOutro ? 'outro-range' : ''}`}
                           style={{ 
                             left: `${percent}%`,
                             width: `${widthPercent}%`,
                             position: 'absolute',
-                            height: '100%',
-                            background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : bm.category === 'Outro' ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
+                            height: '4px',
+                            background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : isOutro ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
                             borderRadius: '2px',
                             cursor: 'pointer',
                             zIndex: 4
@@ -4234,7 +4303,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           }}
                         >
                           <div className="timeline-bookmark-tooltip">
-                            <span className="tooltip-label">{bm.label} {bm.isOutro ? '(Outro)' : '(Range)'}</span>
+                            <span className="tooltip-label">{bm.label || (isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark')} {isOutro ? '(Outro)' : '(Range)'}</span>
                             <span className="tooltip-time">{formatTime(bm.time)} - {isOutroWithoutEnd ? 'End' : formatTime(effectiveEndTime!)}</span>
                           </div>
                         </div>
@@ -4250,7 +4319,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           position: 'absolute',
                           height: '100%',
                           width: '4px',
-                          background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : bm.category === 'Outro' ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
+                          background: bm.category === 'Hot Scene' ? 'rgba(239, 68, 68, 0.8)' : isOutro ? 'rgba(168, 85, 247, 0.8)' : 'rgba(59, 130, 246, 0.8)',
                           borderRadius: '2px',
                           zIndex: 4,
                           cursor: 'pointer'
@@ -4265,7 +4334,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         }}
                       >
                         <div className="timeline-bookmark-tooltip">
-                          <span className="tooltip-label">{bm.label}</span>
+                          <span className="tooltip-label">{bm.label || (isIntro ? 'Intro' : isOutro ? 'Outro' : 'Bookmark')}</span>
                           <span className="tooltip-time">{formatTime(bm.time)}</span>
                         </div>
                       </div>
@@ -4275,7 +4344,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Hover / Scrub Preview Tooltip (Always rendered to keep preview video loaded and warm) */}
                   <div 
                     className={`scrub-hover-tooltip ${(hoverTime || isScrubbing) ? 'visible' : ''}`} 
-                    style={{ left: `${isScrubbing ? (currentTime / (duration || 1)) * 100 : hoverPercent}%` }}
+                    style={{ left: `${isScrubbing ? ((scrubTime !== null ? scrubTime : currentTime) / (duration || 1)) * 100 : hoverPercent}%` }}
                   >
                     <div className="scrub-hover-preview-box">
                       <video
@@ -4289,7 +4358,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
                     {showTimeDisplay && (
                       <div className="scrub-hover-time">
-                        {isScrubbing ? formatTime(currentTime) : hoverTime}
+                        {isScrubbing ? formatTime(scrubTime !== null ? scrubTime : currentTime) : hoverTime}
                       </div>
                     )}
                   </div>
@@ -4299,14 +4368,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     min={0}
                     max={duration || 100}
                     step={0.1}
-                    value={currentTime}
+                    value={isScrubbing && scrubTime !== null ? scrubTime : currentTime}
                     onChange={handleSeek}
                     onMouseMove={handleProgressMouseMove}
                     onMouseLeave={handleProgressMouseLeave}
-                    onMouseDown={() => setIsScrubbing(true)}
-                    onMouseUp={() => setIsScrubbing(false)}
-                    onTouchStart={() => setIsScrubbing(true)}
-                    onTouchEnd={() => setIsScrubbing(false)}
+                    onMouseDown={() => {
+                      if (debouncedSeekTimeoutRef.current) {
+                        clearTimeout(debouncedSeekTimeoutRef.current);
+                      }
+                      setIsScrubbing(true);
+                      setScrubTime(currentTime);
+                    }}
+                    onTouchStart={() => {
+                      if (debouncedSeekTimeoutRef.current) {
+                        clearTimeout(debouncedSeekTimeoutRef.current);
+                      }
+                      setIsScrubbing(true);
+                      setScrubTime(currentTime);
+                    }}
                     className="scrub-bar-premium"
                   />
                 </div>
@@ -4477,7 +4556,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       onAdd={() => {
                         if (videoRef.current) {
                           setEditingBookmark(undefined);
-                          setShowAddDialog(true);
+                          setMarkingStartTime(Math.round(videoRef.current.currentTime));
                           setShowBookmarksPopover(false);
                         }
                       }}
@@ -4485,9 +4564,62 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     />
                   )}
                 </div>
+
               </div>
 
               <div className="bottom-controls-right-group">
+                {markingStartTime !== null && (
+                  <button
+                    onClick={() => {
+                      if (videoRef.current) {
+                        const startTime = markingStartTime;
+                        const endTime = Math.round(videoRef.current.currentTime);
+                        setMarkingStartTime(null);
+                        setEditingBookmark({
+                          id: '',
+                          time: startTime,
+                          endTime: endTime,
+                          title: '',
+                          label: '',
+                          category: 'Nudity',
+                          description: '',
+                          createdAt: '',
+                          updatedAt: ''
+                        });
+                        setShowAddDialog(true);
+                      }
+                    }}
+                    className="marking-hud-button-controls marking-hud-button-desktop"
+                    style={{
+                      background: '#e50914',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '20px',
+                      padding: '6px 14px',
+                      fontSize: '0.85rem',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(229, 9, 20, 0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontFamily: 'Outfit, sans-serif',
+                      animation: 'pulseMarking 1.5s infinite alternate',
+                      height: '36px',
+                      marginRight: '15px'
+                    }}
+                  >
+                    <span style={{
+                      display: 'inline-block',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#fff',
+                      animation: 'flashDot 1s infinite'
+                    }} />
+                    <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
+                  </button>
+                )}
                 <button 
                   className="control-btn-settings" 
                   onClick={() => setShowSettingsPanel(prev => !prev)} 
@@ -4662,9 +4794,79 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
+
       {/* Add Bookmark Dialog Overlay */}
       {showAddDialog && (
-        </div>
+        <BookmarkModal
+          initialTime={Math.round(videoRef.current?.currentTime || 0)}
+          initialEndTime={Math.round((videoRef.current?.currentTime || 0) + 90)}
+          initialBookmark={editingBookmark}
+          videoElement={videoRef.current}
+          videoTitle={video.title || video.fileName || "Video"}
+          onSave={(bm) => {
+            handleSaveBookmark(bm as Bookmark);
+            setShowAddDialog(false);
+          }}
+          onClose={() => setShowAddDialog(false)}
+        />
+      )}
+
+
+
+      {markingStartTime !== null && (
+        <button
+          onClick={() => {
+            if (videoRef.current) {
+              const startTime = markingStartTime;
+              const endTime = Math.round(videoRef.current.currentTime);
+              setMarkingStartTime(null);
+              setEditingBookmark({
+                id: '',
+                time: startTime,
+                endTime: endTime,
+                title: '',
+                label: '',
+                category: 'Nudity',
+                description: '',
+                createdAt: '',
+                updatedAt: ''
+              });
+              setShowAddDialog(true);
+            }
+          }}
+          className="marking-hud-button-mobile"
+          style={{
+            position: 'absolute',
+            bottom: controlsVisible ? '120px' : '45px',
+            right: '1.5rem',
+            background: '#e50914',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '24px',
+            padding: '10px 20px',
+            fontSize: '0.9rem',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            boxShadow: '0 4px 15px rgba(229, 9, 20, 0.4)',
+            zIndex: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontFamily: 'Outfit, sans-serif',
+            animation: 'pulseMarking 1.5s infinite alternate',
+            transition: 'bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          <span style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: '#fff',
+            animation: 'flashDot 1s infinite'
+          }} />
+          <span>Marking... tap to end ({formatTime(markingStartTime)} - {formatTime(currentTime)})</span>
+        </button>
       )}
 
       <input 
@@ -4778,6 +4980,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Styles */}
       <style>{`
+        @media (max-width: 768px) {
+          .marking-hud-button-desktop {
+            display: none !important;
+          }
+          .marking-hud-button-mobile {
+            display: flex !important;
+          }
+        }
+        @media (min-width: 769px) {
+          .marking-hud-button-desktop {
+            display: flex !important;
+          }
+          .marking-hud-button-mobile {
+            display: none !important;
+          }
+        }
+
         .player-container {
           position: fixed;
           inset: 0;
@@ -5112,117 +5331,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           background: rgba(239, 68, 68, 0.12);
         }
 
-        /* Bookmark dialog popup */
-        .bookmark-dialog-overlay {
-          position: absolute;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.6);
-          z-index: 60;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          backdrop-filter: blur(4px);
-        }
-        .bookmark-dialog-box {
-          background: #181818;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          width: 90%;
-          max-width: 400px;
-          border-radius: 12px;
-          padding: 1.5rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1.25rem;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
-          font-family: sans-serif;
-        }
-        .bookmark-dialog-box h3 {
-          margin: 0;
-          font-size: 1.2rem;
-          font-weight: 600;
-          color: #ffffff;
-        }
-        .dialog-field {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-        .dialog-field label {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: rgba(255, 255, 255, 0.4);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .dialog-field input[type="text"],
-        .dialog-field input[type="number"] {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          color: #ffffff;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 0.9rem;
-          outline: none;
-          transition: border-color 0.15s ease;
-        }
-        .dialog-field input:focus {
-          border-color: #e50914;
-        }
-        .dialog-field-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
-        }
-        .dialog-checkboxes {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          margin-top: 4px;
-        }
-        .dialog-checkbox-label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          color: rgba(255, 255, 255, 0.85);
-          font-size: 0.85rem;
-          cursor: pointer;
-          user-select: none;
-        }
-        .dialog-checkbox-label input {
-          width: 15px;
-          height: 15px;
-          cursor: pointer;
-          accent-color: #e50914;
-        }
-        .dialog-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          margin-top: 4px;
-        }
-        .dialog-btn {
-          padding: 8px 16px;
-          border-radius: 6px;
-          font-size: 0.85rem;
-          font-weight: 600;
-          cursor: pointer;
-          border: none;
-          transition: background-color 0.15s ease;
-        }
-        .dialog-btn.btn-secondary {
-          background: rgba(255, 255, 255, 0.1);
-          color: #ffffff;
-        }
-        .dialog-btn.btn-secondary:hover {
-          background: rgba(255, 255, 255, 0.15);
-        }
-        .dialog-btn.btn-primary {
-          background: #e50914;
-          color: #ffffff;
-        }
-        .dialog-btn.btn-primary:hover {
-          background: #b80710;
-        }
+
 
         /* Animations */
         @keyframes slideInRight {
@@ -5608,7 +5717,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           left: 0;
           height: 4px;
           background: #e50914;
-          border-radius: 2px;
+          border-radius: 2px 0 0 2px;
           z-index: 3;
         }
         .scrub-bar-premium {
@@ -5631,14 +5740,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           border-radius: 50%;
           background: #e50914;
           cursor: pointer;
-          transform: scale(0.65);
-          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+          transform: scale(0);
+          opacity: 0;
+          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
           box-shadow: 0 0 10px rgba(229, 9, 20, 0.8);
           z-index: 10;
         }
         .scrub-container-premium:hover .scrub-bar-premium::-webkit-slider-thumb,
         .scrub-bar-premium:active::-webkit-slider-thumb {
           transform: scale(1.4);
+          opacity: 1;
         }
         .scrub-bar-premium::-moz-range-thumb {
           width: 22px;
@@ -5647,20 +5758,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           border-radius: 50%;
           background: #e50914;
           cursor: pointer;
-          transform: scale(0.65);
-          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+          transform: scale(0);
+          opacity: 0;
+          transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
           box-shadow: 0 0 10px rgba(229, 9, 20, 0.8);
           z-index: 10;
         }
         .scrub-container-premium:hover .scrub-bar-premium::-moz-range-thumb,
         .scrub-bar-premium:active::-moz-range-thumb {
           transform: scale(1.4);
+          opacity: 1;
         }
         .scrub-container-premium:hover .scrub-track-bg,
         .scrub-container-premium:hover .scrub-track-buffered,
         .scrub-container-premium:hover .scrub-track-progress,
-        .scrub-container-premium:hover .timeline-bookmark-range,
-        .scrub-container-premium:hover .timeline-bookmark-dot {
+        .scrub-container-premium:hover .scrub-track-progress,
+        .scrub-container-premium:hover .timeline-bookmark-range {
           height: 6px !important;
         }
 
@@ -6249,13 +6362,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           to { transform: translateX(0); opacity: 1; }
         }
 
-        .netflix-buffer-ring {
-          width: 58px;
-          height: 58px;
-          border: 4px solid rgba(229, 9, 20, 0.15);
-          border-top-color: #e50914;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
+        .dragon-fire-spinner {
+          display: block;
+          filter: drop-shadow(0 0 10px rgba(255, 69, 0, 0.75));
+        }
+        .dragon-group {
+          animation: spinDragon 1.5s linear infinite;
+        }
+        .flare-group {
+          animation: pulseFlare 0.5s ease-in-out infinite alternate;
+        }
+        @keyframes spinDragon {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulseFlare {
+          0% { transform: scale(0.85); opacity: 0.85; }
+          100% { transform: scale(1.15); opacity: 1; }
         }
         .buffering-spinner-overlay {
           position: absolute;
@@ -6264,11 +6387,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          background: rgba(0, 0, 0, 0.2);
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+          background: rgba(0, 0, 0, 0.25);
         }
 
         /* Non-blocking Toast notification */
@@ -6429,11 +6548,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             max-height: 200px;
           }
           /* Touch-safety thumb size scaling */
-          .scrub-bar-premium::-webkit-slider-thumb {
-            transform: scale(1.1) !important;
+          .scrub-container-premium:hover .scrub-bar-premium::-webkit-slider-thumb,
+          .scrub-bar-premium:active::-webkit-slider-thumb {
+            transform: scale(1.4) !important;
+            opacity: 1 !important;
           }
-          .scrub-bar-premium::-moz-range-thumb {
-            transform: scale(1.1) !important;
+          .scrub-container-premium:hover .scrub-bar-premium::-moz-range-thumb,
+          .scrub-bar-premium:active::-moz-range-thumb {
+            transform: scale(1.4) !important;
+            opacity: 1 !important;
           }
         }
 
@@ -6715,6 +6838,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           color: #cccccc;
           margin: 0;
           line-height: 1.5;
+        }
+        @keyframes pulseMarking {
+          from { transform: scale(1); }
+          to { transform: scale(1.03); }
+        }
+        @keyframes flashDot {
+          0% { opacity: 0.3; }
+          50% { opacity: 1; }
+          100% { opacity: 0.3; }
+        }
+        .marking-hud-button:hover {
+          background: #f40b17 !important;
         }
       `}</style>
     </div>

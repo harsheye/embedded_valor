@@ -1,7 +1,6 @@
-export interface ByteSource {
-  read(start: number, end: number, signal?: AbortSignal): Promise<Uint8Array>;
-  getSize(): Promise<number>;
-}
+import type { ByteSource } from '../local/localByteSource';
+
+type DownloadPriority = 'current' | 'prefetch';
 
 export class HttpByteSource implements ByteSource {
   private url: string;
@@ -69,6 +68,193 @@ export class HttpByteSource implements ByteSource {
     }
     const arrayBuffer = await response.arrayBuffer();
     return new Uint8Array(arrayBuffer);
+  }
+}
+
+export class RemoteDownloadManager implements ByteSource {
+  private size: number | null = null;
+  private cache = new Map<number, Uint8Array>();
+  private lruList: number[] = [];
+  private inFlight = new Map<number, Promise<Uint8Array>>();
+  private activeControllers = new Set<AbortController>();
+  private bandwidthSamples: number[] = [];
+  private generation = 0;
+
+  constructor(
+    private source: ByteSource,
+    private chunkSize = 4 * 1024 * 1024,
+    private cacheLimit = 24,
+    private maxRetries = 3
+  ) {}
+
+  async getSize(): Promise<number> {
+    if (this.size !== null) return this.size;
+    this.size = await this.source.getSize();
+    return this.size;
+  }
+
+  cancelAll(): void {
+    this.generation++;
+    for (const controller of this.activeControllers) {
+      controller.abort();
+    }
+    this.activeControllers.clear();
+    this.inFlight.clear();
+  }
+
+  getEstimatedBandwidthMbps(): number {
+    if (!this.bandwidthSamples.length) return 0;
+    const averageBytesPerMs = this.bandwidthSamples.reduce((sum, value) => sum + value, 0) / this.bandwidthSamples.length;
+    return averageBytesPerMs * 8 / 1000;
+  }
+
+  async prefetch(start: number, end: number, signal?: AbortSignal): Promise<void> {
+    await this.readRange(start, end, signal, 'prefetch');
+  }
+
+  async read(start: number, end: number, signal?: AbortSignal): Promise<Uint8Array> {
+    return this.readRange(start, end, signal, 'current');
+  }
+
+  private async readRange(
+    start: number,
+    end: number,
+    signal: AbortSignal | undefined,
+    priority: DownloadPriority
+  ): Promise<Uint8Array> {
+    const size = await this.getSize();
+    const actualEnd = Math.min(end, size - 1);
+    if (start > actualEnd) return new Uint8Array(0);
+
+    const startChunk = Math.floor(start / this.chunkSize);
+    const endChunk = Math.floor(actualEnd / this.chunkSize);
+    const chunkIndexes: number[] = [];
+    for (let index = startChunk; index <= endChunk; index++) {
+      chunkIndexes.push(index);
+    }
+
+    if (priority === 'current') {
+      chunkIndexes.sort((a, b) => Math.abs(a - startChunk) - Math.abs(b - startChunk));
+    }
+
+    for (const index of chunkIndexes) {
+      await this.ensureChunk(index, signal, priority);
+    }
+
+    const result = new Uint8Array(actualEnd - start + 1);
+    let resultOffset = 0;
+    for (const index of chunkIndexes) {
+      const chunkData = this.cache.get(index);
+      if (!chunkData) throw new Error(`Remote byte chunk ${index} was not cached after download`);
+
+      const chunkStart = index * this.chunkSize;
+      const readStart = Math.max(0, start - chunkStart);
+      const readEnd = Math.min(chunkData.length - 1, actualEnd - chunkStart);
+      const length = readEnd - readStart + 1;
+      if (length > 0) {
+        result.set(chunkData.subarray(readStart, readStart + length), resultOffset);
+        resultOffset += length;
+      }
+    }
+
+    return result;
+  }
+
+  private async ensureChunk(index: number, signal: AbortSignal | undefined, priority: DownloadPriority): Promise<void> {
+    if (this.cache.has(index)) {
+      this.touchLru(index);
+      return;
+    }
+
+    let promise = this.inFlight.get(index);
+    if (!promise) {
+      promise = this.downloadChunk(index, signal, priority);
+      this.inFlight.set(index, promise);
+    }
+
+    const bytes = await promise;
+    this.cache.set(index, bytes);
+    this.touchLru(index);
+    this.evict(index);
+  }
+
+  private async downloadChunk(index: number, outerSignal: AbortSignal | undefined, priority: DownloadPriority): Promise<Uint8Array> {
+    const generation = this.generation;
+    const size = await this.getSize();
+    const start = index * this.chunkSize;
+    const end = Math.min((index + 1) * this.chunkSize - 1, size - 1);
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      if (outerSignal?.aborted || generation !== this.generation) {
+        throw new DOMException('Remote range request aborted', 'AbortError');
+      }
+
+      const controller = new AbortController();
+      this.activeControllers.add(controller);
+      const abortOuter = () => controller.abort();
+      outerSignal?.addEventListener('abort', abortOuter, { once: true });
+
+      try {
+        const startedAt = performance.now();
+        const bytes = await this.source.read(start, end, controller.signal);
+        const elapsed = Math.max(1, performance.now() - startedAt);
+        this.recordBandwidth(bytes.byteLength / elapsed);
+        return bytes;
+      } catch (error) {
+        lastError = error;
+        if (controller.signal.aborted || outerSignal?.aborted || generation !== this.generation) {
+          throw error;
+        }
+        await this.delay(this.retryDelayMs(attempt, priority), outerSignal);
+      } finally {
+        outerSignal?.removeEventListener('abort', abortOuter);
+        this.activeControllers.delete(controller);
+        this.inFlight.delete(index);
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(`Failed to download remote range chunk ${index}`);
+  }
+
+  private recordBandwidth(bytesPerMs: number): void {
+    this.bandwidthSamples.push(bytesPerMs);
+    if (this.bandwidthSamples.length > 8) {
+      this.bandwidthSamples.shift();
+    }
+  }
+
+  private retryDelayMs(attempt: number, priority: DownloadPriority): number {
+    const base = priority === 'current' ? 180 : 420;
+    return base * 2 ** attempt;
+  }
+
+  private delay(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException('Remote range retry aborted', 'AbortError'));
+        return;
+      }
+      const id = setTimeout(resolve, ms);
+      signal?.addEventListener('abort', () => {
+        clearTimeout(id);
+        reject(new DOMException('Remote range retry aborted', 'AbortError'));
+      }, { once: true });
+    });
+  }
+
+  private touchLru(index: number): void {
+    this.lruList = this.lruList.filter((item) => item !== index);
+    this.lruList.push(index);
+  }
+
+  private evict(currentIndex: number): void {
+    while (this.cache.size > this.cacheLimit) {
+      const evictIndex = this.lruList.findIndex((index) => Math.abs(index - currentIndex) > 12);
+      const targetIndex = evictIndex === -1 ? 0 : evictIndex;
+      const [chunkIndex] = this.lruList.splice(targetIndex, 1);
+      this.cache.delete(chunkIndex);
+    }
   }
 }
 
@@ -223,23 +409,5 @@ export async function detectUrlCapabilities(url: string): Promise<boolean> {
     clearTimeout(id);
     console.warn('CORS or network error during capability detection:', e);
     return false;
-  }
-}
-
-export class FileByteSource implements ByteSource {
-  private file: File;
-
-  constructor(file: File) {
-    this.file = file;
-  }
-
-  async getSize(): Promise<number> {
-    return this.file.size;
-  }
-
-  async read(start: number, end: number): Promise<Uint8Array> {
-    const slice = this.file.slice(start, end + 1);
-    const arrayBuffer = await slice.arrayBuffer();
-    return new Uint8Array(arrayBuffer);
   }
 }

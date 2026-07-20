@@ -243,9 +243,6 @@ const backendServer = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -588,7 +585,14 @@ const backendServer = http.createServer((req, res) => {
                 label: bm.label,
                 isIntro: bm.isIntro === 1,
                 isOutro: bm.isOutro === 1,
-                skipEnabled: bm.skipEnabled === 1
+                skipEnabled: bm.skipEnabled === 1,
+                title: bm.title,
+                description: bm.description,
+                category: bm.category,
+                thumbnail: bm.thumbnail,
+                favorite: bm.favorite === 1,
+                createdAt: bm.createdAt,
+                updatedAt: bm.updatedAt
               }));
             
             return {
@@ -668,8 +672,8 @@ const backendServer = http.createServer((req, res) => {
             `);
             const insertBookmark = db.prepare(`
               INSERT OR REPLACE INTO bookmarks
-              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, thumbnail, favorite, createdAt, updatedAt)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             if (Array.isArray(historyData)) {
@@ -707,7 +711,14 @@ const backendServer = http.createServer((req, res) => {
                       bm.label || '',
                       bm.isIntro ? 1 : 0,
                       bm.isOutro ? 1 : 0,
-                      bm.skipEnabled ? 1 : 0
+                      bm.skipEnabled ? 1 : 0,
+                      bm.title || '',
+                      bm.description || '',
+                      bm.category || 'Custom',
+                      bm.thumbnail || '',
+                      bm.favorite ? 1 : 0,
+                      bm.createdAt || new Date().toISOString(),
+                      bm.updatedAt || new Date().toISOString()
                     );
                   }
                 }
@@ -840,7 +851,14 @@ const backendServer = http.createServer((req, res) => {
             label: bm.label,
             isIntro: bm.isIntro === 1,
             isOutro: bm.isOutro === 1,
-            skipEnabled: bm.skipEnabled === 1
+            skipEnabled: bm.skipEnabled === 1,
+            title: bm.title,
+            description: bm.description,
+            category: bm.category,
+            thumbnail: bm.thumbnail,
+            favorite: bm.favorite === 1,
+            createdAt: bm.createdAt,
+            updatedAt: bm.updatedAt
           }));
         
         return {
@@ -1452,12 +1470,7 @@ async function start() {
         server: {
           port: PORT_SERVICE,
           host: '127.0.0.1',
-          open: false,
-          headers: {
-            'Cross-Origin-Opener-Policy': 'same-origin',
-            'Cross-Origin-Embedder-Policy': 'require-corp',
-            'Cross-Origin-Resource-Policy': 'cross-origin',
-          }
+          open: false
         },
       });
       await viteServer.listen();

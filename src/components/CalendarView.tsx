@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Star, Clock, Film, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, Clock, Film, Play, Bookmark } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 
 interface CalendarViewProps {
@@ -85,36 +85,29 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ videos, onPlayVideo 
 
   return (
     <div className="workspace-panel-wrapper">
-      <div className="glass-panel workspace-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '82vh', overflow: 'hidden' }}>
+      <div className="glass-panel workspace-panel" style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', boxSizing: 'border-box' }}>
         
-        {/* Calendar Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Viewing Calendar</h2>
-            <span style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '12px', color: 'rgba(255,255,255,0.6)' }}>
-              {videos.filter(v => (v as any).lastPlayedDate).length} tracked events
-            </span>
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button onClick={handlePrevMonth} className="settings-close-btn" style={{ width: '28px', height: '28px' }}>
+        {/* Compact Month Navigation Bar */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '4px 12px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <button onClick={handlePrevMonth} className="settings-close-btn" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <ChevronLeft size={16} />
             </button>
-            <span style={{ fontSize: '1.05rem', fontWeight: 600, minWidth: '130px', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: '130px', textAlign: 'center', color: '#fff' }}>
               {monthNames[month]} {year}
             </span>
-            <button onClick={handleNextMonth} className="settings-close-btn" style={{ width: '28px', height: '28px' }}>
+            <button onClick={handleNextMonth} className="settings-close-btn" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <ChevronRight size={16} />
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '1.25rem', flex: 1, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
           
           {/* Main Grid View */}
-          <div style={{ flex: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
             {/* Weekday Names */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '4px', paddingRight: '4px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '4px' }}>
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
                 <div key={day} style={{ fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', padding: '4px 0' }}>
                   {day}
@@ -123,7 +116,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ videos, onPlayVideo 
             </div>
 
             {/* Grid Cells */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', flex: 1, overflowY: 'auto', paddingRight: '4px', scrollbarWidth: 'thin' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
               {calendarCells.map((cell, idx) => {
                 const hasVideos = cell.isCurrentMonth && cell.videosList.length > 0;
                 const isSelected = selectedDayVideos && selectedDayVideos.day === cell.day && cell.isCurrentMonth;
@@ -183,81 +176,89 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ videos, onPlayVideo 
             </div>
           </div>
 
-          {/* Details Sidebar panel */}
-          <div style={{ flex: 1.2, background: 'rgba(255,255,255,0.01)', borderLeft: '1px solid rgba(255,255,255,0.06)', paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', fontWeight: 600, color: '#fff' }}>
+          {/* Details Sidebar panel -> Now stacked below */}
+          <div style={{ background: 'rgba(255,255,255,0.01)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1.25rem', display: 'flex', flexDirection: 'column', width: '100%' }}>
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 600, color: '#fff' }}>
               Day Details
             </h3>
             
             {!selectedDayVideos ? (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'rgba(255,255,255,0.4)', padding: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'rgba(255,255,255,0.4)', padding: '2rem 1rem' }}>
                 <Film size={32} style={{ marginBottom: '0.75rem', opacity: 0.5 }} />
                 <span style={{ fontSize: '0.85rem' }}>Select a day with tracked viewing activity to view metrics.</span>
               </div>
             ) : (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', gap: '0.75rem', scrollbarWidth: 'thin', paddingRight: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
                 <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.25rem' }}>
                   Viewing records for <b>{monthNames[month]} {selectedDayVideos.day}, {year}</b>
                 </div>
                 
-                {selectedDayVideos.list.map((vid, idx) => {
-                  const playTime = (vid as any).lastPlayedDate ? new Date((vid as any).lastPlayedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown';
-                  const rating = (vid as any).rating || 0;
-                  const watchedSeconds = (vid as any).totalTimeWatched || 0;
-                  const durationStr = typeof vid.duration === 'number' ? formatTime(vid.duration) : vid.duration || 'Unknown';
-                  
-                  return (
-                    <div 
-                      key={idx} 
-                      className="glass-panel" 
-                      style={{ 
-                        padding: '0.85rem', 
-                        background: 'rgba(255,255,255,0.02)', 
-                        border: '1px solid rgba(255,255,255,0.06)', 
-                        borderRadius: '8px', 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        gap: '0.6rem',
-                        transition: 'background-color 0.2s'
-                      }}
-                    >
-                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.3 }}>
-                        {vid.title}
-                      </div>
-                      
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Clock size={11} style={{ color: '#3b82f6' }} />
-                          <span>Viewed: <b>{playTime}</b></span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Play size={11} style={{ color: '#2ecc71' }} />
-                          <span>Watched: <b>{formatTime(watchedSeconds)}</b></span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Film size={11} style={{ color: '#e50914' }} />
-                          <span>Length: <b>{durationStr}</b></span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem', width: '100%' }}>
+                  {selectedDayVideos.list.map((vid, idx) => {
+                    const playTime = (vid as any).lastPlayedDate ? new Date((vid as any).lastPlayedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown';
+                    const rating = (vid as any).rating || 0;
+                    const watchedSeconds = (vid as any).totalTimeWatched || 0;
+                    const durationStr = typeof vid.duration === 'number' ? formatTime(vid.duration) : vid.duration || 'Unknown';
+                    
+                    return (
+                      <div 
+                        key={idx} 
+                        className="glass-panel" 
+                        style={{ 
+                          padding: '0.85rem', 
+                          background: 'rgba(255,255,255,0.02)', 
+                          border: '1px solid rgba(255,255,255,0.06)', 
+                          borderRadius: '8px', 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '0.6rem',
+                          transition: 'background-color 0.2s'
+                        }}
+                      >
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.3 }}>
+                          {vid.title}
                         </div>
                         
-                        {rating > 0 && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', gridColumn: 'span 2' }}>
-                            <Star size={11} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
-                            <span>Rating: <b style={{ color: '#f59e0b' }}>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</b></span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Clock size={11} style={{ color: '#3b82f6' }} />
+                            <span>Viewed: <b>{playTime}</b></span>
                           </div>
-                        )}
-                      </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Play size={11} style={{ color: '#2ecc71' }} />
+                            <span>Watched: <b>{formatTime(watchedSeconds)}</b></span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Film size={11} style={{ color: '#e50914' }} />
+                            <span>Length: <b>{durationStr}</b></span>
+                          </div>
+                          {vid.bookmarks && vid.bookmarks.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Bookmark size={11} style={{ color: '#8b5cf6' }} />
+                              <span>Bookmarks: <b>{vid.bookmarks.length}</b></span>
+                            </div>
+                          )}
+                          
+                          {rating > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', gridColumn: 'span 2' }}>
+                              <Star size={11} fill="#f59e0b" stroke="#f59e0b" style={{ color: '#f59e0b' }} />
+                              <span>Rating: <b style={{ color: '#f59e0b' }}>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</b></span>
+                            </div>
+                          )}
+                        </div>
 
-                      <button 
-                        className="btn btn-primary btn-sm"
-                        onClick={() => onPlayVideo(vid)}
-                        style={{ marginTop: '0.25rem', padding: '0.35rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }}
-                      >
-                        <Play size={10} fill="white" />
-                        <span>Resume Playback</span>
-                      </button>
-                    </div>
-                  );
-                })}
+                        <button 
+                          className="btn btn-primary btn-sm"
+                          onClick={() => onPlayVideo(vid)}
+                          style={{ marginTop: '0.25rem', padding: '0.35rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          <Play size={10} fill="white" />
+                          <span>Resume Playback</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>

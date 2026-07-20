@@ -20,10 +20,5 @@ export default defineConfig({
   server: {
     port: 50000,
     host: true,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Resource-Policy': 'cross-origin',
-    },
   },
 })

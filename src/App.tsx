@@ -1,7 +1,55 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Component, ReactNode } from 'react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from './types/media';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught error details:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      const errMsg = this.state.error instanceof Error ? this.state.error.message : String(this.state.error || 'Unknown error');
+      const errStack = this.state.error instanceof Error ? this.state.error.stack : '';
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center', background: '#0b0b10', color: '#fff', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ef4444' }}>Something went wrong</h2>
+          <p style={{ color: 'rgba(255,255,255,0.85)', maxWidth: '600px', margin: '1rem 0', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+            {errMsg}
+          </p>
+          {errStack && (
+            <pre style={{ maxWidth: '700px', maxHeight: '200px', overflow: 'auto', background: '#121218', padding: '1rem', borderRadius: '8px', fontSize: '0.75rem', color: '#aaa', textAlign: 'left', margin: '0 0 1.5rem 0' }}>
+              {errStack}
+            </pre>
+          )}
+          <button 
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            style={{ background: '#8b5cf6', color: '#fff', border: 'none', padding: '0.65rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Reload Application
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { ffmpegService } from './services/ffmpeg';
-import { VideoPlayer } from './components/VideoPlayer';
+import { LocalVideoPlayer } from './components/LocalVideoPlayer';
+import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
+import { OnlineSearchTab } from './components/OnlineSearchTab';
+import { OnlineEmbedPlayer } from './components/OnlineEmbedPlayer';
+import { OnlineDetailsPage } from './components/OnlineDetailsPage';
+import { ActorDetailsPage } from './components/ActorDetailsPage';
+import { OnlineVideoPlayer } from './components/OnlineVideoPlayer';
 import { CustomSelect } from './components/CustomSelect';
 import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
@@ -10,12 +58,13 @@ import { ApiSettingsView } from './components/ApiSettingsView';
 import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
 import { 
-  Film, UploadCloud, Play, Settings, X,
+  Film, UploadCloud, Play, Settings, X, Calendar, List,
   History, Home, Layers, Type, Clock, Sliders, Volume2,
-  Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft
+  Maximize, Zap, Coffee, SkipForward, Ban, FastForward, Lock, ChevronRight, ChevronLeft,
+  LogOut, Trash2, Plus, Download, UserPlus
 } from 'lucide-react';
 import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } from './utils/indexedDB';
-import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './utils/remoteByteSource';
+import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './services/remote/remoteByteSource';
 import { probeContainer, parseMp4, parseMkv } from './utils/containerParser';
 import { parseHlsManifest } from './utils/hlsParser';
 
@@ -167,9 +216,36 @@ function App() {
       return [];
     }
   });
-  const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings'>('home');
-  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api'>('general');
+  const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(() => {
+    try {
+      const saved = localStorage.getItem('valor_currently_playing');
+      return saved ? JSON.parse(saved) : null;
+    } catch (err) {
+      console.error('Failed to parse currently playing video:', err);
+      return null;
+    }
+  });
+  const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
+  const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
+  const [historyViewMode, setHistoryViewMode] = useState<'list' | 'calendar'>('list');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'calendar' | 'library' | 'settings' | 'online'>(() => {
+    const saved = localStorage.getItem('valor_active_tab');
+    return (saved as any) || 'home';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('valor_active_tab', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (playingVideo) {
+      localStorage.setItem('valor_currently_playing', JSON.stringify(playingVideo));
+    } else {
+      localStorage.removeItem('valor_currently_playing');
+    }
+  }, [playingVideo]);
+
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api' | 'bookmarks'>('general');
   const [uiOverlaySection, setUiOverlaySection] = useState<'hotkeys' | 'gridOverlay' | 'pauseOverlay'>('hotkeys');
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -277,6 +353,24 @@ function App() {
       processRemoteUrl(localStreamUrl, true);
     }
 
+    // Recovery of online details page
+    const detId = params.get('details_id');
+    const detTmdbId = params.get('details_tmdb_id');
+    const detType = params.get('details_type');
+    const detTitle = params.get('details_title');
+    const detPoster = params.get('details_poster');
+    if (detId && detType) {
+      setSelectedDetailsMedia({
+        id: detId,
+        tmdbId: detTmdbId || undefined,
+        type: detType as any,
+        title: detTitle || '',
+        poster_path: detPoster || '',
+        backdrop_path: ''
+      } as any);
+      setActiveTab('online');
+    }
+
     const traktCode = params.get('code');
     if (traktCode) {
       const exchangeTraktCode = async () => {
@@ -329,6 +423,35 @@ function App() {
       exchangeTraktCode();
     }
   }, []);
+
+  // Synchronize selectedDetailsMedia with URL search parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (selectedDetailsMedia) {
+      params.set('details_id', selectedDetailsMedia.id);
+      if (selectedDetailsMedia.tmdbId) {
+        params.set('details_tmdb_id', selectedDetailsMedia.tmdbId);
+      } else {
+        params.delete('details_tmdb_id');
+      }
+      params.set('details_type', selectedDetailsMedia.type);
+      params.set('details_title', selectedDetailsMedia.title);
+      if (selectedDetailsMedia.poster_path) {
+        params.set('details_poster', selectedDetailsMedia.poster_path);
+      } else {
+        params.delete('details_poster');
+      }
+      window.history.replaceState({}, document.title, `?${params.toString()}`);
+    } else if (!playingVideo) {
+      params.delete('details_id');
+      params.delete('details_tmdb_id');
+      params.delete('details_type');
+      params.delete('details_title');
+      params.delete('details_poster');
+      const qs = params.toString();
+      window.history.replaceState({}, document.title, qs ? `?${qs}` : window.location.pathname);
+    }
+  }, [selectedDetailsMedia, playingVideo]);
 
   useEffect(() => {
     const initData = async () => {
@@ -611,6 +734,7 @@ function App() {
 
   const isInstantlyPlayable = (video: VideoItem): boolean => {
     if (video.type === 'url') return true;
+    if (video.type === 'online_movie' || video.type === 'online_tv' || video.type === 'online_anime') return true;
     if (video.localFilePath) return true;
     if (video.file) {
       try {
@@ -693,6 +817,7 @@ function App() {
   const isPickerOpenRef = useRef(false);
   const lastHistorySyncTimeRef = useRef<number>(0);
   const historySyncTimeoutRef = useRef<any>(null);
+  const saveTimeoutRef = useRef<any>(null);
   const loadedVideosUserIdRef = useRef<string | null>(localStorage.getItem('valor_active_user_id') || 'local');
 
   const defaultSettings = {
@@ -716,6 +841,7 @@ function App() {
     defaultSub: 'ENG',
     historyLimit: 10 as number | 'Infinite',
     historySaveInterval: 5 as number,
+    theme: 'dark' as 'dark' | 'black-and-white' | 'light',
     hideUIOverlays: false,
     hideVideoName: false,
     uiHideTimeout: 1.5,
@@ -730,6 +856,7 @@ function App() {
     allowUiSkipping: true,
     blockSeekingCompletely: false,
     autoSkipIntroOutro: true,
+    autoSkipSexScenes: true,
     lockModeActive: false,
     settingsOrder: [
       'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
@@ -846,6 +973,10 @@ function App() {
   const [removeTargetProfile, setRemoveTargetProfile] = useState<any | null>(null);
   const [removePasswordText, setRemovePasswordText] = useState('');
   const [removeError, setRemoveError] = useState('');
+
+  // Rewatch Confirmation Modal state
+  const [isRewatchModalOpen, setIsRewatchModalOpen] = useState(false);
+  const [rewatchVideoTarget, setRewatchVideoTarget] = useState<VideoItem | null>(null);
   const [hiddenProfileIds, setHiddenProfileIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('valor_hidden_profile_ids');
@@ -1028,26 +1159,32 @@ function App() {
 
       if (saved) {
         const parsed = JSON.parse(saved);
-        return {
-          ...baseSettings,
-          ...parsed,
-          userId: activeUserId,
-          storageMode: isLocal ? ('localstorage' as const) : ('file' as const),
-          keybinds: {
-            ...defaultSettings.keybinds,
-            ...(parsed.keybinds || {})
-          },
-          subSettings: {
-            ...defaultSettings.subSettings,
-            ...(parsed.subSettings || {})
-          }
-        };
+        if (parsed && typeof parsed === 'object') {
+          return {
+            ...baseSettings,
+            ...parsed,
+            userId: activeUserId,
+            storageMode: isLocal ? ('localstorage' as const) : ('file' as const),
+            keybinds: {
+              ...defaultSettings.keybinds,
+              ...(parsed.keybinds && typeof parsed.keybinds === 'object' ? parsed.keybinds : {})
+            },
+            subSettings: {
+              ...defaultSettings.subSettings,
+              ...(parsed.subSettings && typeof parsed.subSettings === 'object' ? parsed.subSettings : {})
+            }
+          };
+        }
       }
       return baseSettings;
     } catch (err) {
       return defaultSettings;
     }
   });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme || 'dark');
+  }, [settings.theme]);
 
   const saveSettingsToStorage = async (state: typeof defaultSettings) => {
     if (state.storageMode === 'file' && state.userId && state.userId !== 'local' && !state.userId.startsWith('local_')) {
@@ -1269,127 +1406,142 @@ function App() {
     }
   }, [videos, settings.historyLimit]);
 
-  const saveVideosToStorage = async (videoList: VideoItem[], forceSync = false) => {
-    try {
-      const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
-      console.log('[VALOR HISTORY SAVE] saveVideosToStorage called. videosKey:', videosKey, 'videosLength:', videoList.length, 'saveHistorySetting:', settings.saveHistory, 'loadedVideosUserId:', loadedVideosUserIdRef.current, 'activeSettingsUserId:', settings.userId);
-      if (loadedVideosUserIdRef.current !== settings.userId) {
-        console.log('[VALOR HISTORY SAVE] Aborting save. loadedVideosUserIdRef:', loadedVideosUserIdRef.current, 'does not match active settings.userId:', settings.userId);
-        return;
-      }
-      if (!settings.saveHistory) {
-        localStorage.removeItem(videosKey);
-        localStorage.removeItem('valor_last_playing_id');
-        return;
-      }
+  const saveVideosToStorage = (videoList: VideoItem[], forceSync = false) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
 
-      const limit = settings.historyLimit;
-      let targetVideos = videoList;
-      if (limit !== 'Infinite' && typeof limit === 'number') {
-        targetVideos = videoList.slice(0, limit);
-      }
-      const serialized = targetVideos.map(v => ({
-        id: v.id,
-        title: v.title,
-        url: v.type === 'url' ? v.url : '',
-        type: v.type,
-        fileName: v.file ? v.file.name : (v as any).fileName,
-        duration: v.duration,
-        format: v.format,
-        streams: v.streams,
-        audioTracks: (v.audioTracks || []).map(t => ({
-          id: t.id,
-          name: t.name,
-          url: t.isExtracted ? '' : t.url,
-          isExtracted: t.isExtracted,
-          streamIndex: t.streamIndex,
-          language: t.language,
-          codec: t.codec
-        })),
-        subtitleTracks: (v.subtitleTracks || []).map(t => ({
-          id: t.id,
-          name: t.name,
-          url: t.isExtracted ? '' : t.url,
-          cues: [],
-          isExtracted: t.isExtracted,
-          streamIndex: t.streamIndex,
-          language: t.language,
-          format: t.format
-        })),
-        currentTime: v.currentTime || 0,
-        lastPlayedDate: v.lastPlayedDate,
-        totalTimeWatched: (v as any).totalTimeWatched,
-        rating: (v as any).rating,
-        timeToFinish: (v as any).timeToFinish,
-        localFilePath: v.localFilePath,
-        playedDates: v.playedDates,
-        bookmarks: v.bookmarks || []
-      }));
+    const performSave = async () => {
+      try {
+        const videosKey = settings.userId === 'local' || !settings.userId ? 'valor_videos' : `valor_videos_${settings.userId}`;
+        console.log('[VALOR HISTORY SAVE] saveVideosToStorage called. videosKey:', videosKey, 'videosLength:', videoList.length, 'saveHistorySetting:', settings.saveHistory, 'loadedVideosUserId:', loadedVideosUserIdRef.current, 'activeSettingsUserId:', settings.userId);
+        if (loadedVideosUserIdRef.current !== settings.userId) {
+          console.log('[VALOR HISTORY SAVE] Aborting save. loadedVideosUserIdRef:', loadedVideosUserIdRef.current, 'does not match active settings.userId:', settings.userId);
+          return;
+        }
+        if (!settings.saveHistory) {
+          localStorage.removeItem(videosKey);
+          localStorage.removeItem('valor_last_playing_id');
+          return;
+        }
 
-      // Sync to backend file if storageMode is file
-      if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
-        const saveHistoryMut = `
-          mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
-            saveHistory(userId: $userId, history: $history) {
-              success
+        const limit = settings.historyLimit;
+        let targetVideos = videoList;
+        if (limit !== 'Infinite' && typeof limit === 'number') {
+          targetVideos = videoList.slice(0, limit);
+        }
+        const serialized = targetVideos.map(v => ({
+          id: v.id,
+          title: v.title,
+          url: v.type === 'url' ? v.url : '',
+          type: v.type,
+          fileName: v.file ? v.file.name : (v as any).fileName,
+          duration: v.duration,
+          format: v.format,
+          streams: v.streams,
+          audioTracks: (v.audioTracks || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            url: t.isExtracted ? '' : t.url,
+            isExtracted: t.isExtracted,
+            streamIndex: t.streamIndex,
+            language: t.language,
+            codec: t.codec
+          })),
+          subtitleTracks: (v.subtitleTracks || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            url: t.isExtracted ? '' : t.url,
+            cues: [],
+            isExtracted: t.isExtracted,
+            streamIndex: t.streamIndex,
+            language: t.language,
+            format: t.format
+          })),
+          currentTime: v.currentTime || 0,
+          lastPlayedDate: v.lastPlayedDate,
+          totalTimeWatched: (v as any).totalTimeWatched,
+          rating: (v as any).rating,
+          timeToFinish: (v as any).timeToFinish,
+          localFilePath: v.localFilePath,
+          playedDates: v.playedDates,
+          bookmarks: v.bookmarks || [],
+          tmdbId: v.tmdbId,
+          hasScrobbledTrakt: v.hasScrobbledTrakt
+        }));
+
+        // Sync to backend file if storageMode is file
+        if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
+          const saveHistoryMut = `
+            mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
+              saveHistory(userId: $userId, history: $history) {
+                success
+              }
             }
-          }
-        `;
+          `;
 
-        if (forceSync) {
-          if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-          lastHistorySyncTimeRef.current = Date.now();
-          gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-            .catch(err => console.error('Failed to force sync history via GraphQL:', err));
-        } else {
-          const now = Date.now();
-          if (now - lastHistorySyncTimeRef.current > 10000) {
-            lastHistorySyncTimeRef.current = now;
+          if (forceSync) {
             if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
+            lastHistorySyncTimeRef.current = Date.now();
             gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-              .catch(err => console.error('Failed to sync history via GraphQL:', err));
+              .catch(err => console.error('Failed to force sync history via GraphQL:', err));
           } else {
-            if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-            historySyncTimeoutRef.current = setTimeout(() => {
-              lastHistorySyncTimeRef.current = Date.now();
+            const now = Date.now();
+            if (now - lastHistorySyncTimeRef.current > 10000) {
+              lastHistorySyncTimeRef.current = now;
+              if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
               gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
                 .catch(err => console.error('Failed to sync history via GraphQL:', err));
-            }, 10000);
-          }
-        }
-      }
-
-      try {
-        localStorage.setItem(videosKey, JSON.stringify(serialized));
-      } catch (err: any) {
-        if (err.name === 'QuotaExceededError' || err.code === 22) {
-          console.warn('LocalStorage quota exceeded. Evicting older video history...');
-          let currentList = [...serialized];
-          while (currentList.length > 1) {
-            currentList.pop();
-            try {
-              localStorage.setItem(videosKey, JSON.stringify(currentList));
-              if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
-                const saveHistoryMut = `
-                  mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
-                    saveHistory(userId: $userId, history: $history) {
-                      success
-                    }
-                  }
-                `;
-                gqlFetch(saveHistoryMut, { userId: settings.userId, history: currentList }).catch(() => {});
-              }
-              break;
-            } catch (retryErr) {
-              // keep popping
+            } else {
+              if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
+              historySyncTimeoutRef.current = setTimeout(() => {
+                lastHistorySyncTimeRef.current = Date.now();
+                gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
+                  .catch(err => console.error('Failed to sync history via GraphQL:', err));
+              }, 10000);
             }
           }
-        } else {
-          console.error('Failed to save videos to localStorage:', err);
         }
+
+        try {
+          localStorage.setItem(videosKey, JSON.stringify(serialized));
+        } catch (err: any) {
+          if (err.name === 'QuotaExceededError' || err.code === 22) {
+            console.warn('LocalStorage quota exceeded. Evicting older video history...');
+            let currentList = [...serialized];
+            while (currentList.length > 1) {
+              currentList.pop();
+              try {
+                localStorage.setItem(videosKey, JSON.stringify(currentList));
+                if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
+                  const saveHistoryMut = `
+                    mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
+                      saveHistory(userId: $userId, history: $history) {
+                        success
+                      }
+                    }
+                  `;
+                  gqlFetch(saveHistoryMut, { userId: settings.userId, history: currentList }).catch(() => {});
+                }
+                break;
+              } catch (retryErr) {
+                // keep popping
+              }
+            }
+          } else {
+            console.error('Failed to save videos to localStorage:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to serialize videos for localStorage:', err);
       }
-    } catch (err) {
-      console.error('Failed to serialize videos for localStorage:', err);
+    };
+
+    if (forceSync) {
+      performSave();
+    } else {
+      saveTimeoutRef.current = setTimeout(performSave, 500);
     }
   };
 
@@ -1441,9 +1593,6 @@ function App() {
         const seriesTitle = isSeries ? seriesInfo.seriesTitle : undefined;
         const targetBookmarks = targetVideo.bookmarks || [];
 
-        const introBm = targetBookmarks.find((b) => b.isIntro);
-        const outroBm = targetBookmarks.find((b) => b.isOutro);
-
         nextVideos = prev.map((v) => {
           const isTarget = v.id === targetVideo!.id;
           if (isTarget) {
@@ -1459,24 +1608,24 @@ function App() {
               const otherBookmarks = v.bookmarks || [];
               let updatedOtherBookmarks = [...otherBookmarks];
 
-              if (introBm) {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
-                updatedOtherBookmarks.push({
-                  ...introBm,
-                  id: `bm-intro-${v.id}`
-                });
-              } else {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro);
-              }
+              if (targetBookmarks.length > 0) {
+                targetBookmarks.forEach((tb) => {
+                  const isIntro = tb.isIntro || tb.category === 'Intro';
+                  const isOutro = tb.isOutro || tb.category === 'Outro';
+                  
+                  if (isIntro) {
+                    updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isIntro && b.category !== 'Intro');
+                  } else if (isOutro) {
+                    updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro && b.category !== 'Outro');
+                  } else if (tb.label) {
+                    updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => b.label !== tb.label);
+                  }
 
-              if (outroBm) {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
-                updatedOtherBookmarks.push({
-                  ...outroBm,
-                  id: `bm-outro-${v.id}`
+                  updatedOtherBookmarks.push({
+                    ...tb,
+                    id: `bm-${tb.isIntro ? 'intro' : tb.isOutro ? 'outro' : tb.id || Date.now()}-${v.id}`
+                  });
                 });
-              } else {
-                updatedOtherBookmarks = updatedOtherBookmarks.filter((b) => !b.isOutro);
               }
 
               return {
@@ -1490,9 +1639,7 @@ function App() {
         });
       }
 
-      if (isExiting || forceSave) {
-        saveVideosToStorage(nextVideos, isExiting || forceSave);
-      }
+      saveVideosToStorage(nextVideos, isExiting || forceSave);
       return nextVideos;
     });
     if (!isExiting) {
@@ -1759,6 +1906,12 @@ function App() {
   const handlePlayVideo = async (video: VideoItem) => {
     if (isPickerOpenRef.current) return;
     
+    if (video.type === 'online_movie' || video.type === 'online_tv' || video.type === 'online_anime') {
+      setVideos(prev => mergeOrAddVideo(prev, video));
+      setPlayingVideo(video);
+      return;
+    }
+
     // Set picker open lock if we might open a file picker
     if (video.type === 'local' && !video.file && !video.url) {
       isPickerOpenRef.current = true;
@@ -1885,6 +2038,169 @@ function App() {
       isPickerOpenRef.current = false;
     }
   };
+  const syncVideoToTraktHistory = async (video: VideoItem, e?: React.MouseEvent, ignoreCheck = false) => {
+    if (e) e.stopPropagation();
+    if (video.hasScrobbledTrakt && !ignoreCheck) {
+      setRewatchVideoTarget(video);
+      setIsRewatchModalOpen(true);
+      return;
+    }
+    try {
+      const token = settings.traktAccessToken;
+      if (!token) {
+        addToast("Trakt Sync: Please log in to Trakt.tv first", "warning");
+        return;
+      }
+
+      const seriesInfo = classifyVideoTitle(video.title);
+      const isTV = seriesInfo.type === 'series';
+      
+      let tmdbId = video.tmdbId;
+
+      if (!tmdbId) {
+        const tmdbToken = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
+        let searchUrl = "";
+        if (isTV && seriesInfo.seriesTitle) {
+          searchUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(seriesInfo.seriesTitle)}&include_adult=false`;
+        } else {
+          searchUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(seriesInfo.displayTitle || video.title)}&include_adult=false`;
+        }
+
+        const searchRes = await fetch(searchUrl, {
+          headers: {
+            'Authorization': `Bearer ${tmdbToken}`,
+            'accept': 'application/json'
+          }
+        });
+
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          if (searchData.results && searchData.results.length > 0) {
+            tmdbId = searchData.results[0].id;
+            handleUpdateVideo((prev) => ({ ...prev, tmdbId }), false, video.id, true);
+          }
+        }
+      }
+
+      const nowIso = new Date().toISOString();
+      const body: any = {};
+      if (isTV) {
+        if (!tmdbId) {
+          addToast("Trakt Sync: No TMDB ID resolved for series", "error");
+          return;
+        }
+        body.shows = [
+          {
+            ids: { tmdb: tmdbId },
+            seasons: [
+              {
+                number: seriesInfo.season || 1,
+                episodes: [
+                  {
+                    number: seriesInfo.episode || 1,
+                    watched_at: nowIso
+                  }
+                ]
+              }
+            ]
+          }
+        ];
+      } else {
+        body.movies = [
+          {
+            title: seriesInfo.displayTitle || video.title,
+            watched_at: nowIso,
+            ids: tmdbId ? { tmdb: tmdbId } : undefined
+          }
+        ];
+        if (!tmdbId && !seriesInfo.displayTitle) {
+          addToast("Trakt Sync: No title or TMDB ID resolved", "error");
+          return;
+        }
+      }
+
+      addToast("Syncing watch history to Trakt.tv...", "success");
+      const res = await fetch('https://api.trakt.tv/sync/history', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+          'trakt-api-version': '2'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        addToast(`Trakt Sync: Added ${resData.added?.movies || resData.added?.episodes || 1} item to history`, "success");
+        handleUpdateVideo((prev) => ({ ...prev, hasScrobbledTrakt: true }), false, video.id, true);
+
+        // Sync rating to Trakt if present
+        const userRating = video.rating;
+        if (userRating && userRating > 0) {
+          const ratingBody: any = {};
+          if (isTV) {
+            ratingBody.shows = [
+              {
+                ids: { tmdb: tmdbId },
+                seasons: [
+                  {
+                    number: seriesInfo.season || 1,
+                    episodes: [
+                      {
+                        number: seriesInfo.episode || 1,
+                        rating: userRating * 2,
+                        rated_at: nowIso
+                      }
+                    ]
+                  }
+                ]
+              }
+            ];
+          } else {
+            ratingBody.movies = [
+              {
+                title: seriesInfo.displayTitle || video.title,
+                rating: userRating * 2,
+                rated_at: nowIso,
+                ids: tmdbId ? { tmdb: tmdbId } : undefined
+              }
+            ];
+          }
+
+          console.log(`[Trakt Rating Sync] Syncing rating (${userRating * 2}/10) to Trakt.tv...`);
+          try {
+            const ratingRes = await fetch('https://api.trakt.tv/sync/ratings', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+                'trakt-api-version': '2'
+              },
+              body: JSON.stringify(ratingBody)
+            });
+
+            if (ratingRes.ok) {
+              console.log('[Trakt Rating Sync] Successfully synced rating to Trakt.tv!');
+              addToast(`Trakt Rating Sync: Rated ${userRating * 2}/10 successfully`, "success");
+            } else {
+              console.warn(`[Trakt Rating Sync] Trakt.tv rating sync failed with status: ${ratingRes.status}`);
+            }
+          } catch (ratingErr) {
+            console.error('[Trakt Rating Sync] Error syncing rating:', ratingErr);
+          }
+        }
+      } else {
+        const errText = await res.text();
+        addToast(`Trakt Sync Failed: ${res.status} - ${errText.substring(0, 40)}`, "error");
+      }
+    } catch (err) {
+      console.error(err);
+      addToast("Trakt Sync Error: Connection failed", "error");
+    }
+  };
 
   const handleRemoveVideo = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1913,6 +2229,11 @@ function App() {
         }
       } catch {}
     }
+
+    const getResumeTimeFromMatch = (match?: VideoItem): number | undefined => {
+      const time = match?.currentTime || 0;
+      return time > 5 ? time : undefined;
+    };
     
     try {
       const urlId = `url-${Date.now()}`;
@@ -1961,7 +2282,8 @@ function App() {
           playbackMode: 'native',
           probingError: 'The remote server blocks cross-origin byte access (CORS).',
           localFilePath: localPathVal,
-          currentTime: match ? match.currentTime || 0 : 0,
+          currentTime: 0,
+          resumeTime: getResumeTimeFromMatch(match),
           lastPlayedDate: new Date().toISOString(),
           playedDates: match ? Array.from(new Set([...(match.playedDates || []), new Date().toISOString()])) : [new Date().toISOString()],
           rating: match ? match.rating : undefined,
@@ -2075,7 +2397,8 @@ function App() {
         streams,
         audioTracks: match ? match.audioTracks : audioTracks,
         subtitleTracks: match ? match.subtitleTracks : subtitleTracks,
-        currentTime: match ? match.currentTime || 0 : 0,
+        currentTime: 0,
+        resumeTime: getResumeTimeFromMatch(match),
         timecodeScale,
         playbackMode: 'advanced',
         lastPlayedDate: new Date().toISOString(),
@@ -2130,7 +2453,8 @@ function App() {
         subtitleTracks: match ? match.subtitleTracks : [],
         playbackMode: 'native',
         probingError: probingError || undefined,
-        currentTime: match ? match.currentTime || 0 : 0,
+        currentTime: 0,
+        resumeTime: getResumeTimeFromMatch(match),
         lastPlayedDate: new Date().toISOString(),
         playedDates: match ? Array.from(new Set([...(match.playedDates || []), new Date().toISOString()])) : [new Date().toISOString()],
         rating: match ? match.rating : undefined,
@@ -2156,63 +2480,108 @@ function App() {
 
   // If playing, render VideoPlayer fullscreen
   if (playingVideo) {
-    return (
-      <VideoPlayer 
-        key={playingVideo.id}
-        video={playingVideo} 
-        userId={settings.userId}
-        onBack={() => {
-          setPlayingVideo(null);
-          // Clear query parameter when returning to library
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }} 
-        onUpdateVideo={handleUpdateVideo}
-        hideUIOverlays={settings.hideUIOverlays}
-        hideVideoName={settings.hideVideoName}
-        uiHideTimeout={settings.uiHideTimeout}
-        toastDuration={settings.toastDuration}
-        disableAnimations={settings.disableAnimations}
-        pauseOnFocusChange={settings.pauseOnFocusChange}
-        showPlayButton={settings.showPlayButton}
-        showTimeDisplay={settings.showTimeDisplay}
-        showPlayBar={settings.showPlayBar}
-        showVolumeControl={settings.showVolumeControl}
-        showFullscreen={settings.showFullscreen}
-        subSettings={settings.subSettings}
-        historySaveInterval={settings.historySaveInterval}
-        saveVolume={settings.saveVolume}
-        ratingThreshold={settings.ratingThreshold}
-        getOverlayDataFromTmdb={settings.getOverlayDataFromTmdb !== false}
-        overlayPosition={settings.overlayPosition || 'bottom-left'}
-        overlayShowBackground={settings.overlayShowBackground !== false}
-        overlayShowRating={settings.overlayShowRating !== false}
-        overlayShowOverview={settings.overlayShowOverview !== false}
-        openSubtitlesApiKey={settings.openSubtitlesApiKey}
-        allowUiSkipping={settings.allowUiSkipping}
-        blockSeekingCompletely={settings.blockSeekingCompletely}
-        autoSkipIntroOutro={settings.autoSkipIntroOutro}
-        lockModeActive={settings.lockModeActive}
-        settingsOrder={settings.settingsOrder}
-        onUpdateSubSettings={(newSubSettings) => {
-          const updated = {
-            ...settings,
-            subSettings: {
-              ...settings.subSettings,
-              ...newSubSettings
-            }
-          };
-          setSettings(updated);
+    if (playingVideo.type === 'online_movie' || playingVideo.type === 'online_tv' || playingVideo.type === 'online_anime') {
+      return (
+        <OnlineVideoPlayer
+          video={playingVideo}
+          userId={settings.userId}
+          onBack={() => {
+            setPlayingVideo(null);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }}
+          onUpdateVideo={handleUpdateVideo}
+          hideUIOverlays={settings.hideUIOverlays}
+          toastDuration={settings.toastDuration}
+          disableAnimations={settings.disableAnimations}
+          showPlayButton={settings.showPlayButton}
+          showTimeDisplay={settings.showTimeDisplay}
+          showPlayBar={settings.showPlayBar}
+          showVolumeControl={settings.showVolumeControl}
+          showFullscreen={settings.showFullscreen}
+          historySaveInterval={settings.historySaveInterval}
+          saveVolume={settings.saveVolume}
+          allowUiSkipping={settings.allowUiSkipping}
+          blockSeekingCompletely={settings.blockSeekingCompletely}
+          autoSkipIntroOutro={settings.autoSkipIntroOutro}
+          autoSkipSexScenes={settings.autoSkipSexScenes}
+          lockModeActive={settings.lockModeActive}
+          uiHideTimeout={settings.uiHideTimeout}
+          tmdbApiKey={settings.tmdbApiKey}
+        />
+      );
+    }
+
+    const playerProps = {
+      video: playingVideo,
+      userId: settings.userId,
+      onBack: () => {
+        setPlayingVideo(null);
+        // Clear query parameter when returning to library
+        window.history.replaceState({}, document.title, window.location.pathname);
+      },
+      onUpdateVideo: handleUpdateVideo,
+      hideUIOverlays: settings.hideUIOverlays,
+      hideVideoName: settings.hideVideoName,
+      uiHideTimeout: settings.uiHideTimeout,
+      toastDuration: settings.toastDuration,
+      disableAnimations: settings.disableAnimations,
+      pauseOnFocusChange: settings.pauseOnFocusChange,
+      showPlayButton: settings.showPlayButton,
+      showTimeDisplay: settings.showTimeDisplay,
+      showPlayBar: settings.showPlayBar,
+      showVolumeControl: settings.showVolumeControl,
+      showFullscreen: settings.showFullscreen,
+      subSettings: settings.subSettings,
+      historySaveInterval: settings.historySaveInterval,
+      saveVolume: settings.saveVolume,
+      ratingThreshold: settings.ratingThreshold,
+      getOverlayDataFromTmdb: settings.getOverlayDataFromTmdb !== false,
+      overlayPosition: settings.overlayPosition || 'bottom-left',
+      overlayShowBackground: settings.overlayShowBackground !== false,
+      overlayShowRating: settings.overlayShowRating !== false,
+      overlayShowOverview: settings.overlayShowOverview !== false,
+      openSubtitlesApiKey: settings.openSubtitlesApiKey,
+      allowUiSkipping: settings.allowUiSkipping,
+      blockSeekingCompletely: settings.blockSeekingCompletely,
+      autoSkipIntroOutro: settings.autoSkipIntroOutro,
+      autoSkipSexScenes: settings.autoSkipSexScenes,
+      lockModeActive: settings.lockModeActive,
+      settingsOrder: settings.settingsOrder,
+      onUpdateSubSettings: (newSubSettings: any) => {
+        const updated = {
+          ...settings,
+          subSettings: {
+            ...settings.subSettings,
+            ...newSubSettings
+          }
+        };
+        setSettings(updated);
+        saveSettingsToStorage(updated);
+      },
+      onUpdateSettings: (updatedSettings: any) => {
+        setSettings(prev => {
+          const updated = { ...prev, ...updatedSettings };
           saveSettingsToStorage(updated);
-        }}
-        onUpdateSettings={(updatedSettings) => {
-          setSettings(prev => {
-            const updated = { ...prev, ...updatedSettings };
-            saveSettingsToStorage(updated);
-            return updated;
-          });
-        }}
-      />
-    );
+          return updated;
+        });
+      }
+    };
+
+    if (playingVideo.isRemote) {
+      return (
+        <RemoteVideoPlayer 
+          key={playingVideo.id}
+          {...playerProps}
+        />
+      );
+    } else {
+      return (
+        <LocalVideoPlayer 
+          key={playingVideo.id}
+          {...playerProps}
+        />
+      );
+    }
   }
 
   if (!settings.isOnboarded) {
@@ -2293,18 +2662,24 @@ function App() {
     );
   }
 
+  const isSidebarCollapsed = !!selectedActor || !!selectedDetailsMedia;
+
   return (
-    <div className={`app-layout ${settings.disableAnimations ? 'no-animations' : ''} ${activeTab === 'settings' ? 'settings-active' : ''}`}>
+    <div className={`app-layout ${settings.disableAnimations ? 'no-animations' : ''} ${activeTab === 'settings' ? 'settings-active' : ''} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {/* Sidebar - Desktop and Tablet */}
-      <aside className="app-sidebar">
+      <aside className={`app-sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <div className="sidebar-logo">Valor</div>
+          <div className="sidebar-logo">{isSidebarCollapsed ? 'V' : 'Valor'}</div>
         </div>
         
         <nav className="sidebar-menu">
           <button 
             className={`sidebar-menu-item ${activeTab === 'home' ? 'active' : ''}`}
-            onClick={() => setActiveTab('home')}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('home');
+            }}
             title="Select Media"
           >
             <Home size={20} />
@@ -2312,27 +2687,39 @@ function App() {
           </button>
           <button 
             className={`sidebar-menu-item ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => setActiveTab('history')}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('history');
+            }}
             title="History"
           >
             <History size={20} />
             <span className="sidebar-menu-text">History ({videos.length})</span>
           </button>
           <button 
-            className={`sidebar-menu-item ${activeTab === 'calendar' ? 'active' : ''}`}
-            onClick={() => setActiveTab('calendar')}
-            title="Calendar"
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span className="sidebar-menu-text">Calendar</span>
-          </button>
-          <button 
             className={`sidebar-menu-item ${activeTab === 'library' ? 'active' : ''}`}
-            onClick={() => setActiveTab('library')}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('library');
+            }}
             title="Library"
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             <span className="sidebar-menu-text">Library</span>
+          </button>
+          <button 
+            className={`sidebar-menu-item ${activeTab === 'online' ? 'active' : ''}`}
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('online');
+            }}
+            title="Online Stream"
+          >
+            <Play size={20} />
+            <span className="sidebar-menu-text">Online Stream</span>
           </button>
         </nav>
 
@@ -2348,8 +2735,17 @@ function App() {
           ) : (
             <div className="sidebar-history-list">
               {videos.map((video) => (
-                <div key={`sidebar-${video.id}`} className="sidebar-history-item" onClick={() => handlePlayVideo(video)}>
-                  <span className="sidebar-history-item-title" title={video.title}>{video.title}</span>
+                <div key={`sidebar-${video.id}`} className="sidebar-history-item" onClick={() => handlePlayVideo(video)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {video.posterPath && (
+                    <img 
+                      src={video.posterPath} 
+                      alt="" 
+                      crossOrigin="anonymous"
+                      onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      style={{ width: '20px', height: '30px', borderRadius: '3px', objectFit: 'cover', flexShrink: 0 }} 
+                    />
+                  )}
+                  <span className="sidebar-history-item-title" title={video.title} style={{ flexGrow: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.title}</span>
                   <button 
                     className="sidebar-history-remove-btn" 
                     onClick={(e) => handleRemoveVideo(video.id, e)}
@@ -2367,7 +2763,11 @@ function App() {
         <div className="sidebar-footer">
           <button 
             className={`sidebar-settings-btn ${activeTab === 'settings' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('settings')} 
+            onClick={() => {
+              setSelectedActor(null);
+              setSelectedDetailsMedia(null);
+              setActiveTab('settings');
+            }} 
             title="Preferences"
           >
             <Settings size={16} />
@@ -2379,14 +2779,51 @@ function App() {
       {/* Main Content Area */}
       <div className="main-layout-wrapper">
         {/* Main Content Pane */}
-        <main className="main-content container animate-fade-in">
-          <div className="workspace-container">
-            {activeTab === 'home' && (
+        <main className={`main-content ${isSidebarCollapsed ? 'full-width-details' : 'container'} animate-fade-in`}>
+          {selectedActor ? (
+            <ActorDetailsPage
+              actorId={selectedActor.id}
+              actorName={selectedActor.name}
+              onClose={() => setSelectedActor(null)}
+              onSelectMedia={(clickedMedia) => {
+                setSelectedActor(null);
+                setSelectedDetailsMedia(clickedMedia);
+              }}
+              tmdbApiKey={settings.tmdbApiKey}
+              profilePath={selectedActor.profilePath}
+            />
+          ) : selectedDetailsMedia ? (
+            <OnlineDetailsPage
+              video={selectedDetailsMedia}
+              onClose={() => setSelectedDetailsMedia(null)}
+              onPlay={(selectedVideo, season, episode) => {
+                const match = videos.find(v => {
+                  if (selectedVideo.type === 'online_movie') {
+                    return v.id === selectedVideo.id;
+                  } else {
+                    return v.id === selectedVideo.id && v.season === season && v.episode === episode;
+                  }
+                });
+                const toPlay = {
+                  ...selectedVideo,
+                  season,
+                  episode,
+                  currentTime: match ? (match.currentTime || 0) : 0
+                };
+                handlePlayVideo(toPlay);
+              }}
+              onSelectMedia={setSelectedDetailsMedia}
+              onSelectActor={(actor) => setSelectedActor(actor)}
+              tmdbApiKey={settings.tmdbApiKey}
+            />
+          ) : (
+            <div className="workspace-container">
+              {activeTab === 'home' && (
               <div className="workspace-panel-wrapper">
                 {(() => {
-                  const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
-                  if (continueWatchingList.length === 0) return null;
-                  const primaryContinue = continueWatchingList[0];
+                  const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 2 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
+                  const primaryContinue = continueWatchingList.length > 0 ? continueWatchingList[0] : (videos.length > 0 ? videos[0] : null);
+                  if (!primaryContinue) return null;
 
                   return (
                     <div className="continue-watching-section animate-fade-in" style={{ marginBottom: '1.5rem', width: '100%' }}>
@@ -2480,9 +2917,10 @@ function App() {
                   );
                 })()}
                 <div className="glass-panel workspace-panel">
-                  <div className="panel-header">
-                    <h2>Select Media</h2>
-                    <p className="text-muted">Drop a local video file here, browse your files, or enter a video stream URL below to start playing.</p>
+                  {/* Select Media Section Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <UploadCloud size={22} color="#e50914" />
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>Select Media</h2>
                   </div>
 
                   {/* Combined Drop Zone & URL Injector */}
@@ -2551,16 +2989,24 @@ function App() {
             )}
 
             {activeTab === 'history' && (
-              <div className="workspace-panel-wrapper">
-                <div className="glass-panel workspace-panel">
-                  <div className="panel-header border-b" style={{ marginBottom: '1.5rem' }}>
-                    <h2>Playback History ({videos.length})</h2>
-                  </div>
+              <>
+                <div className="workspace-panel-wrapper">
+                  <div className="glass-panel workspace-panel" style={{ position: 'relative', minHeight: '100%' }}>
+                    {historyViewMode === 'calendar' ? (
+                      <div>
+                        {settings.calendarStyle === 'list' ? (
+                          <Calendar02 videos={videos} onPlayVideo={handlePlayVideo} isInstantlyPlayable={isInstantlyPlayable} />
+                        ) : (
+                          <CalendarView videos={videos} onPlayVideo={handlePlayVideo} />
+                        )}
+                      </div>
+                    ) : (
+                      <>
 
                   {(() => {
-                    const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 5 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
-                    if (continueWatchingList.length === 0) return null;
-                    const primaryContinue = continueWatchingList[0];
+                    const continueWatchingList = videos.filter(v => v.currentTime && v.currentTime > 2 && (typeof v.duration !== 'number' || v.currentTime < v.duration - 5));
+                    const primaryContinue = continueWatchingList.length > 0 ? continueWatchingList[0] : (videos.length > 0 ? videos[0] : null);
+                    if (!primaryContinue) return null;
                     return (
                       <div 
                         onClick={() => handlePlayVideo(primaryContinue)}
@@ -2568,8 +3014,8 @@ function App() {
                           width: '100%', 
                           background: 'linear-gradient(135deg, #e50914 0%, #9b040c 100%)', 
                           borderRadius: '12px', 
-                          padding: '1.5rem', 
-                          marginBottom: '1.5rem',
+                          padding: '0.85rem 1.1rem', 
+                          marginBottom: '1rem',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
@@ -2658,7 +3104,16 @@ function App() {
                   ) : (
                     <div className="history-list">
                       {videos.map((video) => (
-                        <div key={video.id} className="history-item glass-panel" onClick={() => handlePlayVideo(video)}>
+                        <div key={video.id} className="history-item glass-panel" onClick={() => handlePlayVideo(video)} style={{ display: 'flex', alignItems: 'center' }}>
+                          {video.posterPath && (
+                            <img 
+                              src={video.posterPath} 
+                              alt="" 
+                              crossOrigin="anonymous"
+                              onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                              style={{ width: '45px', height: '65px', borderRadius: '6px', objectFit: 'cover', marginRight: '1rem', flexShrink: 0 }} 
+                            />
+                          )}
                           <div className="history-info">
                             <span className="history-title" title={video.title}>{video.title}</span>
                             <div className="history-stats">
@@ -2673,6 +3128,9 @@ function App() {
                               )}
                               {(video as any).timeToFinish && (
                                 <span className="stat-badge finish-badge">Completed in: {formatTime((video as any).timeToFinish)}</span>
+                              )}
+                              {(video.bookmarks && video.bookmarks.length > 0) && (
+                                <span className="stat-badge bookmark-badge">Bookmarks: {video.bookmarks.length}</span>
                               )}
                             </div>
                           </div>
@@ -2690,6 +3148,39 @@ function App() {
                                 </>
                               )}
                             </button>
+                            {(() => {
+                              const durationSec = typeof video.duration === 'number' ? video.duration : parseDurationToSeconds(video.duration);
+                              const isCompleted = !!(video.timeToFinish || (durationSec > 0 && video.currentTime && video.currentTime >= durationSec - 15));
+                              
+                              if (!isCompleted && !video.hasScrobbledTrakt) return null;
+                              
+                              return (
+                                <button 
+                                  className={`btn btn-sm ${video.hasScrobbledTrakt ? 'btn-secondary' : 'btn-outline-danger'}`}
+                                  onClick={(e) => syncVideoToTraktHistory(video, e)}
+                                  style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '4px',
+                                    background: video.hasScrobbledTrakt ? 'rgba(255,255,255,0.05)' : 'rgba(229, 9, 20, 0.1)',
+                                    color: video.hasScrobbledTrakt ? '#888' : '#e50914',
+                                    border: video.hasScrobbledTrakt ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e50914',
+                                    padding: '0.4rem 0.8rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    opacity: video.hasScrobbledTrakt ? 0.6 : 1
+                                  }}
+                                  title={video.hasScrobbledTrakt ? "Already Synced to Trakt.tv" : "Sync watched status to Trakt.tv"}
+                                  disabled={video.hasScrobbledTrakt}
+                                >
+                                  <Film size={12} fill={video.hasScrobbledTrakt ? "#888" : "none"} />
+                                  <span>Trakt</span>
+                                </button>
+                              );
+                            })()}
                             <button 
                               className="btn-remove-history" 
                               onClick={(e) => handleRemoveVideo(video.id, e)} 
@@ -2700,32 +3191,39 @@ function App() {
                           </div>
                         </div>
                       ))}
-                    </div>
-                  )}
-                </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-            )}
+            </div>
 
-            {activeTab === 'calendar' && (
-              settings.calendarStyle === 'list' ? (
-                <div className="workspace-panel-wrapper">
-                  <div className="glass-panel workspace-panel" style={{ padding: '0', background: 'transparent', border: 'none' }}>
-                    <Calendar02 videos={videos} onPlayVideo={handlePlayVideo} isInstantlyPlayable={isInstantlyPlayable} />
-                  </div>
-                </div>
-              ) : (
-                <CalendarView 
-                  videos={videos} 
-                  onPlayVideo={handlePlayVideo} 
-                />
-              )
-            )}
+            {/* Floating Calendar Toggle Button */}
+            <button
+              className="dom-calendar-btn"
+              onClick={() => setHistoryViewMode(historyViewMode === 'calendar' ? 'list' : 'calendar')}
+              title={historyViewMode === 'calendar' ? 'Switch to History List' : 'Switch to Calendar View'}
+            >
+              {historyViewMode === 'calendar' ? <List size={20} color="#ffffff" /> : <Calendar size={20} color="#ffffff" />}
+            </button>
+          </>
+        )}
+
+
 
             {activeTab === 'library' && (
               <LibraryView 
                 videos={videos} 
                 onPlayVideo={handlePlayVideo} 
                 isInstantlyPlayable={isInstantlyPlayable}
+              />
+            )}
+
+            {activeTab === 'online' && (
+              <OnlineSearchTab 
+                onSelectMedia={setSelectedDetailsMedia}
+                tmdbApiKey={settings.tmdbApiKey}
+                traktAccessToken={settings.traktAccessToken}
               />
             )}
 
@@ -2785,6 +3283,12 @@ function App() {
                     >
                       API Settings
                     </button>
+                    <button 
+                      className={`settings-nav-btn ${settingsTab === 'bookmarks' ? 'active' : ''}`}
+                      onClick={() => setSettingsTab('bookmarks')}
+                    >
+                      Bookmarks
+                    </button>
                   </div>
 
                   <div className="settings-page-content-wrapper">
@@ -2795,6 +3299,22 @@ function App() {
                         <div className="settings-page-grid">
                           <div className="settings-grid-col">
 
+                            <div className="settings-section">
+                              <h3>Visual Theme Engine</h3>
+                              <p className="settings-section-desc">Select your preferred color theme for the entire application.</p>
+                              <div className="pref-row">
+                                <span className="pref-label">Application Theme</span>
+                                <CustomSelect 
+                                  value={settings.theme || 'dark'} 
+                                  onChange={(val) => handleDefaultLangChange('theme' as any, val)}
+                                  options={[
+                                    { value: 'dark', label: '🌙 Dark Mode (Default)' },
+                                    { value: 'black-and-white', label: '🏁 Black & White (Monochrome Noir)' },
+                                    { value: 'light', label: '☀️ Light Mode' }
+                                  ]}
+                                />
+                              </div>
+                            </div>
 
                             <div className="settings-section">
                               <h3>Preferred Languages</h3>
@@ -3591,120 +4111,146 @@ function App() {
                                 </div>
                               </div>
 
-                              <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
-                                {/* Logout Button (Only if using server profile) */}
-                                {(settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) && (
+                              <div className="profile-button-management" style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '0.75rem',
+                                width: '100%',
+                                marginTop: '1rem',
+                                borderTop: '1px solid rgba(255,255,255,0.06)',
+                                paddingTop: '1.25rem'
+                              }}>
+                                {/* Left Side: Primary Sync Actions */}
+                                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', flex: 1, minWidth: '280px' }}>
+                                  {(!settings.userId || settings.userId === 'local' || settings.userId.startsWith('local_')) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openAuthModal('signup')}
+                                      className="btn btn-primary"
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 20px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        background: '#e50914',
+                                        color: '#fff',
+                                        border: 'none',
+                                        transition: 'background 0.2s',
+                                        fontFamily: 'Outfit, sans-serif'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = '#ff0914'}
+                                      onMouseLeave={e => e.currentTarget.style.background = '#e50914'}
+                                    >
+                                      <UserPlus size={14} />
+                                      <span>Create Server Profile & Sync</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm('Are you sure you want to logout? Your watch history and settings will remain on the server, and you will switch back to local browser storage.')) {
+                                          localStorage.setItem('valor_active_user_id', 'local');
+                                          setSettings(prev => ({
+                                            ...prev,
+                                            userId: 'local',
+                                            storageMode: 'localstorage'
+                                          }));
+                                          const savedVideos = localStorage.getItem('valor_videos');
+                                          if (savedVideos) {
+                                            try { setVideos(JSON.parse(savedVideos)); } catch {}
+                                          }
+                                          addToast('Logged out of server profile successfully', 'success');
+                                        }
+                                      }}
+                                      className="btn"
+                                      style={{
+                                        background: 'rgba(255,255,255,0.04)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        color: '#fff',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 20px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        fontFamily: 'Outfit, sans-serif'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                                    >
+                                      <LogOut size={14} />
+                                      <span>Logout</span>
+                                    </button>
+                                  )}
+
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (confirm('Are you sure you want to logout? Your watch history and settings will remain on the server, and you will switch back to local browser storage.')) {
-                                        localStorage.setItem('valor_active_user_id', 'local');
-                                        setSettings(prev => ({
-                                          ...prev,
-                                          userId: 'local',
-                                          storageMode: 'localstorage'
-                                        }));
-                                        const savedVideos = localStorage.getItem('valor_videos');
-                                        if (savedVideos) {
-                                          try { setVideos(JSON.parse(savedVideos)); } catch {}
-                                        }
-                                        addToast('Logged out of server profile successfully', 'success');
-                                      }
+                                      const curProfile = availableProfiles.find(p => p.userId === settings.userId) || {
+                                        userId: settings.userId || 'local',
+                                        name: settings.profileName || 'Local Browser Saves',
+                                        storageMode: 'localstorage'
+                                      };
+                                      setDeleteTargetProfile(curProfile);
+                                      setDeleteConfirmText('');
+                                      setIsDeleteModalOpen(true);
                                     }}
-                                    style={{ 
-                                      background: 'rgba(255,255,255,0.04)', 
-                                      border: '1px solid rgba(255,255,255,0.08)', 
-                                      color: '#fff', 
-                                      padding: '8px 20px', 
-                                      fontSize: '0.8rem', 
-                                      borderRadius: '999px', 
-                                      cursor: 'pointer',
+                                    className="btn"
+                                    style={{
+                                      background: 'rgba(239,68,68,0.06)',
+                                      border: '1px solid rgba(239,68,68,0.25)',
+                                      color: '#ef4444',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '8px 20px',
+                                      fontSize: '0.8rem',
                                       fontWeight: 600,
-                                      transition: 'background 0.2s',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
                                       fontFamily: 'Outfit, sans-serif'
                                     }}
-                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'}
                                   >
-                                    Logout
+                                    <Trash2 size={14} />
+                                    <span>Delete Profile</span>
                                   </button>
-                                )}
+                                </div>
 
-                                {/* Delete Profile Button (Always show) */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const curProfile = availableProfiles.find(p => p.userId === settings.userId) || {
-                                      userId: settings.userId || 'local',
-                                      name: settings.profileName || 'Local Browser Saves',
-                                      storageMode: 'localstorage'
-                                    };
-                                    setDeleteTargetProfile(curProfile);
-                                    setDeleteConfirmText('');
-                                    setIsDeleteModalOpen(true);
-                                  }}
-                                  style={{ 
-                                    background: 'rgba(239,68,68,0.06)', 
-                                    border: '1px solid rgba(239,68,68,0.25)', 
-                                    color: '#ef4444', 
-                                    padding: '8px 20px', 
-                                    fontSize: '0.8rem', 
-                                    borderRadius: '999px', 
-                                    cursor: 'pointer',
-                                    fontWeight: 600,
-                                    transition: 'background 0.2s',
-                                    fontFamily: 'Outfit, sans-serif'
-                                  }}
-                                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
-                                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'}
-                                >
-                                  Delete Profile & Data
-                                </button>
-
-                                {/* Create Server Profile / Sync (Only if using local profile) */}
-                                {(!settings.userId || settings.userId === 'local' || settings.userId.startsWith('local_')) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openAuthModal('signup')}
-                                    style={{ 
-                                      background: '#ffffff', 
-                                      border: 'none', 
-                                      color: '#000000', 
-                                      padding: '8px 20px', 
-                                      fontSize: '0.8rem', 
-                                      borderRadius: '999px', 
-                                      cursor: 'pointer',
-                                      fontWeight: 600,
-                                      fontFamily: 'Outfit, sans-serif',
-                                      transition: 'background-color 0.2s'
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)'}
-                                    onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
-                                  >
-                                    Create Server Profile & Sync
-                                  </button>
-                                )}
-
+                                {/* Right Side: Data Actions */}
                                 <button
                                   type="button"
                                   onClick={handleExportData}
-                                  style={{ 
-                                    background: 'rgba(255,255,255,0.04)', 
-                                    border: '1px solid rgba(255,255,255,0.08)', 
-                                    color: '#fff', 
-                                    padding: '8px 20px', 
-                                    fontSize: '0.8rem', 
-                                    borderRadius: '999px', 
+                                  className="btn"
+                                  style={{
+                                    background: 'rgba(255,255,255,0.04)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '8px 20px',
+                                    fontSize: '0.8rem',
+                                    borderRadius: '6px',
                                     cursor: 'pointer',
                                     fontWeight: 600,
                                     transition: 'background 0.2s',
-                                    marginLeft: 'auto',
                                     fontFamily: 'Outfit, sans-serif'
                                   }}
                                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                                   onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
                                 >
-                                  Export Data (CSV)
+                                  <Download size={14} />
+                                  <span>Export Data</span>
                                 </button>
                               </div>
                             </div>
@@ -3982,6 +4528,32 @@ function App() {
                           handleDefaultLangChange={handleDefaultLangChange}
                           addToast={addToast}
                         />
+                      </div>
+                    )}
+
+                    {/* Bookmarks settings section */}
+                    {settingsTab === 'bookmarks' && (
+                      <div className="settings-tab-content animate-fade-in" style={{ width: '100%' }}>
+                        <div className="settings-section">
+                          <h3>Auto-Skip Scenes</h3>
+                          <p className="settings-section-desc">Choose which marked segments are automatically skipped during playback.</p>
+                          
+                          <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                            <span className="pref-label">Auto-Skip Intro & Outro Sections</span>
+                            <ToggleSwitch 
+                              checked={settings.autoSkipIntroOutro} 
+                              onChange={(checked) => handleDefaultLangChange('autoSkipIntroOutro', checked)}
+                            />
+                          </div>
+
+                          <div className="pref-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="pref-label">Auto-Skip Sex & Nudity Scenes</span>
+                            <ToggleSwitch 
+                              checked={settings.autoSkipSexScenes} 
+                              onChange={(checked) => handleDefaultLangChange('autoSkipSexScenes', checked)}
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -4456,6 +5028,7 @@ function App() {
               </div>
             )}
           </div>
+          )}
         </main>
       </div>
 
@@ -4463,35 +5036,55 @@ function App() {
       <div className="mobile-bottom-nav">
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'home' ? 'active' : ''}`}
-          onClick={() => setActiveTab('home')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('home');
+          }}
         >
           <Home size={20} />
           <span>Home</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'history' ? 'active' : ''}`}
-          onClick={() => setActiveTab('history')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('history');
+          }}
         >
           <History size={20} />
           <span>History</span>
         </button>
         <button 
-          className={`mobile-bottom-nav-item ${activeTab === 'calendar' ? 'active' : ''}`}
-          onClick={() => setActiveTab('calendar')}
+          className={`mobile-bottom-nav-item ${activeTab === 'online' ? 'active' : ''}`}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('online');
+          }}
         >
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 2px auto' }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span>Calendar</span>
+          <Play size={20} />
+          <span>Online</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'library' ? 'active' : ''}`}
-          onClick={() => setActiveTab('library')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('library');
+          }}
         >
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 2px auto' }}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           <span>Library</span>
         </button>
         <button 
           className={`mobile-bottom-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
+          onClick={() => {
+            setSelectedActor(null);
+            setSelectedDetailsMedia(null);
+            setActiveTab('settings');
+          }}
         >
           <Settings size={20} />
           <span>Settings</span>
@@ -4606,6 +5199,86 @@ function App() {
           transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           z-index: 100;
           overflow: hidden;
+        }
+        .app-sidebar.collapsed {
+          width: 80px;
+          padding: 1.5rem 0.5rem;
+        }
+        /* Sub-page layout space overrides to reclaim wasted space */
+        .sidebar-collapsed .media-details-page-container,
+        .sidebar-collapsed .actor-page-container {
+          position: relative !important;
+          top: auto !important;
+          left: auto !important;
+          width: 100% !important;
+          height: auto !important;
+          min-height: 100% !important;
+          z-index: 1 !important;
+          background: transparent !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          overflow: visible !important;
+        }
+        .sidebar-collapsed .media-details-content-wrapper,
+        .sidebar-collapsed .actor-details-container {
+          max-width: 100% !important;
+          padding: 1rem 3rem 4rem !important;
+          margin: 0 !important;
+          box-sizing: border-box !important;
+        }
+        .sidebar-collapsed .actor-details-header,
+        .sidebar-collapsed .media-details-header {
+          height: 60px !important;
+          padding: 0 3rem !important;
+        }
+        .sidebar-collapsed .main-content {
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+        }
+        .full-width-details {
+          max-width: 100% !important;
+          width: 100% !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+        .workspace-panel-wrapper {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding-top: 1rem !important;
+        }
+        .workspace-panel {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding: 1.25rem !important;
+        }
+        @media (max-width: 576px) {
+          .workspace-panel {
+            padding: 0.85rem 0.75rem !important;
+          }
+          .container {
+            padding: 0.5rem 0.5rem !important;
+          }
+        }
+        .app-sidebar.collapsed .sidebar-header {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 2.5rem;
+        }
+        .app-sidebar.collapsed .sidebar-logo {
+          font-size: 1.8rem;
+          font-weight: 900;
+          text-align: center;
+        }
+        .app-sidebar.collapsed .sidebar-menu-text,
+        .app-sidebar.collapsed .sidebar-history-section,
+        .app-sidebar.collapsed .sidebar-settings-btn span {
+          display: none;
+        }
+        .app-sidebar.collapsed .sidebar-menu-item,
+        .app-sidebar.collapsed .sidebar-settings-btn {
+          justify-content: center;
+          padding: 0.75rem;
+          gap: 0;
         }
         .sidebar-header {
           margin-bottom: 2rem;
@@ -4923,10 +5596,23 @@ function App() {
         }
         .settings-tab-nav {
           display: flex;
-          gap: 1.5rem;
+          gap: 1.25rem;
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          padding-bottom: 0.5rem;
-          margin-bottom: 1.5rem;
+          padding-bottom: 0.75rem;
+          margin-bottom: 2rem !important;
+          margin-top: 0.5rem !important;
+          overflow: visible !important;
+          flex-wrap: nowrap !important;
+          width: 100%;
+          box-sizing: border-box;
+          position: relative;
+          z-index: 100;
+        }
+        .settings-tab-nav::-webkit-scrollbar {
+          display: none;
+        }
+        .settings-nav-btn {
+          flex-shrink: 0;
         }
         .settings-nav-btn {
           background: none;
@@ -4968,12 +5654,19 @@ function App() {
           color: #ffffff !important;
         }
         .settings-nav-select .custom-select-dropdown {
-          min-width: 150px;
+          min-width: 160px;
           right: auto;
+          z-index: 999999 !important;
+          top: 100% !important;
+          background: #18181c !important;
+          border: 1px solid rgba(255, 255, 255, 0.2) !important;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95) !important;
         }
         /* Override the global 220px !important for this specific nav dropdown */
         .settings-panel .custom-select-container.settings-nav-select {
           width: 140px !important;
+          position: relative !important;
+          z-index: 99999 !important;
         }
         .custom-toggle-switch {
           position: relative;
@@ -5549,12 +6242,12 @@ function App() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: clamp(0.75rem, 2vw, 1.1rem) clamp(1rem, 2.5vw, 1.5rem);
+          padding: 0.6rem 0.85rem;
           background: rgba(24, 24, 24, 0.65);
           border: 1px solid rgba(255, 255, 255, 0.04);
           border-radius: 8px;
           transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-          gap: 1rem;
+          gap: 0.75rem;
           cursor: pointer;
         }
         .history-item:hover {
@@ -7420,8 +8113,132 @@ function App() {
           </div>
         </div>
       )}
+      {/* Trakt Rewatch Confirmation Modal */}
+      {isRewatchModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(12px)',
+          zIndex: 9990,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '420px',
+            background: 'rgba(22,22,22,0.95)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)',
+            overflow: 'hidden',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            position: 'relative',
+            animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          }}>
+            {/* Close Button X at Top Right */}
+            <button
+              onClick={() => {
+                setIsRewatchModalOpen(false);
+                setRewatchVideoTarget(null);
+              }}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'rgba(255,255,255,0.05)',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                borderRadius: '50%',
+                width: '28px',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'background 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+            >
+              <X size={14} />
+            </button>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '24px' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#ff7a00' }}>
+                Sync Another Watch?
+              </span>
+              <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>
+                {rewatchVideoTarget?.title}
+              </span>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.4, marginTop: '8px' }}>
+                You have already synced this media to your Trakt.tv watch history. Did you rewatch this media and want to push another watch history record?
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (rewatchVideoTarget) {
+                    syncVideoToTraktHistory(rewatchVideoTarget, undefined, true);
+                  }
+                  setIsRewatchModalOpen(false);
+                  setRewatchVideoTarget(null);
+                }}
+                style={{
+                  flex: 1,
+                  background: '#ff7a00',
+                  border: 'none',
+                  color: '#ffffff',
+                  padding: '10px 16px',
+                  fontSize: '0.85rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                Submit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRewatchModalOpen(false);
+                  setRewatchVideoTarget(null);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '10px 16px',
+                  fontSize: '0.85rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export default App;
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
