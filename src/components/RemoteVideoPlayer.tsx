@@ -3457,6 +3457,14 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     return `${mins}m`;
   };
 
+  const getScrubProgressStyle = (): React.CSSProperties => {
+    const pct = Math.max(0, Math.min(100, (currentTime / (duration || 1)) * 100));
+    const thumbDiameter = 22 * 0.65;
+    const thumbRadius = thumbDiameter / 2;
+    return {
+      width: `calc(${pct}% + ${thumbRadius}px - ${(pct * thumbDiameter) / 100}px)`
+    };
+  };
 
   // Progress Bar Hover Indicator
   const handleProgressMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
@@ -4410,7 +4418,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
                 >
                   <div className="scrub-track-bg"></div>
                   <div className="scrub-track-buffered" style={{ width: `${bufferedPercent}%` }}></div>
-                  <div className="scrub-track-progress" style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}></div>
+                  <div className="scrub-track-progress" style={getScrubProgressStyle()}></div>
 
                   {/* Bookmark Timeline Dots */}
                   {bookmarks.map((bm) => {
