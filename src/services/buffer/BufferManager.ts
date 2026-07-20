@@ -83,7 +83,8 @@ export class BufferManager {
     seekMap?: any[],
     signal?: AbortSignal,
     showBuffering = false,
-    cacheKeyStartTime = startTime
+    cacheKeyStartTime = startTime,
+    packetReader = this.packetReader
   ): Promise<AudioPacket> {
     // Critical validation
     if (streamIndex === null || streamIndex === undefined || streamIndex === -1 || isNaN(streamIndex)) {
@@ -109,7 +110,7 @@ export class BufferManager {
     if (!promise) {
       this.setBuffering(true);
       console.log(`[BufferManager] [${new Date().toISOString()}] Launching single-flight audio request for: ${key}`);
-      promise = this.packetReader.readAudioPacket(ff, streamIndex, startTime, duration, seekMap, signal)
+      promise = packetReader.readAudioPacket(ff, streamIndex, startTime, duration, seekMap, signal)
         .then((packet) => {
           console.log("Cache Insert:", chunkKey, "packetStart:", packet.startTime, "duration:", packet.duration);
           this.packetCache.add(packet, chunkKey);

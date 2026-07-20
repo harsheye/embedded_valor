@@ -13,6 +13,10 @@ export class DemuxManager {
     private videoFileOrSource: File | ByteSource
   ) {}
 
+  createSibling(ffmpegMgr: FFmpegManager): DemuxManager {
+    return new DemuxManager(ffmpegMgr, this.videoFileOrSource);
+  }
+
   async getMountedInputPath(ff: FFmpeg): Promise<string> {
     if (this.mountedPath) return this.mountedPath;
 

@@ -8,6 +8,10 @@ export class FFmpegManager {
 
   constructor(private videoId: string) {}
 
+  createSibling(): FFmpegManager {
+    return new FFmpegManager(this.videoId);
+  }
+
   async load(onProgress?: (progress: number) => void): Promise<FFmpeg> {
     if (this.ffmpeg && this.isLoaded) return this.ffmpeg;
 

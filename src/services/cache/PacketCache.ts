@@ -48,7 +48,7 @@ export class PacketCache {
   }
 
   getAllPackets(): AudioPacket[] {
-    return Array.from(this.cache.values());
+    return Array.from(this.cache.values()).sort((a, b) => a.startTime - b.startTime);
   }
 
   getEntries(): { chunkKey: number; packet: AudioPacket }[] {

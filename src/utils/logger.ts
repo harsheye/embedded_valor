@@ -8,9 +8,21 @@ const styles = {
   ffmpegMap: 'background: #1565c0; color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 10px;',
   remote: 'background: #00838f; color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 10px;',
   app: 'background: #455a64; color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 10px;',
+  playback: 'background: #6d28d9; color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 10px;',
+  buffer: 'background: #0f766e; color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 10px;',
+  scheduler: 'background: #0369a1; color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 10px;',
 };
 
 export const logger = {
+  playback(message: string, ...args: any[]) {
+    if (isDev) console.log(`%c PLAYBACK %c ${message}`, styles.playback, 'color: #a78bfa; font-weight: 500;', ...args);
+  },
+  buffer(message: string, ...args: any[]) {
+    if (isDev) console.log(`%c BUFFER   %c ${message}`, styles.buffer, 'color: #5eead4; font-weight: 500;', ...args);
+  },
+  scheduler(message: string, ...args: any[]) {
+    if (isDev) console.log(`%c SCHED    %c ${message}`, styles.scheduler, 'color: #7dd3fc; font-weight: 500;', ...args);
+  },
   player(message: string, ...args: any[]) {
     if (isDev) {
       console.log(`%c PLAYER %c ${message}`, styles.player, 'color: #7986cb; font-weight: 500;', ...args);

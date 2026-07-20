@@ -1,5 +1,6 @@
 export type ChunkState =
   | 'EMPTY'
+  | 'RESERVED'
   | 'FETCHING'
   | 'DECODED'
   | 'CACHED'
@@ -16,7 +17,8 @@ export class ChunkManifest {
   private states = new Map<number, ChunkState>();
 
   private static LEGAL_TRANSITIONS: Record<ChunkState, ChunkState[]> = {
-    EMPTY: ['FETCHING'],
+    EMPTY: ['RESERVED', 'FETCHING'],
+    RESERVED: ['FETCHING', 'EMPTY'],
     FETCHING: ['DECODED', 'FAILED'],
     DECODED: ['CACHED'],
     CACHED: ['QUEUED', 'EVICTABLE', 'EMPTY'],

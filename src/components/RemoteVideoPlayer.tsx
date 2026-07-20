@@ -3130,7 +3130,12 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
       controller.initialize(videoRef.current, activeAudioStreamIndex).then(() => {
         if (active) {
-          logger.player('PlaybackController initialized successfully');
+          const mediaName = (video.title || video.fileName || 'Unknown media')
+            .replace(/\.[a-z\d]{2,5}$/i, '')
+            .replace(/[._]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          logger.playback(`ready • ${mediaName}`);
           if (controller) {
             controller.play()
               .then(() => setIsPlaying(true))

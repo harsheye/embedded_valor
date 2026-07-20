@@ -10,6 +10,7 @@ import { PlaybackQueue } from '../scheduler/PlaybackQueue';
 import { PlaybackState } from './PlaybackState';
 import { PlaybackSession } from './PlaybackSession';
 import { Timeline } from './Timeline';
+import { logger } from '../../utils/logger';
 
 // Concurrency Worker pool limiter helper
 async function runWithLimit<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
@@ -29,6 +30,13 @@ async function runWithLimit<T>(tasks: (() => Promise<T>)[], limit: number): Prom
   return Promise.all(results);
 }
 
+// A controller owns one FFmpeg.wasm worker. Concurrent ff.exec calls do not
+// decode concurrently: they queue inside that worker, inflate the reported
+// extraction time, and let audio fall behind the video. Keep requests ordered
+// at the scheduler boundary instead.
+const FFMPEG_DECODE_CONCURRENCY = 2;
+const FFMPEG_WORKER_COUNT = 2;
+
 export class PlaybackController {
   private audioCtx: AudioContext;
   private videoEl: HTMLVideoElement | null = null;
@@ -40,11 +48,18 @@ export class PlaybackController {
   private audioScheduler: AudioScheduler;
   private playbackQueue: PlaybackQueue;
   private fetchingKeys = new Set<number>();
+  private reservedTargets = new Set<number>();
+  private decodeWorkers: { ff: FFmpeg; manager: FFmpegManager; demux: DemuxManager; reader: PacketReader }[] = [];
+  private workerTails = new Map<FFmpeg, Promise<void>>();
 
   private manifest = new ChunkManifest();
   private listenersBound = false;
   private onBufferingChange: ((buffering: boolean) => void) | null = null;
   private gainNode: GainNode;
+  // The first play after initialize must keep the generation that fetched the
+  // warm-up chunk. Creating another generation here aborts useful work and can
+  // launch the same FFmpeg extraction twice.
+  private initializedGeneration: number | null = null;
 
   public state = new PlaybackState();
   public session = new PlaybackSession();
@@ -58,7 +73,7 @@ export class PlaybackController {
     this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     this.packetReader = new PacketReader(this.demuxMgr, this.audioCtx);
     this.bufferManager = new BufferManager(this.packetReader, (buffering) => {
-      console.log(`[PlaybackController-${this.session.instanceId}] BufferManager callback triggered: buffering=${buffering}`);
+      logger.buffer(`controller=${this.session.instanceId} transport buffering=${buffering}`);
       this.state.isBuffering = buffering;
       if (this.onBufferingChange) {
         this.onBufferingChange(buffering);
@@ -72,7 +87,7 @@ export class PlaybackController {
     this.playbackQueue = new PlaybackQueue(this.bufferManager.getCache(), this.audioScheduler, this.manifest);
     this.timeline = new Timeline(seekMap);
     
-    console.log(`[PlaybackController-${this.session.instanceId}] Created controller instance.`);
+    logger.playback(`controller=${this.session.instanceId} created`);
   }
 
   get instanceId(): string {
@@ -99,7 +114,7 @@ export class PlaybackController {
     
     // 1. Setup new playback generation to initialize abort signals and sessionId correctly
     const generation = this.startNewPlaybackGeneration('initialize');
-    console.log(`[PlaybackController-${this.instanceId}] Initializing controller. session=${this.session.sessionId}, track=${this.state.activeStreamIndex}`);
+    logger.playback(`controller=${this.instanceId} initializing audio track ${this.state.activeStreamIndex}`);
 
     this.ff = await this.ffmpegMgr.load();
     if (this.session.abortController.signal.aborted || generation !== this.session.playbackGeneration) {
@@ -107,10 +122,26 @@ export class PlaybackController {
       return;
     }
 
-    await this.demuxMgr.getMountedInputPath(this.ff);
+      await this.demuxMgr.getMountedInputPath(this.ff);
     if (this.session.abortController.signal.aborted || generation !== this.session.playbackGeneration) {
       console.log(`[PlaybackController-${this.instanceId}] Init aborted during demux mount.`);
       return;
+    }
+
+    this.decodeWorkers = [{ ff: this.ff, manager: this.ffmpegMgr, demux: this.demuxMgr, reader: this.packetReader }];
+    // Each FFmpeg.wasm instance has one execution lane. A second worker gives
+    // look-ahead real parallelism instead of queuing commands inside one worker.
+    for (let index = 1; index < FFMPEG_WORKER_COUNT; index++) {
+      try {
+        const manager = this.ffmpegMgr.createSibling();
+        const ff = await manager.load();
+        const demux = this.demuxMgr.createSibling(manager);
+        await demux.getMountedInputPath(ff);
+        this.decodeWorkers.push({ ff, manager, demux, reader: new PacketReader(demux, this.audioCtx) });
+        logger.scheduler(`decode worker ${index + 1}/${FFMPEG_WORKER_COUNT} ready`);
+      } catch (err) {
+        logger.warn(`Unable to start extra decode worker; continuing with ${this.decodeWorkers.length}:`, err);
+      }
     }
 
     // Bind event listeners only if we are still active
@@ -119,28 +150,33 @@ export class PlaybackController {
       this.videoEl.addEventListener('play', this.onPlayEvent);
       this.videoEl.addEventListener('pause', this.onPauseEvent);
       this.listenersBound = true;
-      console.log(`[PlaybackController-${this.instanceId}] Event listeners bound to video element.`);
+      logger.playback(`controller=${this.instanceId} video listeners ready`);
 
       const resumeTime = this.videoEl.currentTime;
       const startChunk = Math.floor(resumeTime / 10) * 10;
       const chunkId = `audio_${this.state.activeStreamIndex}_${startChunk}`;
-      console.log(`[PlaybackController-${this.instanceId}] PLAYER INITIALIZED: resumeTime=${resumeTime.toFixed(3)}s, initialAudioChunkId=${chunkId}`);
+      logger.playback(`controller=${this.instanceId} ready at ${resumeTime.toFixed(3)}s; first audio ${chunkId}`);
 
-      // 2. Warm the audio pipeline by fetching/decoding the initial chunk(s) asynchronously before play begins
-      console.log(`[PlaybackController-${this.instanceId}] Warming audio pipeline: pre-buffering chunk ${startChunk}s for resumeTime=${resumeTime.toFixed(3)}s`);
-      this.fillBufferWindow(resumeTime, 'initialize', generation, true).then(() => {
-        if (generation === this.session.playbackGeneration) {
-          this.hydrateManifestFromCache();
-          console.log(`[PlaybackController-${this.instanceId}] Audio pipeline warmed successfully. Initial chunks cached.`);
-        }
-      }).catch(err => {
-        console.warn(`[PlaybackController-${this.instanceId}] Background pre-buffering failed:`, err);
-      });
+      // Warm only the first playable chunk before play begins. The remaining
+      // window starts after playback, avoiding an expensive abandoned 50s fill
+      // if the user immediately presses play or seeks.
+      logger.buffer(`warm-up: first playable chunk ${startChunk}s for ${resumeTime.toFixed(3)}s`);
+      try {
+        await this.fillBufferWindow(resumeTime, 'initialize-first-chunk', generation, true, true);
+      } catch (err) {
+        console.warn(`[PlaybackController-${this.instanceId}] Initial audio warm-up failed:`, err);
+        return;
+      }
+      if (generation !== this.session.playbackGeneration || this.session.abortController.signal.aborted) return;
+
+      this.hydrateManifestFromCache();
+      this.initializedGeneration = generation;
+      logger.buffer(`warm-up complete; first playable audio is cached`);
     }
   }
 
   setBufferingCallback(cb: (buffering: boolean) => void): void {
-    console.log(`[PlaybackController-${this.instanceId}] setBufferingCallback registered.`);
+    logger.playback(`controller=${this.instanceId} buffering callback registered`);
     this.onBufferingChange = cb;
     this.bufferManager.setBufferingCallback((bmBuffering) => {
       this.state.isBuffering = bmBuffering;
@@ -148,22 +184,38 @@ export class PlaybackController {
         cb(bmBuffering);
         return;
       }
-      const needsBuffering = bmBuffering && this.scheduler.shouldBuffer(this.videoEl.currentTime);
+      // Fetching a future chunk must not show the spinner while the currently
+      // playing audio is still covered. The old high-water mark check made the
+      // spinner pulse throughout normal background prefetching.
+      const currentTime = this.videoEl.currentTime;
+      const hasPlayableAudio = this.bufferManager.getCache().hasCoverage(currentTime, currentTime + 0.1);
+      const needsBuffering = bmBuffering && !hasPlayableAudio;
       cb(needsBuffering);
     });
   }
 
   private startHeartbeat(): void {
     if (this.session.heartbeatIntervalId) return;
-    console.log(`[PlaybackController-${this.instanceId}] Starting heartbeat safety net timer.`);
+    logger.scheduler(`controller=${this.instanceId} heartbeat started (1s safety net)`);
     this.session.heartbeatIntervalId = setInterval(() => {
       this.runSchedulerCycle('heartbeat');
-    }, 250);
+    }, 1000);
+  }
+
+  private getDecodeWorker(target: number) {
+    return this.decodeWorkers[Math.floor(target / 10) % this.decodeWorkers.length];
+  }
+
+  private enqueueWorkerDecode<T>(worker: { ff: FFmpeg }, work: () => Promise<T>): Promise<T> {
+    const tail = this.workerTails.get(worker.ff) || Promise.resolve();
+    const next = tail.then(work, work);
+    this.workerTails.set(worker.ff, next.then(() => undefined, () => undefined));
+    return next;
   }
 
   private stopHeartbeat(): void {
     if (this.session.heartbeatIntervalId) {
-      console.log(`[PlaybackController-${this.instanceId}] Stopping heartbeat safety net timer.`);
+      logger.scheduler(`controller=${this.instanceId} heartbeat stopped`);
       clearInterval(this.session.heartbeatIntervalId);
       this.session.heartbeatIntervalId = null;
     }
@@ -187,7 +239,9 @@ export class PlaybackController {
 
   private startNewPlaybackGeneration(reason: string): number {
     const generation = this.session.startNewGeneration(reason);
+    this.initializedGeneration = null;
     this.fetchingKeys.clear();
+    this.reservedTargets.clear();
     this.bufferManager.clearActiveFills();
     return generation;
   }
@@ -266,7 +320,8 @@ export class PlaybackController {
     currentTime: number,
     callerName = 'unknown',
     generation = this.session.playbackGeneration,
-    showCurrentBuffering = false
+    showCurrentBuffering = false,
+    currentChunkOnly = false
   ): Promise<void> {
     if (!this.ff) return;
     if (this.state.activeStreamIndex === -1 || this.state.activeStreamIndex === null || typeof this.state.activeStreamIndex !== 'number') return;
@@ -285,15 +340,42 @@ export class PlaybackController {
     // PROXIMITY SORTING: nearest chunks to current playback time have highest priority
     missing.sort((a, b) => Math.abs(a - currentTime) - Math.abs(b - currentTime));
 
-    console.log(`[PlaybackController-${this.instanceId}] [${new Date().toISOString()}] fillBufferWindow called by '${callerName}'. Missing targets: [${missing.join(', ')}]`);
-
     const chunkSize = 10;
     const activeSession = this.session.sessionId;
+    if (!currentChunkOnly && this.reservedTargets.size > 0) return;
+    const targets = (currentChunkOnly ? missing.filter(target => target === currentChunk) : missing)
+      .filter((target) => {
+        const key = `audio_${this.state.activeStreamIndex}_${target}`;
+        const targetHasCoverage = this.bufferManager.getCache().hasCoverage(Math.max(target, currentTime), target + chunkSize);
+        return !this.fetchingKeys.has(target)
+          && !this.bufferManager.getCache().hasChunk(target)
+          && !(targetHasCoverage && this.playbackQueue.hasScheduled(target))
+          && !this.bufferManager.isFailedOrInCooldown(key);
+      });
+    if (targets.length === 0) return;
 
-    // Concurrency Worker pool limiter (limit = 3 concurrent fetch tasks)
-    const tasks = missing.map((target) => async () => {
+    // Reserve every target before the first decode begins. Without this, a
+    // one-worker decode lane only marks its active item as fetching and every
+    // timeupdate keeps rediscovering the queued look-ahead chunks.
+    for (const target of targets) {
+      this.fetchingKeys.add(target);
+      this.reservedTargets.add(target);
+      if (this.manifest.getState(target) === 'EMPTY') {
+        this.manifest.transitionTo(target, 'RESERVED');
+      }
+    }
+    logger.scheduler(`${callerName}: reserved audio chunks [${targets.join(', ')}]`);
+
+    // One decode lane per FFmpeg.wasm instance. Look-ahead is still preserved
+    // by the ordered target list, without creating an internal worker backlog.
+    const tasks = targets.map((target) => async () => {
       // Discard immediately if the media session is obsolete
-      if (this.session.sessionId !== activeSession || this.session.abortController.signal.aborted) return;
+      if (this.session.sessionId !== activeSession || this.session.abortController.signal.aborted) {
+        this.fetchingKeys.delete(target);
+        this.reservedTargets.delete(target);
+        if (this.manifest.getState(target) === 'RESERVED') this.manifest.transitionTo(target, 'EMPTY');
+        return;
+      }
 
       const key = `audio_${this.state.activeStreamIndex}_${target}`;
       const targetHasCoverage = this.bufferManager.getCache().hasCoverage(
@@ -304,15 +386,16 @@ export class PlaybackController {
       
       // Deduplicate if already scheduled/fetching or failed
       if (
-        this.fetchingKeys.has(target) ||
         targetHasChunk ||
         (targetHasCoverage && this.playbackQueue.hasScheduled(target)) ||
         this.bufferManager.isFailedOrInCooldown(key)
       ) {
+        this.fetchingKeys.delete(target);
+        this.reservedTargets.delete(target);
+        if (this.manifest.getState(target) === 'RESERVED') this.manifest.transitionTo(target, 'EMPTY');
         return;
       }
 
-      this.fetchingKeys.add(target);
       const currentState = this.manifest.getState(target);
       if (!targetHasCoverage && !targetHasChunk && currentState !== 'EMPTY' && currentState !== 'FETCHING') {
         this.manifest.transitionTo(target, 'EMPTY');
@@ -324,19 +407,19 @@ export class PlaybackController {
       try {
         const requestStart = target === currentChunk ? Math.max(currentTime, target) : target;
         const requestDuration = Math.max(0.25, target + chunkSize - requestStart);
-        console.log(
-          `[PlaybackController-${this.instanceId}] Requesting chunk ${target}s from ${requestStart.toFixed(3)}s for ${requestDuration.toFixed(3)}s`
-        );
-        const packet = await this.bufferManager.getOrFetchPacket(
-          this.ff!,
+        logger.buffer(`chunk ${target}s -> ${requestStart.toFixed(3)}s + ${requestDuration.toFixed(3)}s`);
+        const worker = this.getDecodeWorker(target);
+        const packet = await this.enqueueWorkerDecode(worker, () => this.bufferManager.getOrFetchPacket(
+          worker.ff,
           this.state.activeStreamIndex,
           requestStart,
           requestDuration,
           this.timeline.seekMap,
           signal,
           showCurrentBuffering && target === currentChunk,
-          target
-        );
+          target,
+          worker.reader
+        ));
 
         // Discard result if session changed during async await
         if (this.session.sessionId !== activeSession || this.session.abortController.signal.aborted) {
@@ -373,10 +456,11 @@ export class PlaybackController {
         this.playbackQueue.clear(); // Safe state cleanup on failure
       } finally {
         this.fetchingKeys.delete(target);
+        this.reservedTargets.delete(target);
       }
     });
 
-    await runWithLimit(tasks, 3);
+    await runWithLimit(tasks, FFMPEG_DECODE_CONCURRENCY);
   }
 
   async play(): Promise<void> {
@@ -388,7 +472,12 @@ export class PlaybackController {
 
     try {
       console.log(`[PlaybackController-${this.instanceId}] Playback State: PLAYING`);
-      const generation = this.startNewPlaybackGeneration('play');
+      // Initialization has already fetched the playhead chunk. Preserve that
+      // generation for the first play so its request is not aborted/repeated.
+      const generation = this.initializedGeneration === this.session.playbackGeneration
+        ? this.session.playbackGeneration
+        : this.startNewPlaybackGeneration('play');
+      this.initializedGeneration = null;
       await this.audioScheduler.resume();
       if (this.session.abortController.signal.aborted || generation !== this.session.playbackGeneration) return;
 
@@ -400,8 +489,10 @@ export class PlaybackController {
       
       const currentTime = this.videoEl.currentTime;
       
-      // 1. Pre-fetch and pre-decode the audio chunk for the current position so it's ready in memory
-      await this.fillBufferWindow(currentTime, 'play', generation, true);
+      // Wait only for the chunk covering the playhead. The rest of the window
+      // is fetched after playback begins, so resume is not held hostage by all
+      // five warm-up chunks.
+      await this.fillBufferWindow(currentTime, 'play-first-chunk', generation, true, true);
       if (this.session.abortController.signal.aborted || generation !== this.session.playbackGeneration) return;
 
       // 2. Play the video element
@@ -413,6 +504,7 @@ export class PlaybackController {
       this.playbackQueue.clear();
       this.hydrateManifestFromCache();
       this.playbackQueue.update(syncedTime, this.state.playbackRate);
+      void this.fillBufferWindow(syncedTime, 'play-background', generation);
       
       this.startHeartbeat();
     } finally {
@@ -429,12 +521,16 @@ export class PlaybackController {
 
     try {
       console.log(`[PlaybackController-${this.instanceId}] Playback State: PLAYING_SYNCED`);
-      const generation = this.startNewPlaybackGeneration('playSyncedFromCurrentTime');
+      const generation = this.initializedGeneration === this.session.playbackGeneration
+        ? this.session.playbackGeneration
+        : this.startNewPlaybackGeneration('playSyncedFromCurrentTime');
+      this.initializedGeneration = null;
       this.resetQueueAndTimeline();
       this.hydrateManifestFromCache();
 
-      // 1. Pre-fetch and pre-decode the audio chunk
-      await this.fillBufferWindow(this.videoEl.currentTime, 'playSyncedFromCurrentTime', generation, true);
+      // Resume as soon as the playhead chunk is decoded; continue prefetching
+      // the rest of the window in the background.
+      await this.fillBufferWindow(this.videoEl.currentTime, 'play-first-chunk', generation, true, true);
       if (this.session.abortController.signal.aborted || generation !== this.session.playbackGeneration) return;
 
       // 2. Resume context and play
@@ -449,6 +545,7 @@ export class PlaybackController {
       this.playbackQueue.clear();
       this.hydrateManifestFromCache();
       this.playbackQueue.update(syncedTime, this.state.playbackRate);
+      void this.fillBufferWindow(syncedTime, 'play-background', generation);
       
       this.startHeartbeat();
     } finally {
@@ -593,7 +690,10 @@ export class PlaybackController {
       await this.audioCtx.close().catch(() => {});
     }
     if (this.ff) {
-      await this.demuxMgr.cleanup(this.ff).catch(() => {});
+      await Promise.all(this.decodeWorkers.map(async worker => {
+        await worker.demux.cleanup(worker.ff).catch(() => {});
+        if (worker.manager !== this.ffmpegMgr) await worker.manager.destroy().catch(() => {});
+      }));
     }
     this.bufferManager.clear();
   }
