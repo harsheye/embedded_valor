@@ -587,21 +587,9 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.8rem',
-                    fontWeight: 600
-                  }}
-                >
-                  <List size={15} /> List
-                </button>
-
-                <button
-                  title="Detailed Overview View"
-                  onClick={() => setEpisodeViewMode('detailed')}
-                  style={{
-                    background: episodeViewMode === 'detailed' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                    background: episodeViewMode === 'list' ? 'var(--accent-glow)' : 'transparent',
                     border: 'none',
-                    color: episodeViewMode === 'detailed' ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                    color: episodeViewMode === 'list' ? 'var(--accent-color)' : 'var(--text-muted)',
                     padding: '6px 12px',
                     borderRadius: '0.45rem',
                     cursor: 'pointer',
@@ -609,10 +597,34 @@ export const OnlineDetailsPage: React.FC<OnlineDetailsPageProps> = ({
                     alignItems: 'center',
                     gap: '6px',
                     fontSize: '0.8rem',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    transition: 'all 0.2s'
                   }}
                 >
-                  <AlignLeft size={15} /> Detailed
+                  <ListFilter size={15} />
+                  <span>List</span>
+                </button>
+
+                <button
+                  title="Detailed View"
+                  onClick={() => setEpisodeViewMode('detailed')}
+                  style={{
+                    background: episodeViewMode === 'detailed' ? 'var(--accent-glow)' : 'transparent',
+                    border: 'none',
+                    color: episodeViewMode === 'detailed' ? 'var(--accent-color)' : 'var(--text-muted)',
+                    padding: '6px 12px',
+                    borderRadius: '0.45rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <LayoutGrid size={15} />
+                  <span>Detailed</span>
                 </button>
               </div>
             </div>

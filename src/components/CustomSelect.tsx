@@ -178,7 +178,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         }
         .custom-select-search-input {
           width: 100%;
-          background: rgba(0, 0, 0, 0.2);
+          background: var(--bg-secondary, rgba(0, 0, 0, 0.2));
           border: 1px solid var(--dropdown-border);
           border-radius: 6px;
           color: var(--dropdown-text);
@@ -219,7 +219,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         }
         .custom-select-option.selected {
           background: var(--accent-color);
-          color: #ffffff;
+          color: var(--bg-primary, #ffffff);
+          font-weight: 700;
         }
         .option-check-icon {
           width: 14px;

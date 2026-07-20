@@ -2985,22 +2985,9 @@ function App() {
                         </h2>
 
                         <button
-                          className="history-calendar-toggle-btn"
+                          className="btn-theme-icon"
                           onClick={() => setHistoryViewMode('list')}
                           title="Close Calendar"
-                          style={{
-                            background: 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '50%',
-                            color: 'var(--text-primary)',
-                            width: '36px',
-                            height: '36px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s ease'
-                          }}
                         >
                           <X size={18} />
                         </button>
@@ -3018,23 +3005,9 @@ function App() {
                         <h2>Playback History ({videos.length})</h2>
 
                         <button
-                          className="history-calendar-toggle-btn"
+                          className="btn-theme-outline"
                           onClick={() => setHistoryViewMode('calendar')}
                           title="Switch to Calendar View"
-                          style={{
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '0.75rem',
-                            color: 'var(--text-primary)',
-                            padding: '0.55rem 1rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            fontSize: '0.85rem',
-                            fontWeight: 600,
-                            transition: 'all 0.2s ease'
-                          }}
                         >
                           <Calendar size={18} />
                           Calendar View
