@@ -481,21 +481,37 @@ const backendServer = http.createServer((req, res) => {
             maps: mapsList
           });
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(matches));
         return;
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
+      })
+      .catch((e) => {
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: e.message }));
         return;
+      });
+    return;
+  }
+
+  // VLR Match Detail Scraper API
+  if (pathname === '/api/vlr/detail') {
+    const targetUrl = parsedUrl.searchParams.get('url') || 'https://www.vlr.gg/701052/jdg-esports-vs-trace-esports-vct-2026-china-stage-2-w3';
+    fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml'
       }
-    }
-  } else if (req.url.startsWith('/api/vlr/detail')) {
-    try {
-      const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
-      const targetUrl = parsedUrl.searchParams.get('url') || 'https://www.vlr.gg/701052/jdg-esports-vs-trace-esports-vct-2026-china-stage-2-w3';
-      const detailRes = await fetch(targetUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+    })
+      .then(r => r.text())
+      .then(html => {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+        res.end(html);
+        return;
+      })
+      .catch(e => {
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: e.message }));
+        return;
       });
     return;
   }
