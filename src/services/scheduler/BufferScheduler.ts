@@ -3,10 +3,10 @@ import type { TimeRange } from '../cache/PacketCache';
 import { ChunkManifest } from './ChunkManifest';
 
 export class BufferScheduler {
-  private readonly lowWaterMark = 15;   // seconds
-  private readonly highWaterMark = 50;  // seconds
+  private readonly lowWaterMark = 30;   // seconds (keep 30s minimum buffer)
+  private readonly highWaterMark = 60;  // seconds (buffer up to 60s ahead)
   private readonly chunkSize = 10;      // seconds
-  private isBufferingState = true;      // Start true to buffer 50s initially
+  private isBufferingState = true;      // Start true to buffer 60s initially
 
   constructor(private cache: PacketCache, private manifest: ChunkManifest) {}
 
@@ -67,7 +67,9 @@ export class BufferScheduler {
       const requiredEnd = t + this.chunkSize;
       const hasCoverage = this.cache.hasCoverage(requiredStart, requiredEnd);
       const hasChunk = this.cache.hasChunk(t);
-      if (!hasChunk && (!hasCoverage || state === 'EMPTY')) {
+      const isCachedState = state === 'CACHED' || state === 'QUEUED' || state === 'PLAYING' || state === 'PLAYED';
+      
+      if (!hasChunk && !isCachedState && (!hasCoverage || state === 'EMPTY')) {
         missing.push(t);
       }
     }

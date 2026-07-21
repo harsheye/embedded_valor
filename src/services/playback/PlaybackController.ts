@@ -60,6 +60,7 @@ export class PlaybackController {
   // warm-up chunk. Creating another generation here aborts useful work and can
   // launch the same FFmpeg extraction twice.
   private initializedGeneration: number | null = null;
+  private lastSchedulerRunTime = 0;
 
   public state = new PlaybackState();
   public session = new PlaybackSession();
@@ -284,10 +285,30 @@ export class PlaybackController {
     if (this.session.abortController.signal.aborted) return;
     if (this.session.maintenanceFrozen) return;
     if (!this.videoEl) return;
+
+    const now = Date.now();
+    if (callerName === 'timeupdate') {
+      if (now - this.lastSchedulerRunTime < 1000) {
+        return;
+      }
+    }
+    this.lastSchedulerRunTime = now;
+
     const currentTime = this.videoEl.currentTime;
 
-    // Evict old cache items via bufferManager cache
+    // Evict old cache items and keep manifest state in sync
+    const cachedKeysBefore = new Set(this.bufferManager.getCache().getEntries().map(e => e.chunkKey));
     this.bufferManager.getCache().evict(currentTime);
+    const cachedKeysAfter = new Set(this.bufferManager.getCache().getEntries().map(e => e.chunkKey));
+
+    for (const key of cachedKeysBefore) {
+      if (!cachedKeysAfter.has(key)) {
+        const state = this.manifest.getState(key);
+        if (state === 'CACHED' || state === 'QUEUED' || state === 'PLAYING' || state === 'PLAYED') {
+          this.manifest.transitionTo(key, 'EMPTY');
+        }
+      }
+    }
 
     if (this.videoEl.paused) return;
 
@@ -347,8 +368,12 @@ export class PlaybackController {
       .filter((target) => {
         const key = `audio_${this.state.activeStreamIndex}_${target}`;
         const targetHasCoverage = this.bufferManager.getCache().hasCoverage(Math.max(target, currentTime), target + chunkSize);
+        const state = this.manifest.getState(target);
+        const isCachedState = state === 'CACHED' || state === 'QUEUED' || state === 'PLAYING' || state === 'PLAYED';
+        
         return !this.fetchingKeys.has(target)
           && !this.bufferManager.getCache().hasChunk(target)
+          && !isCachedState
           && !(targetHasCoverage && this.playbackQueue.hasScheduled(target))
           && !this.bufferManager.isFailedOrInCooldown(key);
       });

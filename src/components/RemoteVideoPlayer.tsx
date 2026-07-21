@@ -1814,7 +1814,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       if (videoRef.current && !videoRef.current.paused) {
         const shouldUpdate = !video.currentTime || hasSeekedRef.current || videoRef.current.currentTime > 0;
         if (shouldUpdate && !isScrubbingRef.current && !debouncedSeekTimeoutRef.current) {
-          console.log("[Timeline]", "source=raf", videoRef.current.currentTime);
           setCurrentTime(videoRef.current.currentTime);
         }
 
@@ -2212,7 +2211,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // Suppress parent history state updates while user is actively freehand scrubbing
     if (!isScrubbingRef.current) {
-      console.log("[Timeline]", "source=seekComplete", newTime);
       onUpdateVideo({
         ...video,
         currentTime: newTime
@@ -2473,8 +2471,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (uiConfig.blockSeekingCompletely) return;
-    const seekTime = parseFloat(e.target.value);
-    console.log("[Timeline]", "source=drag", seekTime);
     if (isScrubbingRef.current) {
       setScrubTime(seekTime);
       if (previewVideoRef.current) {
@@ -3801,7 +3797,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
               const time = videoRef.current.currentTime;
               const shouldUpdate = !video.currentTime || hasSeekedRef.current || time > 0;
               if (shouldUpdate && !isScrubbingRef.current && !debouncedSeekTimeoutRef.current) {
-                console.log("[Timeline]", "source=playback", time);
                 setCurrentTime(time);
                 latestTimeRef.current = time;
               }
