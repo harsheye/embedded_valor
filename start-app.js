@@ -476,145 +476,19 @@ const backendServer = http.createServer((req, res) => {
             currentMapRoundScore: {
               teamA: roundScoreA,
               teamB: roundScoreB
-    try {
-      const html = await fetch('https://www.vlr.gg/matches', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml'
-        }
-      }).then(r => r.text());
-
-      const matches = [];
-      const linkBlocks = html.split(/<a\s+/gi);
-      const rawLiveMatches = [];
-      for (let i = 1; i < linkBlocks.length; i++) {
-        const block = linkBlocks[i];
-        const hrefMatch = block.match(/href="(\/(\d+)\/([^"]+))"/i);
-        if (!hrefMatch) continue;
-
-        const matchPath = hrefMatch[1];
-        const matchId = hrefMatch[2];
-
-        const isLive = block.includes('mod-live') || block.includes('LIVE') || block.includes('ml mod-live');
-        if (!isLive) continue;
-
-        rawLiveMatches.push({ matchPath, matchId, block });
-      }
-
-      for (const item of rawLiveMatches) {
-        const { matchPath, matchId, block } = item;
-
-        let rawEvent = 'VCT Match';
-        const eventMatch = block.match(/<div\s+class="match-item-event[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-        if (eventMatch) {
-          rawEvent = eventMatch[1].replace(/<[^>]+>/g, ' ').replace(/&ndash;/g, '-').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
-        }
-
-        const fullBlockText = block.replace(/<[^>]+>/g, ' ').replace(/&ndash;/g, '-').replace(/\s+/g, ' ').trim();
-        const isVctMatch = /vct|valorant champions|masters|china stage|americas stage|emea stage|pacific stage/i.test(fullBlockText) || /vct|champions|masters/i.test(matchPath);
-        if (!isVctMatch) continue;
-
-        let eventName = rawEvent;
-        const vctMatch = fullBlockText.match(/VCT[^\n\r<]{3,40}/i);
-        if (vctMatch) {
-          eventName = vctMatch[0].trim();
-        }
-
-        const teamNames = [];
-        const teamMatches = block.matchAll(/<div\s+class="match-item-vs-team-name"[^>]*>([\s\S]*?)<\/div>/gi);
-        for (const tm of teamMatches) {
-          const cleanName = tm[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-          if (cleanName) teamNames.push(cleanName);
-        }
-
-        const scores = [];
-        const scoreMatches = block.matchAll(/<div\s+class="match-item-vs-team-score[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
-        for (const sm of scoreMatches) {
-          const cleanScore = sm[1].replace(/<[^>]+>/g, '').trim();
-          if (cleanScore !== undefined && cleanScore !== '') scores.push(cleanScore);
-        }
-
-        const teamA = teamNames[0] || 'Team A';
-        const teamB = teamNames[1] || 'Team B';
-        const scoreA = parseInt(scores[0] || '0', 10);
-        const scoreB = parseInt(scores[1] || '0', 10);
-        const fullMatchUrl = `https://www.vlr.gg${matchPath}`;
-
-        let liveMapName = 'Live Map';
-        let roundScoreA = 0;
-        let roundScoreB = 0;
-        const mapsList = [];
-
-        try {
-          const detailRes = await fetch(`${fullMatchUrl}?_t=${Date.now()}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+            },
+            vlrUrl: fullMatchUrl,
+            maps: mapsList
           });
-          if (detailRes.ok) {
-            const detailHtml = await detailRes.text();
-            const gameParts = detailHtml.split(/<div\s+class="vm-stats-game\s+/gi);
-
-            for (let i = 1; i < gameParts.length; i++) {
-              const part = gameParts[i];
-              const gameIdMatch = part.match(/data-game-id="(\d+)"/i);
-              if (!gameIdMatch) continue;
-
-              const mName = (part.match(/<div\s+class="map"[^>]*>([\s\S]*?)<\/div>/i) || [])[1]?.replace(/<[^>]+>/g, '').replace(/PICK|DECIDER/gi, '').replace(/\s+/g, ' ').trim() || 'Map';
-
-              let sA = 0;
-              let sB = 0;
-              const headerPos = part.indexOf('vm-stats-game-header');
-              if (headerPos !== -1) {
-                const headerSnippet = part.substring(headerPos, headerPos + 1500);
-                const scores = [...headerSnippet.matchAll(/<div\s+class="score[^"]*"[^>]*>\s*(\d+)\s*<\/div>/gi)];
-                if (scores.length >= 2) {
-                  sA = parseInt(scores[0][1], 10);
-                  sB = parseInt(scores[1][1], 10);
-                }
-              }
-
-              const isCompleted = sA >= 13 || sB >= 13;
-              const isMapActive = (part.startsWith('mod-active') || part.includes('mod-active')) && !isCompleted;
-
-              mapsList.push({
-                mapIndex: mapsList.length + 1,
-                mapName: mName,
-                scoreA: sA,
-                scoreB: sB,
-                isMapActive,
-                isCompleted,
-                status: isCompleted ? 'completed' : isMapActive ? 'live' : 'upcoming'
-              });
-            }
-
-            let liveMapObj = mapsList.find(m => m.isMapActive) || mapsList.find(m => !m.isCompleted) || mapsList[mapsList.length - 1];
-            if (liveMapObj) {
-              liveMapName = liveMapObj.mapName;
-              roundScoreA = liveMapObj.scoreA;
-              roundScoreB = liveMapObj.scoreB;
-            }
-          }
-        } catch (e) {}
-
-        matches.push({
-          id: `vct-${matchId}`,
-          game: 'valorant',
-          eventName: eventName,
-          status: 'ongoing',
-          bestOf: 'BO3',
-          teamA: { name: teamA, tag: teamA.substring(0, 4).toUpperCase(), score: isNaN(scoreA) ? 0 : scoreA, color: '#e50914' },
-          teamB: { name: teamB, tag: teamB.substring(0, 4).toUpperCase(), score: isNaN(scoreB) ? 0 : scoreB, color: '#3b82f6' },
-          currentMapName: liveMapName,
-          currentMapRoundScore: { teamA: roundScoreA, teamB: roundScoreB },
-          maps: mapsList,
-          vlrUrl: fullMatchUrl
-        });
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(matches));
+        return;
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+        return;
       }
-
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify(matches));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: e.message }));
     }
   } else if (req.url.startsWith('/api/vlr/detail')) {
     try {
@@ -824,6 +698,53 @@ const backendServer = http.createServer((req, res) => {
           res.statusCode = 500;
           res.end(JSON.stringify({ error: 'Database update error' }));
         }
+      }
+    });
+    return;
+  }
+
+  // Trakt OAuth Code Exchange API
+  if (pathname === '/api/trakt/exchange' && req.method === 'POST') {
+    getJsonBody(req).then(async (body) => {
+      const { code, redirect_uri, client_secret } = body;
+      if (!code) {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Missing authorization code' }));
+        return;
+      }
+
+      try {
+        const payload = {
+          code: code,
+          client_id: 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+          client_secret: client_secret || '',
+          redirect_uri: redirect_uri || 'http://localhost:50000',
+          grant_type: 'authorization_code'
+        };
+
+        const traktRes = await fetch('https://api.trakt.tv/oauth/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await traktRes.json();
+        if (traktRes.ok && data.access_token) {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(data));
+        } else {
+          res.statusCode = traktRes.status || 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(data));
+        }
+      } catch (err) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: err.message || 'Failed to exchange Trakt token' }));
       }
     });
     return;

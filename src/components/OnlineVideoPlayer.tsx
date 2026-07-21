@@ -93,6 +93,14 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
   // Bookmarks local state
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
 
+  // Compute active bookmark for interactive Skip button overlay
+  const activeBookmarkForSkip = useMemo(() => {
+    return bookmarks.find(bm => {
+      if (!bm.endTime || bm.endTime <= bm.time) return false;
+      return currentTime >= bm.time && currentTime < bm.endTime;
+    });
+  }, [bookmarks, currentTime]);
+
   // Toast / Alerts
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -140,8 +148,9 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
     });
   }, []);
 
-  // Fetch Bookmarks from GraphQL API
+  // Fetch Bookmarks from GraphQL API (with LocalStorage fallback)
   const fetchBookmarks = useCallback(async () => {
+    let loadedFromServer = false;
     try {
       const activeUserId = userId || 'local';
       const queryStr = `
@@ -172,16 +181,37 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
         })
       });
       const result = await response.json();
-      if (result.data && result.data.bookmarks) {
+      if (result.data && Array.isArray(result.data.bookmarks) && result.data.bookmarks.length > 0) {
         setBookmarks(result.data.bookmarks);
+        loadedFromServer = true;
       }
     } catch (err) {
-      console.warn('Failed to load bookmarks:', err);
+      console.warn('Failed to load bookmarks from server:', err);
+    }
+
+    // Local Storage fallback if server query produced no data
+    if (!loadedFromServer) {
+      try {
+        const activeUserId = userId || 'local';
+        const key = `valor_bookmarks_${activeUserId}_${video.id}`;
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          setBookmarks(JSON.parse(saved));
+        }
+      } catch (err) {}
     }
   }, [video.id, userId]);
 
-  // Sync Bookmarks to Server
+  // Sync Bookmarks to Server & Local Storage
   const saveBookmarksToServer = useCallback(async (updatedBookmarks: Bookmark[]) => {
+    // 1. Save to local storage
+    try {
+      const activeUserId = userId || 'local';
+      const key = `valor_bookmarks_${activeUserId}_${video.id}`;
+      localStorage.setItem(key, JSON.stringify(updatedBookmarks));
+    } catch (err) {}
+
+    // 2. Send GraphQL mutation to server (SQLite / TiDB)
     try {
       const activeUserId = userId || 'local';
       const mutation = `
@@ -218,7 +248,7 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
         })
       });
     } catch (err) {
-      console.warn('Failed to sync bookmarks:', err);
+      console.warn('Failed to sync bookmarks to server:', err);
     }
   }, [video.id, userId]);
 
@@ -751,22 +781,21 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           width: 100%;
           height: 100%;
           z-index: 10;
-          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 20%, transparent 80%, rgba(0, 0, 0, 0.7) 100%);
+          background: transparent !important;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          opacity: 0;
+          opacity: 1 !important;
           pointer-events: none !important;
-          transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .player-ui-overlay-layer.visible {
-          opacity: 1;
+          opacity: 1 !important;
           pointer-events: none !important;
         }
 
         .top-bar-overlay {
           height: 80px;
-          background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%);
+          background: transparent !important;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -880,7 +909,7 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
         }
 
         .bottom-bar-overlay {
-          background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+          background: transparent !important;
           padding: 1.5rem 2rem;
           display: flex;
           flex-direction: column;
@@ -1115,301 +1144,177 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
       {!interactWithNative && (
         <div 
           className={`player-ui-overlay-layer ${showControls ? 'visible' : ''}`}
-          style={{ zIndex: 10 }}
+          style={{ zIndex: 10, background: 'transparent', pointerEvents: 'none' }}
         >
-          {/* Top Bar controls - Only Source Selector & X Close Button */}
-          <div className="top-bar-overlay" style={{ justifyContent: 'flex-end' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
-              {/* Server Source Selector */}
-              {!isAnime && (
-                <div className="server-selector-wrapper" style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Server size={14} color="#e50914" />
-                  <select 
-                    className="server-dropdown-select"
-                    value={server}
-                    onChange={(e) => setServer(e.target.value as any)}
-                    style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', outline: 'none' }}
-                  >
-                    <option value="videasy" style={{ background: '#121218' }}>Videasy Server</option>
-                    <option value="vidking" style={{ background: '#121218' }}>Vidking Server</option>
-                  </select>
-                </div>
-              )}
-
+          {/* Top Bar controls - Only X Close Button */}
+          <div className="top-bar-overlay" style={{ background: 'transparent', justifyContent: 'flex-end', padding: '16px 20px', pointerEvents: 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto', pointerEvents: 'auto' }}>
               {/* Close Button X */}
-              <button className="back-btn" onClick={onBack} title="Exit Player">
-                <X size={22} />
+              <button 
+                className="back-btn" 
+                onClick={onBack} 
+                title="Exit Player"
+                style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }}
+              >
+                <X size={20} />
               </button>
             </div>
           </div>
 
-          {/* Center Playback click-trigger & status popup */}
-          <div className="center-hud-clicker" onClick={togglePlay}>
-            {isLocked && (
-              <div className="lock-hud-indicator animate-fade-in">
-                <Lock size={32} />
-                <span>Controls Locked</span>
-              </div>
-            )}
-          </div>
-
           {/* Toast notifications */}
           {toastMessage && (
-            <div className="player-toast-notification">
+            <div className="player-toast-notification" style={{ pointerEvents: 'auto' }}>
               {toastMessage}
             </div>
           )}
 
-          {/* Bottom Controls Overlay */}
-          <div className="bottom-bar-overlay">
-            {/* Passive Timeline Progress Tracker */}
-            {showPlayBar && (
-              <div className="scrub-container-premium" style={{ cursor: 'default' }}>
-                {/* Visual Track Background */}
-                <div 
-                  className="scrub-track-bg" 
-                  style={{ 
-                    position: 'absolute', 
-                    width: '100%', 
-                    height: '4px', 
-                    background: 'rgba(255,255,255,0.2)', 
-                    borderRadius: '2px',
-                    zIndex: 7
-                  }} 
-                />
-                
-                {/* Visual Progress Bar Overlay */}
-                <div 
-                  className="scrub-track-progress" 
-                  style={{ 
-                    width: `${(currentTime / (duration || 1)) * 100}%`,
-                    height: '4px',
-                    background: '#8b5cf6',
-                    borderRadius: '2px',
-                    position: 'absolute',
-                    zIndex: 8
-                  }} 
-                />
-
-                {/* Render bookmarks on timeline */}
-                {bookmarks.map((bm) => {
-                  const pct = (bm.time / (duration || 1)) * 100;
-                  const isRange = bm.endTime !== undefined && bm.endTime > bm.time;
-                  
-                  if (isRange && bm.endTime) {
-                    const endPct = (bm.endTime / (duration || 1)) * 100;
-                    const width = endPct - pct;
-                    return (
-                      <div 
-                        key={bm.id}
-                        className={`timeline-bookmark-range ${bm.category?.toLowerCase() || ''}`}
-                        style={{ left: `${pct}%`, width: `${width}%` }}
-                        title={`${bm.category}: ${bm.title || bm.label}`}
-                      />
-                    );
+          {/* Interactive Skip Section Overlay Button */}
+          {activeBookmarkForSkip && (
+            <div 
+              style={{
+                position: 'absolute',
+                bottom: '80px',
+                right: '24px',
+                zIndex: 25,
+                pointerEvents: 'auto'
+              }}
+            >
+              <button
+                onClick={() => {
+                  if (activeBookmarkForSkip.endTime) {
+                    sendIframeCommand('seek', activeBookmarkForSkip.endTime);
+                    setCurrentTime(activeBookmarkForSkip.endTime);
+                    addToast(`Skipped ${activeBookmarkForSkip.category || 'Section'}`);
                   }
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '10px',
+                  color: '#fff',
+                  padding: '10px 18px',
+                  fontSize: '0.85rem',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  boxShadow: '0 8px 25px rgba(109, 40, 217, 0.5)'
+                }}
+              >
+                <SkipForward size={16} />
+                <span>Skip {activeBookmarkForSkip.category || 'Section'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Bottom Controls Overlay (Strictly pointerEvents none on wrapper!) */}
+          <div className="bottom-bar-overlay" style={{ background: 'transparent', padding: '16px 20px', pointerEvents: 'none' }}>
+            {/* Timeline Progress Tracker with Bookmarks */}
+            <div className="scrub-container-premium" style={{ cursor: 'default', marginBottom: '10px', pointerEvents: 'auto' }}>
+              {/* Visual Track Background */}
+              <div 
+                className="scrub-track-bg" 
+                style={{ 
+                  position: 'absolute', 
+                  width: '100%', 
+                  height: '4px', 
+                  background: 'rgba(255,255,255,0.2)', 
+                  borderRadius: '2px',
+                  zIndex: 7
+                }} 
+              />
+              
+              {/* Visual Progress Bar Overlay */}
+              <div 
+                className="scrub-track-progress" 
+                style={{ 
+                  width: `${(currentTime / (duration || 1)) * 100}%`,
+                  height: '4px',
+                  background: '#8b5cf6',
+                  borderRadius: '2px',
+                  position: 'absolute',
+                  zIndex: 8
+                }} 
+              />
+
+              {/* Render bookmarks on timeline */}
+              {bookmarks.map((bm) => {
+                const pct = (bm.time / (duration || 1)) * 100;
+                const isRange = bm.endTime !== undefined && bm.endTime > bm.time;
+                
+                if (isRange && bm.endTime) {
+                  const endPct = (bm.endTime / (duration || 1)) * 100;
+                  const width = endPct - pct;
                   return (
                     <div 
                       key={bm.id}
-                      className={`timeline-bookmark-dot ${bm.category?.toLowerCase() || ''}`}
-                      style={{ left: `${pct}%` }}
+                      className={`timeline-bookmark-range ${bm.category?.toLowerCase() || ''}`}
+                      style={{ left: `${pct}%`, width: `${width}%` }}
                       title={`${bm.category}: ${bm.title || bm.label}`}
                     />
                   );
-                })}
-              </div>
-            )}
+                }
+                return (
+                  <div 
+                    key={bm.id}
+                    className={`timeline-bookmark-dot ${bm.category?.toLowerCase() || ''}`}
+                    style={{ left: `${pct}%` }}
+                    title={`${bm.category}: ${bm.title || bm.label}`}
+                  />
+                );
+              })}
+            </div>
 
-            {/* Controls Button Row */}
-            <div className="bottom-control-buttons-row">
-              <div className="bottom-controls-left-group">
-                {showVolumeControl && (
-                  <div className="volume-slider-wrapper">
-                    <button className="control-btn" onClick={toggleMute}>
-                      {isMuted ? <VolumeX size={18} /> : (volume > 0.5 ? <Volume2 size={18} /> : <Volume1 size={18} />)}
-                    </button>
-                    <input 
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={isMuted ? 0 : volume}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setVolume(val);
-                        setIsMuted(val === 0);
-                      }}
-                      className="volume-slider-bar"
-                    />
-                  </div>
-                )}
-
-                {showTimeDisplay && (
-                  <div className="time-display-odometer">
-                    <span>{formatTime(currentTime)}</span>
-                    <span className="divider">/</span>
-                    <span>{formatTime(duration)}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="bottom-controls-right-group">
-                {/* Native Config button (pointers auto) */}
+            {/* Bottom Control Buttons Row - Strictly pointerEvents none on row wrapper! */}
+            <div className="bottom-control-buttons-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '6px', pointerEvents: 'none' }}>
+              <div className="popover-wrapper" style={{ position: 'relative', pointerEvents: 'auto' }}>
                 <button 
-                  className="control-btn control-btn-native"
-                  onClick={handleNativeConfigMode}
-                  title="Direct Interactive configuration (Subs/Audio/Servers)"
+                  className={`control-btn ${showBookmarksPopover ? 'active' : ''}`}
+                  onClick={() => setShowBookmarksPopover(prev => !prev)}
+                  title="Bookmarks Panel"
+                  style={{
+                    background: 'rgba(12, 12, 18, 0.85)',
+                    border: '1.5px solid rgba(255, 255, 255, 0.4)',
+                    borderRadius: '12px',
+                    color: '#fff',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 8px 20px rgba(0, 0, 0, 0.6), 0 0 12px rgba(139, 92, 246, 0.3)',
+                    transition: 'all 0.2s ease'
+                  }}
                 >
-                  <Cpu size={18} />
-                  <span style={{ fontSize: '11px', fontWeight: 700, marginLeft: '4px' }}>Stream Config</span>
+                  <BookmarkIcon size={22} />
                 </button>
 
-                {/* Lock Controls button */}
-                <button className="control-btn" onClick={handleToggleLock} title="Lock Screen Controls">
-                  <Lock size={18} />
-                </button>
-
-                {/* Timeline bookmark range marking trigger */}
-                {markingStartTime === null ? (
-                  <button 
-                    className="control-btn"
-                    onClick={() => {
-                      setMarkingStartTime(Math.round(currentTime));
-                      addToast("Mark Start Set. Seek to end and click again to save.");
+                {showBookmarksPopover && (
+                  <BookmarkPanel 
+                    bookmarks={bookmarks}
+                    onJump={(time) => {
+                      sendIframeCommand('seek', time);
+                      setCurrentTime(time);
+                      setShowBookmarksPopover(false);
                     }}
-                    title="Mark Skip Section"
-                    style={{ background: 'transparent', border: 'none', boxShadow: 'none', padding: '8px', cursor: 'pointer' }}
-                  >
-                    <BookmarkIcon size={18} />
-                  </button>
-                ) : (
-                  <button 
-                    className="control-btn marking-active"
-                    onClick={() => {
+                    onEdit={(bm) => {
+                      setEditingBookmark(bm);
+                      setShowAddDialog(true);
+                      setShowBookmarksPopover(false);
+                    }}
+                    onDelete={handleDeleteBookmark}
+                    onAdd={() => {
                       setEditingBookmark(undefined);
                       setShowAddDialog(true);
+                      setShowBookmarksPopover(false);
                     }}
-                    title="Complete Skip Section Mark"
-                    style={{ background: 'transparent', border: 'none', boxShadow: 'none', color: '#ff7a00', padding: '8px', cursor: 'pointer' }}
-                  >
-                    <BookmarkIcon size={18} fill="#ff7a00" />
-                  </button>
-                )}
-
-                {/* Bookmarks popover list */}
-                <div className="popover-wrapper">
-                  <button 
-                    className={`control-btn ${showBookmarksPopover ? 'active' : ''}`}
-                    onClick={() => setShowBookmarksPopover(prev => !prev)}
-                    title="Bookmarks catalog list"
-                  >
-                    <List size={18} />
-                  </button>
-
-                  {showBookmarksPopover && (
-                    <BookmarkPanel 
-                      bookmarks={bookmarks}
-                      onJump={(time) => {
-                        sendIframeCommand('seek', time);
-                        setCurrentTime(time);
-                        setShowBookmarksPopover(false);
-                      }}
-                      onEdit={(bm) => {
-                        setEditingBookmark(bm);
-                        setShowAddDialog(true);
-                        setShowBookmarksPopover(false);
-                      }}
-                      onDelete={handleDeleteBookmark}
-                      onAdd={() => {
-                        setEditingBookmark(undefined);
-                        setShowAddDialog(true);
-                        setShowBookmarksPopover(false);
-                      }}
-                      onClose={() => setShowBookmarksPopover(false)}
-                    />
-                  )}
-                </div>
-
-                {/* Server change configuration */}
-                {!isAnime && (
-                  <div className="server-overlay-wrapper" style={{ position: 'relative', display: 'inline-block' }}>
-                    <select
-                      value={server}
-                      onChange={(e) => {
-                        setServer(e.target.value as any);
-                        setCurrentTime(0);
-                      }}
-                      style={{
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        borderRadius: '6px',
-                        color: 'white',
-                        padding: '4px 8px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="videasy" style={{ background: '#121212' }}>VIDEASY CDN</option>
-                      <option value="vidking" style={{ background: '#121212' }}>VIDKING CDN</option>
-                    </select>
-                  </div>
-                )}
-
-                {/* Settings panel trigger */}
-                <button 
-                  className={`control-btn ${showSettingsPanel ? 'active' : ''}`} 
-                  onClick={() => setShowSettingsPanel(prev => !prev)} 
-                  title="Player Settings"
-                >
-                  <Settings size={18} />
-                </button>
-
-                {showFullscreen && (
-                  <button className="control-btn" onClick={toggleFullscreen}>
-                    {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-                  </button>
+                    onClose={() => setShowBookmarksPopover(false)}
+                  />
                 )}
               </div>
             </div>
           </div>
-
-          {/* Quick Settings Panel popup */}
-          {showSettingsPanel && (
-            <div className="player-quick-settings-panel animate-scale-up" onClick={(e) => e.stopPropagation()}>
-              <div className="settings-header">
-                <h3>Player Preferences</h3>
-                <button onClick={() => setShowSettingsPanel(false)}><X size={16} /></button>
-              </div>
-              <div className="settings-options-list">
-                <div className="pref-toggle-row">
-                  <span>Auto-Skip Intro & Outro</span>
-                  <input 
-                    type="checkbox" 
-                    checked={autoSkipIntroOutro} 
-                    onChange={() => onUpdateVideo(prev => ({ ...prev }), false, undefined, true)} // force save triggers preference update
-                  />
-                </div>
-                <div className="pref-toggle-row">
-                  <span>Auto-Skip Explicit Scenes</span>
-                  <input 
-                    type="checkbox" 
-                    checked={autoSkipSexScenes} 
-                    onChange={() => onUpdateVideo(prev => ({ ...prev }), false, undefined, true)}
-                  />
-                </div>
-                <div className="pref-toggle-row">
-                  <span>Block Timed Seeking</span>
-                  <input 
-                    type="checkbox" 
-                    checked={blockSeekingCompletely} 
-                    readOnly
-                  />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

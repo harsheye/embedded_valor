@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Server, Bookmark, Film, List, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { X, Server, Bookmark, List, Play } from 'lucide-react';
 import type { VideoItem } from '../types/media';
 
 interface OnlineEmbedPlayerProps {
@@ -110,11 +110,11 @@ export const OnlineEmbedPlayer: React.FC<OnlineEmbedPlayerProps> = ({
 
         if (!res.ok) throw new Error('Failed to fetch Anime details');
         const body = await res.json();
-        const total = body.data?.Media?.episodes || 12; // Fallback to 12 episodes
+        const total = body.data?.Media?.episodes || 12;
         setAnimeEpisodesCount(total);
       } catch (err) {
         console.error('Error fetching Anime details:', err);
-        setAnimeEpisodesCount(12); // Fallback on error
+        setAnimeEpisodesCount(12);
       }
     };
 
@@ -140,7 +140,6 @@ export const OnlineEmbedPlayer: React.FC<OnlineEmbedPlayerProps> = ({
             setDuration(pDur);
           }
 
-          // Trigger progress updates back to App.tsx
           if (playerEvent === 'timeupdate' || playerEvent === 'pause' || playerEvent === 'ended') {
             const updatedVideo: VideoItem = {
               ...video,
@@ -190,13 +189,13 @@ export const OnlineEmbedPlayer: React.FC<OnlineEmbedPlayerProps> = ({
 
   const handleEpisodeChange = (epNum: number) => {
     setCurrentEpisode(epNum);
-    setCurrentTime(0); // Reset time for new episode
+    setCurrentTime(0);
     setShowEpisodeSelector(false);
   };
 
   const handleSeasonChange = (sNum: number) => {
     setCurrentSeason(sNum);
-    setCurrentEpisode(1); // Reset to episode 1 on season change
+    setCurrentEpisode(1);
     setCurrentTime(0);
   };
 
@@ -208,38 +207,16 @@ export const OnlineEmbedPlayer: React.FC<OnlineEmbedPlayerProps> = ({
 
   return (
     <div className="online-player-overlay">
-      {/* Top Header Bar Overlay - Only Source Selectors and X Close Button */}
-      <header className="online-player-header" style={{ justifyContent: 'flex-end' }}>
-        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
-          {/* TV / Anime Episode List Source Selector */}
-          {video.type !== 'online_movie' && (
-            <button 
-              className={`header-control-btn ${showEpisodeSelector ? 'active' : ''}`}
-              onClick={() => setShowEpisodeSelector(!showEpisodeSelector)}
-              title="Select Episode"
-            >
-              <List size={18} />
-              <span>Episodes</span>
-            </button>
-          )}
-
-          {/* Server Source Selector */}
-          {!isAnime && (
-            <div className="server-selector-wrapper">
-              <Server size={14} className="server-icon" />
-              <select 
-                className="server-dropdown-select"
-                value={server}
-                onChange={(e) => setServer(e.target.value as any)}
-              >
-                <option value="videasy">Videasy Server</option>
-                <option value="vidking">Vidking Server</option>
-              </select>
-            </div>
-          )}
-
+      {/* Top Header Bar Overlay - ONLY X Close Button */}
+      <header className="online-player-header" style={{ background: 'transparent', justifyContent: 'flex-end', padding: '16px 20px', zIndex: 100 }}>
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
           {/* Close Player X Button */}
-          <button className="header-close-btn" onClick={onClose} title="Exit Player">
+          <button 
+            className="header-close-btn" 
+            onClick={onClose} 
+            title="Exit Player"
+            style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }}
+          >
             <X size={20} />
           </button>
         </div>

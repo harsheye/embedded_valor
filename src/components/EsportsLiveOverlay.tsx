@@ -98,10 +98,7 @@ const fetchDetailHtmlWithFallback = async (targetUrl: string): Promise<string | 
   
   const proxies = [
     `http://127.0.0.1:50001/api/vlr/detail?url=${encodeURIComponent(cacheBustedTarget)}`,
-    `/api/vlr/detail?url=${encodeURIComponent(cacheBustedTarget)}`,
-    `https://corsproxy.io/?url=${encodeURIComponent(cacheBustedTarget)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(cacheBustedTarget)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(cacheBustedTarget)}`
+    `/api/vlr/detail?url=${encodeURIComponent(cacheBustedTarget)}`
   ];
 
   for (const proxyUrl of proxies) {
@@ -298,16 +295,10 @@ export const EsportsLiveOverlay: React.FC = () => {
         }
       }
 
-      // 3. Fallback to direct client-side scraping via CORS proxies
-      if (liveMatches.length === 0) {
-        const corsRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(`https://www.vlr.gg/matches?_t=${Date.now()}`)}`, { cache: 'no-store' }).catch(() => null);
-        if (corsRes && corsRes.ok) {
-          const html = await corsRes.text();
-          liveMatches = await parseVctLiveMatchesFromHtml(html);
-        }
-      }
+
 
       // ALWAYS refresh detail page directly for 100% real-time map & round score updates
+      let isMatchFinished = false;
       if (liveMatches.length > 0) {
         const primary = liveMatches[0];
         const targetUrl = primary.vlrUrl || 'https://www.vlr.gg/701052/jdg-esports-vs-trace-esports-vct-2026-china-stage-2-w3';
@@ -320,10 +311,24 @@ export const EsportsLiveOverlay: React.FC = () => {
             teamA: detailData.roundScoreA,
             teamB: detailData.roundScoreB
           };
+
+          // Detect if match is completely finished
+          if (detailData.maps.length > 0 && detailData.maps.every(m => m.isCompleted)) {
+            isMatchFinished = true;
+            primary.status = 'completed';
+          }
         }
       }
 
       setMatches(liveMatches);
+
+      // STOP POLLING IMMEDIATELY IF MATCH HAS ENDED OR FINISHED
+      if (isMatchFinished || (liveMatches.length > 0 && liveMatches[0].status === 'completed')) {
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      }
 
       // Check if current active map has just finished (Map break logic)
       if (liveMatches.length > 0 && liveMatches[0].maps && liveMatches[0].maps.length > 0) {
@@ -356,8 +361,8 @@ export const EsportsLiveOverlay: React.FC = () => {
     if (!isEnabled) return;
     fetchVctLiveMatches();
 
-    // 5 SECONDS FAST POLL REFRESH INTERVAL DURING LIVE PLAY
-    pollTimerRef.current = setInterval(fetchVctLiveMatches, 5000);
+    // 10 SECONDS POLL REFRESH INTERVAL FOR LIVE MATCHES ONLY
+    pollTimerRef.current = setInterval(fetchVctLiveMatches, 10000);
 
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);

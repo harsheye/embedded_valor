@@ -389,29 +389,56 @@ function App() {
             }
           } catch {}
 
-          const res = await fetch(`${BACKEND_ORIGIN}/api/trakt/exchange`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              code: traktCode,
-              redirect_uri: redirectUri
-            })
-          });
+          let accessToken = null;
 
-          if (!res.ok) throw new Error('Failed to exchange code');
-          const data = await res.json();
-          if (data.access_token) {
+          // 1. Try Backend API exchange endpoint
+          try {
+            const res = await fetch(`${BACKEND_ORIGIN}/api/trakt/exchange`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                code: traktCode,
+                redirect_uri: redirectUri
+              })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.access_token) accessToken = data.access_token;
+            }
+          } catch (e) {
+            console.warn('Backend Trakt exchange failed, trying client fallback');
+          }
+
+          // 2. Client-side direct Trakt token exchange fallback
+          if (!accessToken) {
+            const traktRes = await fetch('https://api.trakt.tv/oauth/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                code: traktCode,
+                client_id: 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
+                redirect_uri: redirectUri,
+                grant_type: 'authorization_code'
+              })
+            });
+            if (traktRes.ok) {
+              const data = await traktRes.json();
+              if (data.access_token) accessToken = data.access_token;
+            }
+          }
+
+          if (accessToken) {
             setSettings(prev => {
               const updated = {
                 ...prev,
-                traktAccessToken: data.access_token
+                traktAccessToken: accessToken
               };
               saveSettingsToStorage(updated);
               return updated;
             });
             addToast('Successfully connected to Trakt.tv!', 'success');
+          } else {
+            throw new Error('Failed to exchange code for access token');
           }
         } catch (err) {
           console.error('Error exchanging Trakt auth code:', err);
