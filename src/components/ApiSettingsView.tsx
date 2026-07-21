@@ -691,6 +691,42 @@ export const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({
 
       </div>
 
+      {/* ─── VCT Live Score Overlay Settings ─── */}
+      <div style={{
+        marginTop: '1.25rem',
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '16px',
+        padding: '1.25rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#e50914', boxShadow: '0 0 8px #e50914' }} />
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>VCT Esports Overlay Settings</h3>
+          </div>
+          <span style={{ fontSize: '0.68rem', background: 'rgba(229, 9, 20, 0.15)', border: '1px solid rgba(229, 9, 20, 0.3)', color: '#ff4d4d', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>LIVE VCT</span>
+        </div>
+
+        <p style={{ margin: 0, fontSize: '0.74rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+          Customize how live Valorant Champions Tour score overlay displays on your screen during live matches.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <SexyCheckbox 
+            checked={localStorage.getItem('vct_overlay_compact_mode') === 'true'}
+            onChange={(checked) => {
+              localStorage.setItem('vct_overlay_compact_mode', checked ? 'true' : 'false');
+              window.dispatchEvent(new Event('storage'));
+              addToast(checked ? 'Score Only mode enabled (no team/map names on pill)' : 'Full VCT overlay mode enabled', 'info');
+            }}
+            label="Compact 'Score Only' Mode (Hide team & map names on collapsed button, show ONLY live round score)"
+          />
+        </div>
+      </div>
+
       {/* ─── Powered By: Branded Footer ─── */}
       <div style={{
         marginTop: '1.25rem',
