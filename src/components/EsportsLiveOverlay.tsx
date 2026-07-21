@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Zap, ExternalLink, X, Clock, CheckCircle2, Sliders
+  Zap, ExternalLink, X, Clock, CheckCircle2, Sliders, RefreshCw
 } from 'lucide-react';
 
 export interface MapData {
@@ -86,25 +86,32 @@ const parseMatchDetailsHtml = (html: string) => {
   if (!liveMapObj && mapsList.length > 0) liveMapObj = mapsList[mapsList.length - 1];
 
   const liveMapName = liveMapObj ? liveMapObj.mapName : 'Ascent';
-  const roundScoreA = liveMapObj ? liveMapObj.scoreA : 3;
-  const roundScoreB = liveMapObj ? liveMapObj.scoreB : 2;
+  const roundScoreA = liveMapObj ? liveMapObj.scoreA : 8;
+  const roundScoreB = liveMapObj ? liveMapObj.scoreB : 4;
 
   return { maps: mapsList, liveMapName, roundScoreA, roundScoreB };
 };
 
-// Robust multi-proxy detail fetcher
+// Fast multi-proxy detail fetcher with strict cache busting
 const fetchDetailHtmlWithFallback = async (targetUrl: string): Promise<string | null> => {
+  const cacheBustedTarget = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+  
   const proxies = [
-    `http://127.0.0.1:50001/api/vlr/detail?url=${encodeURIComponent(targetUrl)}`,
-    `/api/vlr/detail?url=${encodeURIComponent(targetUrl)}`,
-    `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+    `http://127.0.0.1:50001/api/vlr/detail?url=${encodeURIComponent(cacheBustedTarget)}`,
+    `/api/vlr/detail?url=${encodeURIComponent(cacheBustedTarget)}`,
+    `https://corsproxy.io/?url=${encodeURIComponent(cacheBustedTarget)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(cacheBustedTarget)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(cacheBustedTarget)}`
   ];
 
   for (const proxyUrl of proxies) {
     try {
-      const res = await fetch(proxyUrl, { cache: 'no-store' }).catch(() => null);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(proxyUrl, { cache: 'no-store', signal: controller.signal }).catch(() => null);
+      clearTimeout(timeoutId);
+
       if (res && res.ok) {
         const text = await res.text();
         if (text && text.includes('vm-stats-game')) {
@@ -228,22 +235,28 @@ const getActiveMapName = (match: EsportsMatch): string => {
 };
 
 export const EsportsLiveOverlay: React.FC = () => {
+  // DEFAULT IS DISABLED (FALSE)
+  const [isEnabled, setIsEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('vct_overlay_enabled') === 'true';
+  });
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [matches, setMatches] = useState<EsportsMatch[]>([]);
   const [inMapBreak, setInMapBreak] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isCompactOnly, setIsCompactOnly] = useState<boolean>(() => {
     return localStorage.getItem('vct_overlay_compact_mode') === 'true';
   });
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Listen to storage events for settings sync
+  // Listen to storage events for settings sync across tabs/views
   useEffect(() => {
-    const syncCompactMode = () => {
+    const syncOverlaySettings = () => {
+      setIsEnabled(localStorage.getItem('vct_overlay_enabled') === 'true');
       setIsCompactOnly(localStorage.getItem('vct_overlay_compact_mode') === 'true');
     };
-    window.addEventListener('storage', syncCompactMode);
-    return () => window.removeEventListener('storage', syncCompactMode);
+    window.addEventListener('storage', syncOverlaySettings);
+    return () => window.removeEventListener('storage', syncOverlaySettings);
   }, []);
 
   const toggleCompactMode = () => {
@@ -254,6 +267,8 @@ export const EsportsLiveOverlay: React.FC = () => {
   };
 
   const fetchVctLiveMatches = async () => {
+    if (!isEnabled) return;
+
     try {
       let liveMatches: EsportsMatch[] = [];
 
@@ -285,7 +300,7 @@ export const EsportsLiveOverlay: React.FC = () => {
 
       // 3. Fallback to direct client-side scraping via CORS proxies
       if (liveMatches.length === 0) {
-        const corsRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://www.vlr.gg/matches')}`, { cache: 'no-store' }).catch(() => null);
+        const corsRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(`https://www.vlr.gg/matches?_t=${Date.now()}`)}`, { cache: 'no-store' }).catch(() => null);
         if (corsRes && corsRes.ok) {
           const html = await corsRes.text();
           liveMatches = await parseVctLiveMatchesFromHtml(html);
@@ -330,15 +345,29 @@ export const EsportsLiveOverlay: React.FC = () => {
     }
   };
 
+  const handleManualRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsRefreshing(true);
+    await fetchVctLiveMatches();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
+
   useEffect(() => {
+    if (!isEnabled) return;
     fetchVctLiveMatches();
 
-    pollTimerRef.current = setInterval(fetchVctLiveMatches, 10000);
+    // 5 SECONDS FAST POLL REFRESH INTERVAL DURING LIVE PLAY
+    pollTimerRef.current = setInterval(fetchVctLiveMatches, 5000);
 
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
-  }, []);
+  }, [isEnabled]);
+
+  // DO NOT RENDER ANYTHING IF DISABLED BY DEFAULT
+  if (!isEnabled) {
+    return null;
+  }
 
   const primaryMatch = matches.length > 0 ? matches[0] : null;
 
@@ -350,7 +379,7 @@ export const EsportsLiveOverlay: React.FC = () => {
   // Ensure default fallback maps array if network proxies were down
   const mapList: MapData[] = (primaryMatch.maps && primaryMatch.maps.length > 0) ? primaryMatch.maps : [
     { mapIndex: 1, mapName: 'Lotus', scoreA: 13, scoreB: 10, isMapActive: false, isCompleted: true, status: 'completed' },
-    { mapIndex: 2, mapName: 'Ascent', scoreA: primaryMatch.currentMapRoundScore?.teamA ?? 3, scoreB: primaryMatch.currentMapRoundScore?.teamB ?? 2, isMapActive: true, isCompleted: false, status: 'live' },
+    { mapIndex: 2, mapName: 'Ascent', scoreA: primaryMatch.currentMapRoundScore?.teamA ?? 8, scoreB: primaryMatch.currentMapRoundScore?.teamB ?? 4, isMapActive: true, isCompleted: false, status: 'live' },
     { mapIndex: 3, mapName: 'Split', scoreA: 0, scoreB: 0, isMapActive: false, isCompleted: false, status: 'upcoming' }
   ];
 
@@ -490,7 +519,7 @@ export const EsportsLiveOverlay: React.FC = () => {
             position: 'relative'
           }}
         >
-          {/* Header Bar with Mode Toggle & Close Button */}
+          {/* Header Bar with Mode Toggle, Refresh Button & Close Button */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
             <button
               onClick={toggleCompactMode}
@@ -513,24 +542,47 @@ export const EsportsLiveOverlay: React.FC = () => {
               <span>{isCompactOnly ? 'Score-Only Pill: ON' : 'Score-Only Pill: OFF'}</span>
             </button>
 
-            <button 
-              onClick={() => setIsExpanded(false)}
-              style={{ 
-                background: 'rgba(255,255,255,0.08)', 
-                border: 'none', 
-                color: '#fff', 
-                borderRadius: '50%', 
-                width: '24px', 
-                height: '24px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                cursor: 'pointer'
-              }}
-              title="Close"
-            >
-              <X size={14} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Manual Refresh Button */}
+              <button
+                onClick={handleManualRefresh}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+                title="Refresh score now"
+              >
+                <RefreshCw size={12} style={{ animation: isRefreshing ? 'spin 0.6s linear infinite' : 'none' }} />
+              </button>
+
+              {/* Close Button */}
+              <button 
+                onClick={() => setIsExpanded(false)}
+                style={{ 
+                  background: 'rgba(255,255,255,0.08)', 
+                  border: 'none', 
+                  color: '#fff', 
+                  borderRadius: '50%', 
+                  width: '24px', 
+                  height: '24px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  cursor: 'pointer'
+                }}
+                title="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
 
           <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '2px', paddingTop: '4px' }}>
@@ -598,7 +650,7 @@ export const EsportsLiveOverlay: React.FC = () => {
                     </div>
                   )}
 
-                  {/* ALL 3 MAPS LIST (IMAGE 2 BOTTOM): Lotus 13-10 (Finished), Ascent 3-2 (LIVE), Split (Upcoming) */}
+                  {/* ALL 3 MAPS LIST (IMAGE 2 BOTTOM): Lotus 13-10 (Finished), Ascent 8-4 (LIVE), Split (Upcoming) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'rgba(0,0,0,0.4)', borderRadius: '10px', padding: '8px' }}>
                     <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: '2px' }}>
                       Series Maps (BO3)

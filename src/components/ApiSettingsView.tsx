@@ -714,16 +714,30 @@ export const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({
           Customize how live Valorant Champions Tour score overlay displays on your screen during live matches.
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', background: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
           <SexyCheckbox 
-            checked={localStorage.getItem('vct_overlay_compact_mode') === 'true'}
+            checked={localStorage.getItem('vct_overlay_enabled') === 'true'}
             onChange={(checked) => {
-              localStorage.setItem('vct_overlay_compact_mode', checked ? 'true' : 'false');
+              localStorage.setItem('vct_overlay_enabled', checked ? 'true' : 'false');
               window.dispatchEvent(new Event('storage'));
-              addToast(checked ? 'Score Only mode enabled (no team/map names on pill)' : 'Full VCT overlay mode enabled', 'info');
+              addToast(checked ? 'VCT Live Score Overlay enabled' : 'VCT Live Score Overlay disabled', 'info');
             }}
-            label="Compact 'Score Only' Mode (Hide team & map names on collapsed button, show ONLY live round score)"
+            label="Enable Live VCT Score Overlay (Disabled by default)"
           />
+
+          {localStorage.getItem('vct_overlay_enabled') === 'true' && (
+            <div style={{ paddingLeft: '1.25rem', borderLeft: '2px solid rgba(229, 9, 20, 0.4)' }}>
+              <SexyCheckbox 
+                checked={localStorage.getItem('vct_overlay_compact_mode') === 'true'}
+                onChange={(checked) => {
+                  localStorage.setItem('vct_overlay_compact_mode', checked ? 'true' : 'false');
+                  window.dispatchEvent(new Event('storage'));
+                  addToast(checked ? 'Score Only mode enabled (no team/map names on pill)' : 'Full VCT overlay mode enabled', 'info');
+                }}
+                label="Compact 'Score Only' Mode (Hide team & map names on collapsed button, show ONLY live round score)"
+              />
+            </div>
+          )}
         </div>
       </div>
 
