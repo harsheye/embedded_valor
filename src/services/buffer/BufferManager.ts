@@ -99,8 +99,8 @@ export class BufferManager {
       throw new Error(`Buffer request for key ${key} blocked due to cooldown or retry limit`);
     }
 
-    // 1. Check Cache
-    const cached = this.packetCache.get(startTime);
+    // 1. Check Cache strictly by chunk key to avoid overlap collisions
+    const cached = this.packetCache.getExactChunk(chunkKey);
     if (cached) {
       return cached;
     }

@@ -19,13 +19,17 @@ export class PacketCache {
   }
 
   get(time: number): AudioPacket | null {
-    const key = Math.floor(time);
-    const exact = this.cache.get(key);
+    const chunkKey = Math.floor(time / 10) * 10;
+    const exact = this.cache.get(chunkKey);
     if (exact && time >= exact.startTime && time < exact.endTime) {
       return exact;
     }
 
     return Array.from(this.cache.values()).find(packet => time >= packet.startTime && time < packet.endTime) || null;
+  }
+
+  getExactChunk(chunkKey: number): AudioPacket | null {
+    return this.cache.get(chunkKey) || null;
   }
 
   hasChunk(startTime: number): boolean {
