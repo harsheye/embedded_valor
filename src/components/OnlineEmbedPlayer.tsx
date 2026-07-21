@@ -208,22 +208,10 @@ export const OnlineEmbedPlayer: React.FC<OnlineEmbedPlayerProps> = ({
 
   return (
     <div className="online-player-overlay">
-      {/* Top Header Bar Overlay */}
-      <header className="online-player-header">
-        <div className="header-left">
-          <Film className="header-media-icon" size={20} />
-          <div className="header-titles">
-            <span className="media-main-title">{video.title}</span>
-            {video.type !== 'online_movie' && (
-              <span className="media-sub-title">
-                {video.type === 'online_tv' ? `S${currentSeason} E${currentEpisode}` : `Episode ${currentEpisode}`}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="header-right">
-          {/* TV / Anime Episode List Trigger */}
+      {/* Top Header Bar Overlay - Only Source Selectors and X Close Button */}
+      <header className="online-player-header" style={{ justifyContent: 'flex-end' }}>
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+          {/* TV / Anime Episode List Source Selector */}
           {video.type !== 'online_movie' && (
             <button 
               className={`header-control-btn ${showEpisodeSelector ? 'active' : ''}`}
@@ -235,7 +223,7 @@ export const OnlineEmbedPlayer: React.FC<OnlineEmbedPlayerProps> = ({
             </button>
           )}
 
-          {/* Server Selector (Vidking doesn't support anime, so hide for anime) */}
+          {/* Server Source Selector */}
           {!isAnime && (
             <div className="server-selector-wrapper">
               <Server size={14} className="server-icon" />
@@ -250,17 +238,7 @@ export const OnlineEmbedPlayer: React.FC<OnlineEmbedPlayerProps> = ({
             </div>
           )}
 
-          {/* Add Bookmark */}
-          <button 
-            className="header-control-btn"
-            onClick={() => onAddBookmark(video, currentTime)}
-            title="Bookmark Current Time"
-          >
-            <Bookmark size={18} />
-            <span>Bookmark</span>
-          </button>
-
-          {/* Close Player */}
+          {/* Close Player X Button */}
           <button className="header-close-btn" onClick={onClose} title="Exit Player">
             <X size={20} />
           </button>

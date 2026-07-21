@@ -1117,20 +1117,29 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
           className={`player-ui-overlay-layer ${showControls ? 'visible' : ''}`}
           style={{ zIndex: 10 }}
         >
-          {/* Top Bar controls */}
-          <div className="top-bar-overlay">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <button className="back-btn" onClick={onBack} title="Go Back">
+          {/* Top Bar controls - Only Source Selector & X Close Button */}
+          <div className="top-bar-overlay" style={{ justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+              {/* Server Source Selector */}
+              {!isAnime && (
+                <div className="server-selector-wrapper" style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Server size={14} color="#e50914" />
+                  <select 
+                    className="server-dropdown-select"
+                    value={server}
+                    onChange={(e) => setServer(e.target.value as any)}
+                    style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', outline: 'none' }}
+                  >
+                    <option value="videasy" style={{ background: '#121218' }}>Videasy Server</option>
+                    <option value="vidking" style={{ background: '#121218' }}>Vidking Server</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Close Button X */}
+              <button className="back-btn" onClick={onBack} title="Exit Player">
                 <X size={22} />
               </button>
-              <div className="player-title-info">
-                <h2>{video.title}</h2>
-                {video.type !== 'online_movie' && (
-                  <span>
-                    {video.type === 'online_tv' ? `Season ${currentSeason} • Episode ${currentEpisode}` : `Episode ${currentEpisode}`}
-                  </span>
-                )}
-              </div>
             </div>
           </div>
 
@@ -1143,21 +1152,6 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
               </div>
             )}
           </div>
-
-          {/* Pause overlay details screen */}
-          {!isPlaying && !isLocked && !showBookmarksPopover && !showSettingsPanel && (
-            <div className="pause-synopsis-overlay animate-fade-in">
-              <div className="synopsis-box">
-                <span className="synopsis-tag">PAUSED</span>
-                <h3>{video.title}</h3>
-                {video.type !== 'online_movie' && (
-                  <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginTop: '4px', display: 'block', fontWeight: 500 }}>
-                    {video.type === 'online_tv' ? `Season ${currentSeason} • Episode ${currentEpisode}` : `Episode ${currentEpisode}`}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Toast notifications */}
           {toastMessage && (

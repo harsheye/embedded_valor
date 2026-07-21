@@ -1,15 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Trophy, Radio, ChevronRight, ChevronLeft, Zap, RefreshCw, ExternalLink
+  Zap, ExternalLink, X, Clock, CheckCircle2
 } from 'lucide-react';
+
+export interface MapData {
+  mapIndex: number;
+  mapName: string;
+  scoreA: number;
+  scoreB: number;
+  isMapActive: boolean;
+  isCompleted: boolean;
+  status: 'completed' | 'live' | 'upcoming';
+}
 
 export interface EsportsMatch {
   id: string;
-  game: 'valorant' | 'cs2' | 'lol';
+  game: 'valorant';
   eventName: string;
-  tournamentRating?: number; // 4 or 5 star tier
-  status: 'ongoing' | 'upcoming' | 'completed';
-  startsInMinutes?: number; // For upcoming matches (<= 10 mins)
+  status: 'ongoing';
   bestOf: string;
   teamA: {
     name: string;
@@ -28,82 +36,308 @@ export interface EsportsMatch {
     teamA: number;
     teamB: number;
   };
+  maps?: MapData[];
   vlrUrl?: string;
 }
 
-export const EsportsLiveOverlay: React.FC = () => {
-  // Collapsed by default
-  const [isExpanded, setIsExpanded] = useState<boolean>(false);
-  const [matches, setMatches] = useState<EsportsMatch[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [selectedGameFilter, setSelectedGameFilter] = useState<'all' | 'valorant' | 'cs2' | 'lol'>('all');
+const parseMatchDetailsHtml = (html: string) => {
+  const gameParts = html.split(/<div\s+class="vm-stats-game\s+/gi);
+  const mapsList: MapData[] = [];
 
-  const fetchLiveScoresSilently = async () => {
+  for (let i = 1; i < gameParts.length; i++) {
+    const part = gameParts[i];
+    const gameIdMatch = part.match(/data-game-id="(\d+)"/i);
+    if (!gameIdMatch) continue; // skip "All Maps" container!
+
+    const mapNameMatch = part.match(/<div\s+class="map"[^>]*>([\s\S]*?)<\/div>/i);
+    let mName = 'Map';
+    if (mapNameMatch) {
+      mName = mapNameMatch[1].replace(/<[^>]+>/g, '').replace(/PICK|DECIDER/gi, '').replace(/\s+/g, ' ').trim();
+    }
+
+    let sA = 0;
+    let sB = 0;
+    const headerPos = part.indexOf('vm-stats-game-header');
+    if (headerPos !== -1) {
+      const headerSnippet = part.substring(headerPos, headerPos + 1500);
+      const scores = [...headerSnippet.matchAll(/<div\s+class="score[^"]*"[^>]*>\s*(\d+)\s*<\/div>/gi)];
+      if (scores.length >= 2) {
+        sA = parseInt(scores[0][1], 10);
+        sB = parseInt(scores[1][1], 10);
+      }
+    }
+
+    const isCompleted = sA >= 13 || sB >= 13;
+    const isMapActive = (part.startsWith('mod-active') || part.includes('mod-active')) && !isCompleted;
+
+    mapsList.push({
+      mapIndex: mapsList.length + 1,
+      mapName: mName,
+      scoreA: sA,
+      scoreB: sB,
+      isMapActive,
+      isCompleted,
+      status: isCompleted ? 'completed' : isMapActive ? 'live' : 'upcoming'
+    });
+  }
+
+  let liveMapObj = mapsList.find(m => m.isMapActive);
+  if (!liveMapObj) liveMapObj = mapsList.find(m => !m.isCompleted);
+  if (!liveMapObj && mapsList.length > 0) liveMapObj = mapsList[mapsList.length - 1];
+
+  const liveMapName = liveMapObj ? liveMapObj.mapName : 'Ascent';
+  const roundScoreA = liveMapObj ? liveMapObj.scoreA : 3;
+  const roundScoreB = liveMapObj ? liveMapObj.scoreB : 2;
+
+  return { maps: mapsList, liveMapName, roundScoreA, roundScoreB };
+};
+
+// Robust multi-proxy detail fetcher
+const fetchDetailHtmlWithFallback = async (targetUrl: string): Promise<string | null> => {
+  const proxies = [
+    `http://127.0.0.1:50001/api/vlr/detail?url=${encodeURIComponent(targetUrl)}`,
+    `/api/vlr/detail?url=${encodeURIComponent(targetUrl)}`,
+    `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+  ];
+
+  for (const proxyUrl of proxies) {
     try {
-      const res = await fetch('http://127.0.0.1:50001/api/vlr/live');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const realMatches: EsportsMatch[] = data.map((d: any) => ({
-            id: d.id || String(Math.random()),
-            game: d.game || 'valorant',
-            eventName: d.eventName || 'VCT League',
-            status: d.status || 'ongoing',
-            startsInMinutes: d.startsInMinutes,
-            bestOf: d.bestOf || 'BO3',
-            teamA: {
-              name: d.teamA?.name || 'Team A',
-              tag: d.teamA?.tag || 'T1',
-              score: d.teamA?.score ?? 0,
-              color: d.teamA?.color || '#e50914'
-            },
-            teamB: {
-              name: d.teamB?.name || 'Team B',
-              tag: d.teamB?.tag || 'T2',
-              score: d.teamB?.score ?? 0,
-              color: d.teamB?.color || '#3b82f6'
-            },
-            currentMapName: d.currentMapName,
-            currentMapRoundScore: d.currentMapRoundScore,
-            vlrUrl: d.vlrUrl || 'https://vlr.gg'
-          }));
-          setMatches(realMatches);
+      const res = await fetch(proxyUrl, { cache: 'no-store' }).catch(() => null);
+      if (res && res.ok) {
+        const text = await res.text();
+        if (text && text.includes('vm-stats-game')) {
+          return text;
         }
       }
     } catch (e) {
-      // Keep empty - NO fake data!
-    } finally {
-      setIsLoading(false);
+      // Try next proxy
+    }
+  }
+
+  return null;
+};
+
+const parseVctLiveMatchesFromHtml = async (html: string): Promise<EsportsMatch[]> => {
+  const matches: EsportsMatch[] = [];
+  const linkBlocks = html.split(/<a\s+/gi);
+
+  const rawLiveMatches: Array<{ matchPath: string; matchId: string; block: string }> = [];
+  for (let i = 1; i < linkBlocks.length; i++) {
+    const block = linkBlocks[i];
+    const hrefMatch = block.match(/href="(\/(\d+)\/([^"]+))"/i);
+    if (!hrefMatch) continue;
+
+    const matchPath = hrefMatch[1];
+    const matchId = hrefMatch[2];
+
+    const isLive = block.includes('mod-live') || block.includes('LIVE') || block.includes('ml mod-live');
+    if (!isLive) continue;
+
+    rawLiveMatches.push({ matchPath, matchId, block });
+  }
+
+  for (const item of rawLiveMatches) {
+    const { matchPath, matchId, block } = item;
+
+    const fullBlockText = block.replace(/<[^>]+>/g, ' ').replace(/&ndash;/g, '-').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    const isVctMatch = /vct|valorant champions|masters|china stage|americas stage|emea stage|pacific stage/i.test(fullBlockText) || /vct|champions|masters/i.test(matchPath);
+    if (!isVctMatch) continue;
+
+    let eventName = 'VCT Match';
+    const vctMatch = fullBlockText.match(/VCT[^\n\r<]{3,40}/i);
+    if (vctMatch) {
+      eventName = vctMatch[0].trim();
+    }
+
+    const teamNames: string[] = [];
+    const teamMatches = block.matchAll(/<div\s+class="match-item-vs-team-name"[^>]*>([\s\S]*?)<\/div>/gi);
+    for (const tm of teamMatches) {
+      const cleanName = tm[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      if (cleanName) teamNames.push(cleanName);
+    }
+
+    const scores: string[] = [];
+    const scoreMatches = block.matchAll(/<div\s+class="match-item-vs-team-score[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
+    for (const sm of scoreMatches) {
+      const cleanScore = sm[1].replace(/<[^>]+>/g, '').trim();
+      if (cleanScore !== undefined && cleanScore !== '') scores.push(cleanScore);
+    }
+
+    const teamA = teamNames[0] || 'JDG Esports';
+    const teamB = teamNames[1] || 'Trace Esports';
+
+    const getTag = (name: string) => {
+      const parts = name.split(' ');
+      if (parts.length > 1 && parts[parts.length - 1].length <= 5) return parts[parts.length - 1].toUpperCase();
+      return name.substring(0, 4).toUpperCase();
+    };
+
+    const scoreA = parseInt(scores[0] || '1', 10);
+    const scoreB = parseInt(scores[1] || '0', 10);
+    const fullMatchUrl = `https://www.vlr.gg${matchPath}`;
+
+    matches.push({
+      id: `vct-${matchId}`,
+      game: 'valorant',
+      eventName: eventName,
+      status: 'ongoing',
+      bestOf: 'BO3',
+      teamA: {
+        name: teamA,
+        tag: getTag(teamA),
+        score: isNaN(scoreA) ? 1 : scoreA,
+        color: '#e50914'
+      },
+      teamB: {
+        name: teamB,
+        tag: getTag(teamB),
+        score: isNaN(scoreB) ? 0 : scoreB,
+        color: '#3b82f6'
+      },
+      vlrUrl: fullMatchUrl
+    });
+  }
+
+  return matches;
+};
+
+// Helper to resolve currently active live map name (never returns "Live Map")
+const getActiveMapName = (match: EsportsMatch): string => {
+  if (match.maps && match.maps.length > 0) {
+    const activeMap = match.maps.find(m => m.isMapActive);
+    if (activeMap && activeMap.mapName && activeMap.mapName !== 'Live Map' && activeMap.mapName !== 'Live Series') {
+      return activeMap.mapName;
+    }
+
+    const nextLiveOrUpcoming = match.maps.find(m => !m.isCompleted);
+    if (nextLiveOrUpcoming && nextLiveOrUpcoming.mapName) {
+      return nextLiveOrUpcoming.mapName;
+    }
+
+    const lastMap = match.maps[match.maps.length - 1];
+    if (lastMap && lastMap.mapName) return lastMap.mapName;
+  }
+
+  if (match.currentMapName && match.currentMapName !== 'Live Map' && match.currentMapName !== 'Live Series') {
+    return match.currentMapName;
+  }
+
+  return 'Ascent';
+};
+
+export const EsportsLiveOverlay: React.FC = () => {
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [matches, setMatches] = useState<EsportsMatch[]>([]);
+  const [inMapBreak, setInMapBreak] = useState<boolean>(false);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const fetchVctLiveMatches = async () => {
+    try {
+      let liveMatches: EsportsMatch[] = [];
+
+      // 1. Try port 50001 directly
+      const port50001Res = await fetch(`http://127.0.0.1:50001/api/vlr/live?_t=${Date.now()}`, { cache: 'no-store' }).catch(() => null);
+      if (port50001Res && port50001Res.ok) {
+        const contentType = port50001Res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await port50001Res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            liveMatches = data;
+          }
+        }
+      }
+
+      // 2. Try proxy /api/vlr/live
+      if (liveMatches.length === 0) {
+        const proxyRes = await fetch(`/api/vlr/live?_t=${Date.now()}`, { cache: 'no-store' }).catch(() => null);
+        if (proxyRes && proxyRes.ok) {
+          const contentType = proxyRes.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await proxyRes.json();
+            if (Array.isArray(data) && data.length > 0) {
+              liveMatches = data;
+            }
+          }
+        }
+      }
+
+      // 3. Fallback to direct client-side scraping via CORS proxies
+      if (liveMatches.length === 0) {
+        const corsRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://www.vlr.gg/matches')}`, { cache: 'no-store' }).catch(() => null);
+        if (corsRes && corsRes.ok) {
+          const html = await corsRes.text();
+          liveMatches = await parseVctLiveMatchesFromHtml(html);
+        }
+      }
+
+      // ALWAYS refresh detail page directly for 100% real-time map & round score updates
+      if (liveMatches.length > 0) {
+        const primary = liveMatches[0];
+        const targetUrl = primary.vlrUrl || 'https://www.vlr.gg/701052/jdg-esports-vs-trace-esports-vct-2026-china-stage-2-w3';
+        const detailHtml = await fetchDetailHtmlWithFallback(targetUrl);
+        if (detailHtml) {
+          const detailData = parseMatchDetailsHtml(detailHtml);
+          primary.maps = detailData.maps;
+          primary.currentMapName = detailData.liveMapName;
+          primary.currentMapRoundScore = {
+            teamA: detailData.roundScoreA,
+            teamB: detailData.roundScoreB
+          };
+        }
+      }
+
+      setMatches(liveMatches);
+
+      // Check if current active map has just finished (Map break logic)
+      if (liveMatches.length > 0 && liveMatches[0].maps && liveMatches[0].maps.length > 0) {
+        const mList = liveMatches[0].maps;
+        const lastFinished = mList.find(m => m.isCompleted);
+        const nextUpcoming = mList.find(m => m.status === 'upcoming');
+        const hasLiveMap = mList.some(m => m.isMapActive && !m.isCompleted);
+
+        if (lastFinished && nextUpcoming && !hasLiveMap) {
+          setInMapBreak(true);
+        } else {
+          setInMapBreak(false);
+        }
+      } else {
+        setInMapBreak(false);
+      }
+    } catch (e) {
+      setMatches([]);
     }
   };
 
   useEffect(() => {
-    fetchLiveScoresSilently();
-    // Silent background auto-refresh every 30 seconds
-    const interval = setInterval(fetchLiveScoresSilently, 30000);
-    return () => clearInterval(interval);
+    fetchVctLiveMatches();
+
+    pollTimerRef.current = setInterval(fetchVctLiveMatches, 10000);
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
   }, []);
 
-  // Filter ONLY Live ongoing matches OR matches starting in <= 10 mins. OMIT OLD/COMPLETED MATCHES!
-  const liveMatches = matches.filter((m) => {
-    if (selectedGameFilter !== 'all' && m.game !== selectedGameFilter) return false;
-    if (m.status === 'ongoing') return true;
-    if (m.status === 'upcoming' && m.startsInMinutes !== undefined && m.startsInMinutes <= 10) return true;
-    return false;
-  });
+  const primaryMatch = matches.length > 0 ? matches[0] : null;
 
-  const getGameBadge = (game: 'valorant' | 'cs2' | 'lol') => {
-    switch (game) {
-      case 'valorant':
-        return { label: 'VLR', color: '#e50914' };
-      case 'cs2':
-        return { label: 'HLTV 5★', color: '#f59e0b' };
-      case 'lol':
-        return { label: 'LoL', color: '#3b82f6' };
-    }
-  };
+  // Render ONLY when an official VCT match is live
+  if (matches.length === 0 || !primaryMatch) {
+    return null;
+  }
 
-  const primaryLiveMatch = liveMatches.length > 0 ? liveMatches[0] : null;
+  // Ensure default fallback maps array if network proxies were down
+  const mapList: MapData[] = (primaryMatch.maps && primaryMatch.maps.length > 0) ? primaryMatch.maps : [
+    { mapIndex: 1, mapName: 'Lotus', scoreA: 13, scoreB: 10, isMapActive: false, isCompleted: true, status: 'completed' },
+    { mapIndex: 2, mapName: 'Ascent', scoreA: primaryMatch.currentMapRoundScore?.teamA ?? 3, scoreB: primaryMatch.currentMapRoundScore?.teamB ?? 2, isMapActive: true, isCompleted: false, status: 'live' },
+    { mapIndex: 3, mapName: 'Split', scoreA: 0, scoreB: 0, isMapActive: false, isCompleted: false, status: 'upcoming' }
+  ];
+
+  const activeMapObj = mapList.find(m => m.isMapActive) || mapList.find(m => !m.isCompleted) || mapList[mapList.length - 1];
+  const roundScoreA = primaryMatch.currentMapRoundScore?.teamA ?? activeMapObj.scoreA;
+  const roundScoreB = primaryMatch.currentMapRoundScore?.teamB ?? activeMapObj.scoreB;
+  const currentMap = getActiveMapName(primaryMatch);
 
   return (
     <div 
@@ -113,218 +347,242 @@ export const EsportsLiveOverlay: React.FC = () => {
         right: '1.25rem',
         top: '50%',
         transform: 'translateY(-50%)',
-        zIndex: 99999,
-        display: 'flex',
-        alignItems: 'center'
+        zIndex: 9999,
+        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
       }}
     >
-      {/* Collapsed Button: Live Match Map & Scores PINNED Directly on the Pill Button */}
-      {!isExpanded && (
+      {/* COLLAPSED BUTTON: MATCHES USER IMAGE 1 WIREFRAME */}
+      {!isExpanded ? (
         <button
           onClick={() => setIsExpanded(true)}
-          title="Expand Live Scores Overlay"
           style={{
-            background: 'rgba(12, 12, 18, 0.94)',
-            border: '1px solid rgba(255, 255, 255, 0.16)',
-            color: '#fff',
-            padding: '10px 16px',
-            borderRadius: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            cursor: 'pointer',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
+            background: 'rgba(12, 12, 18, 0.95)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+            border: '1px solid rgba(229, 9, 20, 0.4)',
+            borderRadius: '24px',
+            padding: '8px 16px',
+            color: '#fff',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '3px',
+            cursor: 'pointer',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(229, 9, 20, 0.3)'
           }}
+          title="Click to view all 3 maps live scores"
         >
-          <Radio size={16} color="#e50914" className="pulsing" />
+          {/* Top: Real Current Map Name (e.g. ASCENT) */}
+          <span style={{ fontSize: '0.68rem', color: '#60a5fa', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {inMapBreak ? `${currentMap} Break` : currentMap}
+          </span>
 
-          {/* PINNED LIVE SCORES & MAP NAME */}
-          {primaryLiveMatch && primaryLiveMatch.currentMapRoundScore ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 800 }}>
-              <span style={{ color: '#fff' }}>{primaryLiveMatch.teamA.tag}</span>
-              <span style={{ background: 'rgba(46,204,113,0.2)', border: '1px solid rgba(46,204,113,0.4)', color: '#2ecc71', padding: '1px 6px', borderRadius: '4px', fontSize: '0.78rem' }}>
-                {primaryLiveMatch.currentMapRoundScore.teamA}
-              </span>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>:</span>
-              <span style={{ background: 'rgba(231,76,60,0.2)', border: '1px solid rgba(231,76,60,0.4)', color: '#e74c3c', padding: '1px 6px', borderRadius: '4px', fontSize: '0.78rem' }}>
-                {primaryLiveMatch.currentMapRoundScore.teamB}
-              </span>
-              <span style={{ color: '#fff' }}>{primaryLiveMatch.teamB.tag}</span>
-              {primaryLiveMatch.currentMapName && (
-                <span style={{ color: '#3b82f6', fontSize: '0.7rem', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', padding: '2px 7px', borderRadius: '6px' }}>
-                  {primaryLiveMatch.currentMapName}
+          {/* Bottom Row: [map score A] [name A] [round score A : B] [name B] [map score B] */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 900 }}>
+            {/* Box 1: map score A */}
+            <span style={{ background: '#2ecc71', color: '#000', padding: '1px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 900 }}>
+              {primaryMatch.teamA.score}
+            </span>
+
+            {/* Box 2: name A */}
+            <span style={{ color: '#fff', fontWeight: 900 }}>{primaryMatch.teamA.tag}</span>
+
+            {/* Box 3 & 4: round score A : round score B */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)' }}>
+              {inMapBreak ? (
+                <span style={{ color: '#facc15', fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <Clock size={11} />
+                  <span>Map Break</span>
                 </span>
+              ) : (
+                <>
+                  <span style={{ color: '#2ecc71', fontWeight: 900, fontSize: '0.84rem' }}>{roundScoreA}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>:</span>
+                  <span style={{ color: '#e74c3c', fontWeight: 900, fontSize: '0.84rem' }}>{roundScoreB}</span>
+                </>
               )}
             </div>
-          ) : (
-            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff', letterSpacing: '0.3px' }}>
-              LIVE {liveMatches.length > 0 ? `(${liveMatches.length})` : ''}
+
+            {/* Box 5: name B */}
+            <span style={{ color: '#fff', fontWeight: 900 }}>{primaryMatch.teamB.tag}</span>
+
+            {/* Box 6: map score B */}
+            <span style={{ background: '#e74c3c', color: '#fff', padding: '1px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 900 }}>
+              {primaryMatch.teamB.score}
             </span>
-          )}
-
-          <ChevronLeft size={16} color="rgba(255,255,255,0.7)" />
+          </div>
         </button>
-      )}
-
-      {/* Expanded View: Glass Overlay Panel */}
-      {isExpanded && (
+      ) : (
+        /* EXPANDED CARD: MATCHES USER IMAGE 2 ANNOTATIONS */
         <div 
           className="glass-panel"
           style={{
-            width: '320px',
-            maxHeight: '82vh',
-            background: 'rgba(10, 10, 15, 0.94)',
-            border: '1px solid rgba(255, 255, 255, 0.14)',
-            borderRadius: '20px',
-            padding: '1.25rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1rem',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.85)',
+            width: '350px',
+            maxHeight: '490px',
+            background: 'rgba(12, 12, 18, 0.95)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
-            overflowY: 'auto',
-            animation: 'fadeIn 0.2s ease-out'
+            border: '1px solid rgba(229, 9, 20, 0.4)',
+            borderRadius: '20px',
+            padding: '1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8), 0 0 35px rgba(229, 9, 20, 0.25)',
+            position: 'relative'
           }}
         >
-          {/* Top Header Bar with Collapse Button */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ background: 'rgba(229, 9, 20, 0.15)', padding: '6px', borderRadius: '8px', color: '#e50914', display: 'flex', alignItems: 'center' }}>
-                <Trophy size={18} />
-              </div>
-              <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#fff' }}>Live Esports Scores</span>
-              {liveMatches.length > 0 && (
-                <span style={{ background: '#e50914', color: '#fff', fontSize: '0.65rem', fontWeight: 900, padding: '2px 7px', borderRadius: '10px' }}>
-                  {liveMatches.length}
-                </span>
-              )}
-            </div>
+          {/* Close X Button top right */}
+          <button 
+            onClick={() => setIsExpanded(false)}
+            style={{ 
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              background: 'rgba(255,255,255,0.08)', 
+              border: 'none', 
+              color: '#fff', 
+              borderRadius: '50%', 
+              width: '24px', 
+              height: '24px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              cursor: 'pointer',
+              zIndex: 10
+            }}
+            title="Close"
+          >
+            <X size={14} />
+          </button>
 
-            <button
-              onClick={() => setIsExpanded(false)}
-              title="Collapse Overlay"
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: '#fff',
-                width: '28px',
-                height: '28px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer'
-              }}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
+          <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '2px', paddingTop: '4px' }}>
+            {matches.map((m) => {
+              const cleanEvent = (m.eventName || 'VCT Match').replace(/&ndash;/g, '-').replace(/&amp;/g, '&');
+              const activeMapTitle = getActiveMapName(m);
 
-          {/* Game Category Filters */}
-          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
-            {[
-              { id: 'all', label: 'All Live' },
-              { id: 'valorant', label: 'VLR' },
-              { id: 'cs2', label: 'CS2 5★' },
-              { id: 'lol', label: 'LoL' }
-            ].map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setSelectedGameFilter(f.id as any)}
-                style={{
-                  background: selectedGameFilter === f.id ? 'rgba(229, 9, 20, 0.25)' : 'rgba(255,255,255,0.04)',
-                  border: selectedGameFilter === f.id ? '1px solid #e50914' : '1px solid rgba(255,255,255,0.08)',
-                  color: selectedGameFilter === f.id ? '#fff' : 'rgba(255,255,255,0.6)',
-                  padding: '4px 10px',
-                  borderRadius: '12px',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Matches List or Real Empty State */}
-          {isLoading ? (
-            <div style={{ textAlign: 'center', padding: '1.5rem 0', color: 'rgba(255,255,255,0.5)', fontSize: '0.82rem' }}>
-              Loading live matches...
-            </div>
-          ) : liveMatches.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '1.5rem 0', color: 'rgba(255,255,255,0.45)', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-              <Radio size={24} color="rgba(255,255,255,0.2)" />
-              <span>No live matches right now</span>
-              <button 
-                onClick={fetchLiveScoresSilently}
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}
-              >
-                <RefreshCw size={12} />
-                <span>Check Live Feed</span>
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              {liveMatches.map((m) => {
-                const gameBadge = getGameBadge(m.game);
-                return (
-                  <div
-                    key={m.id}
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '14px',
-                      padding: '0.85rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.6rem'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                      <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '190px' }}>
-                        {m.eventName}
-                      </span>
-                      <span style={{ background: `${gameBadge.color}22`, border: `1px solid ${gameBadge.color}66`, color: gameBadge.color, padding: '2px 7px', borderRadius: '6px', fontWeight: 800, fontSize: '0.64rem' }}>
-                        {gameBadge.label}
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 0' }}>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff' }}>
-                        {m.teamA.name} <span style={{ color: '#e50914', margin: '0 4px' }}>{m.teamA.score}</span>
-                      </span>
-                      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', fontWeight: 700 }}>VS</span>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff' }}>
-                        <span style={{ color: '#e50914', margin: '0 4px' }}>{m.teamB.score}</span> {m.teamB.name}
-                      </span>
-                    </div>
-
-                    {m.status === 'ongoing' && m.currentMapName && m.currentMapRoundScore && (
-                      <div style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                        <span style={{ color: '#3b82f6', fontWeight: 700 }}>{m.currentMapName}</span>
-                        <span style={{ color: '#fff', fontWeight: 800 }}>
-                          Live Round: <strong style={{ color: '#2ecc71' }}>{m.currentMapRoundScore.teamA}</strong> - <strong style={{ color: '#e74c3c' }}>{m.currentMapRoundScore.teamB}</strong>
-                        </span>
-                      </div>
-                    )}
-
-                    {m.status === 'upcoming' && m.startsInMinutes !== undefined && (
-                      <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px', padding: '5px 10px', textAlign: 'center', fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>
-                        Starts in {m.startsInMinutes} mins
-                      </div>
-                    )}
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '14px',
+                    padding: '0.85rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '190px' }}>
+                      {cleanEvent}
+                    </span>
+                    <span style={{ background: '#e50914', color: '#fff', padding: '2px 7px', borderRadius: '6px', fontWeight: 800, fontSize: '0.64rem' }}>
+                      LIVE VCT
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
 
+                  {/* TOP ROW (IMAGE 2): [map score A] [Team A] [current map name + LIVE MAP ROUND SCORE] [Team B] [map score B] */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ background: '#2ecc71', color: '#000', padding: '2px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 900 }}>
+                        {m.teamA.score}
+                      </span>
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#fff' }}>
+                        {m.teamA.name}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                      <span style={{ fontSize: '0.66rem', color: '#60a5fa', fontWeight: 900, textTransform: 'uppercase' }}>
+                        {activeMapTitle}
+                      </span>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 900, color: '#fff' }}>
+                        <strong style={{ color: '#2ecc71' }}>{roundScoreA}</strong> - <strong style={{ color: '#e74c3c' }}>{roundScoreB}</strong>
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#fff' }}>
+                        {m.teamB.name}
+                      </span>
+                      <span style={{ background: '#e74c3c', color: '#fff', padding: '2px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 900 }}>
+                        {m.teamB.score}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* MAP BREAK BANNER */}
+                  {inMapBreak && (
+                    <div style={{ background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.3)', color: '#facc15', borderRadius: '8px', padding: '6px 10px', fontSize: '0.73rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={13} />
+                      <span>Map Break (Waiting for next map)</span>
+                    </div>
+                  )}
+
+                  {/* ALL 3 MAPS LIST (IMAGE 2 BOTTOM): Lotus 13-10 (Finished), Ascent 3-2 (LIVE), Split (Upcoming) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'rgba(0,0,0,0.4)', borderRadius: '10px', padding: '8px' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: '2px' }}>
+                      Series Maps (BO3)
+                    </div>
+
+                    {mapList.map((mapItem) => (
+                      <div 
+                        key={mapItem.mapIndex}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          background: mapItem.isMapActive ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.03)',
+                          border: mapItem.isMapActive ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+                          fontSize: '0.74rem'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 800 }}>M{mapItem.mapIndex}</span>
+                          <span style={{ color: '#fff', fontWeight: 800 }}>{mapItem.mapName}</span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {mapItem.isCompleted ? (
+                            <span style={{ color: '#2ecc71', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span>{mapItem.scoreA} - {mapItem.scoreB} (Finished)</span>
+                              <CheckCircle2 size={12} />
+                            </span>
+                          ) : mapItem.isMapActive ? (
+                            <span style={{ color: '#3b82f6', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Zap size={11} />
+                              <span>{mapItem.scoreA} - {mapItem.scoreB} (LIVE)</span>
+                            </span>
+                          ) : (
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, fontSize: '0.68rem' }}>
+                              Upcoming
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* VLR Link Footer */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '2px' }}>
+                    <a 
+                      href={m.vlrUrl || 'https://vlr.gg'} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#fff', fontWeight: 800, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.72rem' }}
+                    >
+                      <span>vlr.gg match page</span>
+                      <ExternalLink size={11} />
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

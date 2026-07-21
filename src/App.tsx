@@ -55,7 +55,6 @@ import { Onboarding01 } from './components/Onboarding01';
 import { CalendarView } from './components/CalendarView';
 import { LibraryView } from './components/LibraryView';
 import { ApiSettingsView } from './components/ApiSettingsView';
-import { VlrLiveScores } from './components/VlrLiveScores';
 import { EsportsLiveOverlay } from './components/EsportsLiveOverlay';
 import Calendar02 from './components/creative-tim/blocks/calendar-02';
 import { classifyVideoTitle } from './utils/libraryClassifier';
@@ -2712,18 +2711,6 @@ function App() {
             <span className="sidebar-menu-text">Library</span>
           </button>
           <button 
-            className={`sidebar-menu-item ${activeTab === 'vlr' ? 'active' : ''}`}
-            onClick={() => {
-              setSelectedActor(null);
-              setSelectedDetailsMedia(null);
-              setActiveTab('vlr');
-            }}
-            title="Live Scores & Matches"
-          >
-            <Trophy size={20} color="#e50914" />
-            <span className="sidebar-menu-text">Live Scores</span>
-          </button>
-          <button 
             className={`sidebar-menu-item ${activeTab === 'online' ? 'active' : ''}`}
             onClick={() => {
               setSelectedActor(null);
@@ -2790,7 +2777,7 @@ function App() {
         </div>
       </aside>
 
-      {/* Floating Right Side Midways Live Scores Overlay */}
+      {/* Floating Right Side Midways Live VCT Overlay */}
       <EsportsLiveOverlay />
 
       {/* Main Content Area */}
@@ -3234,10 +3221,6 @@ function App() {
                 onPlayVideo={handlePlayVideo} 
                 isInstantlyPlayable={isInstantlyPlayable}
               />
-            )}
-
-            {activeTab === 'vlr' && (
-              <VlrLiveScores />
             )}
 
             {activeTab === 'online' && (
