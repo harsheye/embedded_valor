@@ -3751,6 +3751,7 @@ function App() {
                                     });
                                   }}
                                 />
+                              </div>
                               <div className="pref-row">
                                 <span className="pref-label">Auto-Skip Intros & Outros</span>
                                 <ToggleSwitch 
