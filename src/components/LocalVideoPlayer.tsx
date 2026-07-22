@@ -131,7 +131,7 @@ export interface MediaDetails {
 }
 
 export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({ 
-  video, 
+  video: rawVideo, 
   videos,
   onBack, 
   onUpdateVideo, 
@@ -167,6 +167,12 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   settingsOrder,
   uiHideTimeout = 1.5
 }) => {
+  const isFile = (obj: any): obj is File => obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
+  const video = useMemo(() => ({
+    ...rawVideo,
+    file: isFile(rawVideo.file) ? rawVideo.file : undefined
+  }), [rawVideo]);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [mediaDetails, setMediaDetails] = useState<MediaDetails | null>(null);
   const [videoLayout, setVideoLayout] = useState({ left: 0, top: 0, width: 0, height: 0 });
