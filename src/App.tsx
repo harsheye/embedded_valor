@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Component, ReactNode } from 'react';
+import { useState, useEffect, useRef, Component, ReactNode, useCallback } from 'react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from './types/media';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: any }> {
@@ -88,6 +88,21 @@ const ToggleSwitch: React.FC<{
 };
 
 export const BACKEND_ORIGIN = 'http://127.0.0.1:50001';
+
+export const sanitizeVideoItem = (v: VideoItem): VideoItem => {
+  if (v && v.type === 'local' && v.localFilePath) {
+    const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(v.localFilePath)}`;
+    if (v.url !== streamUrl) {
+      return { ...v, url: streamUrl };
+    }
+  }
+  return v;
+};
+
+export const sanitizeVideoList = (list: VideoItem[]): VideoItem[] => {
+  if (!Array.isArray(list)) return list;
+  return list.map(sanitizeVideoItem);
+};
 
 const originalConsoleLog = console.log;
 const originalConsoleWarn = console.warn;
@@ -196,7 +211,7 @@ const ratingThresholdOptions = [
 ];
 
 function App() {
-  const [videos, setVideos] = useState<VideoItem[]>(() => {
+  const [videosState, rawSetVideos] = useState<VideoItem[]>(() => {
     try {
       const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
       const videosKey = activeUserId === 'local' ? 'valor_videos' : `valor_videos_${activeUserId}`;
@@ -204,11 +219,11 @@ function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.map((v: any) => ({
+          return sanitizeVideoList(parsed.map((v: any) => ({
             ...v,
             audioTracks: [],
             subtitleTracks: []
-          }));
+          })));
         }
       }
       return [];
@@ -217,15 +232,37 @@ function App() {
       return [];
     }
   });
-  const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(() => {
+  const [playingVideoState, rawSetPlayingVideo] = useState<VideoItem | null>(() => {
     try {
       const saved = localStorage.getItem('valor_currently_playing');
-      return saved ? JSON.parse(saved) : null;
+      return saved ? sanitizeVideoItem(JSON.parse(saved)) : null;
     } catch (err) {
       console.error('Failed to parse currently playing video:', err);
       return null;
     }
   });
+
+  const videos = videosState;
+  const playingVideo = playingVideoState;
+
+  const setVideos = useCallback((val: VideoItem[] | ((prev: VideoItem[]) => VideoItem[])) => {
+    if (typeof val === 'function') {
+      rawSetVideos(prev => sanitizeVideoList(val(prev)));
+    } else {
+      rawSetVideos(sanitizeVideoList(val));
+    }
+  }, []);
+
+  const setPlayingVideo = useCallback((val: VideoItem | null | ((prev: VideoItem | null) => VideoItem | null)) => {
+    if (typeof val === 'function') {
+      rawSetPlayingVideo(prev => {
+        const res = val(prev);
+        return res ? sanitizeVideoItem(res) : null;
+      });
+    } else {
+      rawSetPlayingVideo(val ? sanitizeVideoItem(val) : null);
+    }
+  }, []);
   const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
   const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
   const [historyViewMode, setHistoryViewMode] = useState<'list' | 'calendar'>('list');
