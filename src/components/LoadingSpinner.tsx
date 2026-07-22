@@ -577,14 +577,14 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
       return (
         <div className="custom-loader-wrapper">
           <video src={customLoaderUrl} autoPlay loop muted playsInline
-            style={{ width: '120px', height: '120px', objectFit: 'contain', borderRadius: '50%' }} />
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
         </div>
       );
     }
     return (
       <div className="custom-loader-wrapper">
         <img src={customLoaderUrl} alt="Loading..."
-          style={{ width: '120px', height: '120px', objectFit: 'contain' }} />
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
       </div>
     );
   }
