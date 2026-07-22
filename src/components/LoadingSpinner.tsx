@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import React, { useId, useRef, useEffect, useCallback } from 'react';
 
 export type SpinnerPreset = 'fire-circle' | 'fire-ring' | 'flame-burst';
 
@@ -15,283 +15,451 @@ interface LoadingSpinnerProps {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   1. FIRE CIRCLE — Multi-layered counter-rotating flame rings
+   1. FIRE CIRCLE — Canvas-based glowing fire ring
    ═══════════════════════════════════════════════════════════════════ */
 const FireCircle: React.FC = () => {
-  const uid = useId().replace(/:/g, '');
-  return (
-    <>
-      <style>{`
-        .fc-wrap-${uid} { display:block; filter:drop-shadow(0 0 15px rgba(255,69,0,.85)); }
-        .fc-o-${uid} { animation: fc-cw-${uid} 3s linear infinite; }
-        .fc-m-${uid} { animation: fc-ccw-${uid} 2s linear infinite; }
-        .fc-i-${uid} { animation: fc-cw-${uid} 1.3s linear infinite; }
-        @keyframes fc-cw-${uid}  { from{transform:rotate(0)}to{transform:rotate(360deg)} }
-        @keyframes fc-ccw-${uid} { from{transform:rotate(360deg)}to{transform:rotate(0)} }
-      `}</style>
-      <svg className={`fc-wrap-${uid}`} viewBox="0 0 120 120" width="120" height="120">
-        <defs>
-          <linearGradient id={`fc-og-${uid}`} x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#ff1a00"/><stop offset="45%" stopColor="#ff5e00"/><stop offset="100%" stopColor="#ff9a00"/>
-          </linearGradient>
-          <linearGradient id={`fc-ig-${uid}`} x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#ff5e00"/><stop offset="60%" stopColor="#ffcc00"/><stop offset="100%" stopColor="#ffffcc"/>
-          </linearGradient>
-          <filter id={`fc-gl-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="4.5" result="b"/>
-            <feComponentTransfer in="b" result="k"><feFuncA type="linear" slope="1.4"/></feComponentTransfer>
-            <feMerge><feMergeNode in="k"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-        </defs>
-        <g className={`fc-o-${uid}`} style={{transformOrigin:'60px 60px'}}>
-          <circle cx="60" cy="60" r="40" fill="none" stroke={`url(#fc-og-${uid})`} strokeWidth="7" filter={`url(#fc-gl-${uid})`} strokeDasharray="16 6 24 9 18 7 32 10" strokeLinecap="round"/>
-          <path d="M60,12C64,12 67,17 64,21C60,24 56,20 54,16C56,14 58,12 60,12Z" fill={`url(#fc-og-${uid})`}/>
-          <path d="M108,60C108,64 103,67 99,64C96,60 100,56 104,54C106,56 108,58 108,60Z" fill={`url(#fc-og-${uid})`}/>
-          <path d="M60,108C56,108 53,103 56,99C60,96 64,100 66,104C64,106 62,108 60,108Z" fill={`url(#fc-og-${uid})`}/>
-          <path d="M12,60C12,56 17,53 21,56C24,60 20,64 18,66C16,64 12,62 12,60Z" fill={`url(#fc-og-${uid})`}/>
-        </g>
-        <g className={`fc-m-${uid}`} style={{transformOrigin:'60px 60px'}}>
-          <circle cx="60" cy="60" r="38" fill="none" stroke={`url(#fc-og-${uid})`} strokeWidth="5.5" strokeDasharray="20 10 14 6 26 8" strokeLinecap="round"/>
-          <path d="M85,35C88,32 91,37 87,41C84,44 80,40 82,36Z" fill={`url(#fc-og-${uid})`}/>
-          <path d="M35,85C32,88 37,91 41,87C44,84 40,80 36,82Z" fill={`url(#fc-og-${uid})`}/>
-        </g>
-        <g className={`fc-i-${uid}`} style={{transformOrigin:'60px 60px'}}>
-          <circle cx="60" cy="60" r="36" fill="none" stroke={`url(#fc-ig-${uid})`} strokeWidth="4" strokeDasharray="10 5 18 5 12 7" strokeLinecap="round" filter={`url(#fc-gl-${uid})`}/>
-          <path d="M60,19C62,19 63,22 61,24C60,26 58,24 58,22Z" fill={`url(#fc-ig-${uid})`}/>
-          <path d="M91,50C93,50 94,53 92,55C90,57 88,55 88,53Z" fill={`url(#fc-ig-${uid})`}/>
-        </g>
-      </svg>
-    </>
-  );
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    const W = 140, H = 140, cx = W / 2, cy = H / 2, R = 42;
+    canvas.width = W; canvas.height = H;
+
+    interface Particle {
+      angle: number; r: number; size: number; life: number; maxLife: number;
+      vAngle: number; vr: number; hue: number; alpha: number;
+    }
+
+    const particles: Particle[] = [];
+    const spawn = (baseAngle: number) => {
+      particles.push({
+        angle: baseAngle + (Math.random() - 0.5) * 0.3,
+        r: R + (Math.random() - 0.5) * 10,
+        size: 2 + Math.random() * 5,
+        life: 0,
+        maxLife: 20 + Math.random() * 30,
+        vAngle: (Math.random() - 0.5) * 0.01,
+        vr: (Math.random() - 0.5) * 0.8,
+        hue: 10 + Math.random() * 35, // 10-45 (red to orange-yellow)
+        alpha: 0.6 + Math.random() * 0.4,
+      });
+    };
+
+    let rotation = 0;
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      rotation += 0.025;
+
+      // Spawn particles along the ring
+      for (let i = 0; i < 4; i++) {
+        const a = rotation + (i / 4) * Math.PI * 2 + (Math.random() - 0.5) * 1.5;
+        spawn(a);
+      }
+
+      // Glow layer
+      const glowGrad = ctx.createRadialGradient(cx, cy, R - 15, cx, cy, R + 25);
+      glowGrad.addColorStop(0, 'rgba(255, 80, 0, 0)');
+      glowGrad.addColorStop(0.5, 'rgba(255, 60, 0, 0.08)');
+      glowGrad.addColorStop(1, 'rgba(255, 40, 0, 0)');
+      ctx.fillStyle = glowGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Ring base (subtle)
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 80, 0, 0.12)';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // Update & draw particles
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life++;
+        p.angle += p.vAngle;
+        p.r += p.vr;
+        p.size *= 0.98;
+
+        if (p.life > p.maxLife || p.size < 0.3) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        const lifeRatio = p.life / p.maxLife;
+        const fadeAlpha = p.alpha * (1 - lifeRatio);
+        const px = cx + Math.cos(p.angle) * p.r;
+        const py = cy + Math.sin(p.angle) * p.r;
+
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, p.size);
+        if (p.hue > 30) {
+          // Yellow-orange core
+          grad.addColorStop(0, `rgba(255, 220, 50, ${fadeAlpha})`);
+          grad.addColorStop(0.4, `rgba(255, 140, 0, ${fadeAlpha * 0.8})`);
+          grad.addColorStop(1, `rgba(255, 50, 0, 0)`);
+        } else {
+          // Red-orange
+          grad.addColorStop(0, `rgba(255, 120, 0, ${fadeAlpha})`);
+          grad.addColorStop(0.4, `rgba(255, 40, 0, ${fadeAlpha * 0.7})`);
+          grad.addColorStop(1, `rgba(180, 0, 0, 0)`);
+        }
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px, py, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Keep particle count manageable
+      if (particles.length > 200) particles.splice(0, particles.length - 200);
+
+      animRef.current = requestAnimationFrame(draw);
+    };
+
+    animRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animRef.current);
+  }, []);
+
+  return <canvas ref={canvasRef} style={{ width: 130, height: 130 }} />;
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   2. FIRE RING — Thick realistic flame arc rotating with embers,
-      purple/blue inner core, organic flickering shapes
+   2. FIRE RING — Thick flame arc traveling around a circle with
+      organic flame shapes, embers, and purple inner core.
+      Matches the first reference images (IconScout flame ring).
    ═══════════════════════════════════════════════════════════════════ */
 const FireRing: React.FC = () => {
-  const uid = useId().replace(/:/g, '');
-  return (
-    <>
-      <style>{`
-        .fr-wrap-${uid} { display:block; }
-        .fr-main-${uid} { animation: fr-spin-${uid} 1.4s linear infinite; }
-        .fr-embers-${uid} { animation: fr-spin-${uid} 2.2s linear infinite reverse; }
-        @keyframes fr-spin-${uid} { from{transform:rotate(0)}to{transform:rotate(360deg)} }
-        /* Ember flicker */
-        .fr-e1-${uid} { animation: fr-flk-${uid} .8s ease-in-out infinite alternate; }
-        .fr-e2-${uid} { animation: fr-flk-${uid} 1.1s ease-in-out infinite alternate .3s; }
-        .fr-e3-${uid} { animation: fr-flk-${uid} .6s ease-in-out infinite alternate .5s; }
-        .fr-e4-${uid} { animation: fr-flk-${uid} .9s ease-in-out infinite alternate .15s; }
-        .fr-e5-${uid} { animation: fr-flk-${uid} .7s ease-in-out infinite alternate .7s; }
-        .fr-e6-${uid} { animation: fr-flk-${uid} 1.3s ease-in-out infinite alternate .4s; }
-        @keyframes fr-flk-${uid} { 0%{opacity:1;transform:scale(1)}100%{opacity:.15;transform:scale(.4) translate(var(--dx,0),var(--dy,0))} }
-        /* Flame tip flicker */
-        .fr-tip-${uid} { animation: fr-tip-a-${uid} .5s ease-in-out infinite alternate; }
-        @keyframes fr-tip-a-${uid} { 0%{opacity:1;transform:scale(1)}100%{opacity:.3;transform:scale(.6) translateY(-4px)} }
-      `}</style>
-      <svg className={`fr-wrap-${uid}`} viewBox="0 0 140 140" width="130" height="130">
-        <defs>
-          {/* Main flame gradient: yellow → orange → red → purple */}
-          <linearGradient id={`fr-g1-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#ffb300"/>
-            <stop offset="25%" stopColor="#ff6600"/>
-            <stop offset="55%" stopColor="#ff2200"/>
-            <stop offset="85%" stopColor="#cc1100"/>
-            <stop offset="100%" stopColor="#7c3aed"/>
-          </linearGradient>
-          {/* Inner bright core */}
-          <linearGradient id={`fr-g2-${uid}`} x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#ffee00"/><stop offset="40%" stopColor="#ff8800"/><stop offset="100%" stopColor="#ff3300"/>
-          </linearGradient>
-          {/* Ambient glow */}
-          <radialGradient id={`fr-glow-${uid}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ff6600" stopOpacity=".18"/><stop offset="100%" stopColor="transparent"/>
-          </radialGradient>
-          {/* Soft blur for glow */}
-          <filter id={`fr-blur-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="2" result="b"/>
-            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-          {/* Turbulence for organic flame edges */}
-          <filter id={`fr-turb-${uid}`} x="-15%" y="-15%" width="130%" height="130%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="4" seed="5" result="n"/>
-            <feDisplacementMap in="SourceGraphic" in2="n" scale="8" xChannelSelector="R" yChannelSelector="G"/>
-          </filter>
-        </defs>
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
 
-        {/* Background glow */}
-        <circle cx="70" cy="70" r="52" fill={`url(#fr-glow-${uid})`} opacity=".5"/>
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    const W = 160, H = 160, cx = W / 2, cy = H / 2, R = 50;
+    canvas.width = W; canvas.height = H;
 
-        {/* Main flame body — thick arc with turbulence for organic look */}
-        <g className={`fr-main-${uid}`} style={{transformOrigin:'70px 70px'}} filter={`url(#fr-turb-${uid})`}>
-          {/* Wide outer flame — the main visible arc */}
-          <path d="M 70,18 C 90,16 112,30 120,50 C 126,66 124,84 114,96 C 104,108 88,114 74,112"
-            fill="none" stroke={`url(#fr-g1-${uid})`} strokeWidth="14" strokeLinecap="round" filter={`url(#fr-blur-${uid})`}/>
-          {/* Bright orange/yellow inner core */}
-          <path d="M 70,24 C 86,22 106,34 112,50 C 118,64 116,80 108,90 C 100,100 86,106 76,106"
-            fill="none" stroke={`url(#fr-g2-${uid})`} strokeWidth="6" strokeLinecap="round"/>
-          {/* Purple/blue inner edge along the arc */}
-          <path d="M 72,28 C 84,26 100,36 108,48 C 114,58 114,70 110,80 C 106,90 96,98 84,102"
-            fill="none" stroke="#7c3aed" strokeWidth="3.5" strokeLinecap="round" opacity=".65"/>
-        </g>
+    interface FlameParticle {
+      angle: number; rOffset: number; size: number;
+      life: number; maxLife: number;
+      vr: number; vAngle: number;
+      layer: 'outer' | 'core' | 'inner' | 'ember';
+    }
 
-        {/* Flame tip shapes — leading edge (organic teardrops) */}
-        <g className={`fr-main-${uid}`} style={{transformOrigin:'70px 70px'}}>
-          {/* Leading flame tip */}
-          <path className={`fr-tip-${uid}`}
-            d="M 66,14 C 70,6 76,8 74,16 C 72,22 64,22 66,14 Z" 
-            fill="#ffcc00" filter={`url(#fr-blur-${uid})`}/>
-          {/* Small drip ahead */}
-          <path className={`fr-tip-${uid}`} style={{animationDelay:'.2s'}}
-            d="M 58,16 C 60,12 64,14 62,18 C 60,20 56,18 58,16 Z" 
-            fill="#ff8800" opacity=".7"/>
-          {/* Trailing tail wisps */}
-          <path d="M 72,114 C 68,120 64,118 66,112 C 68,108 74,110 72,114 Z" fill="#ff3300" opacity=".5">
-            <animate attributeName="opacity" values=".5;.15;.5" dur=".8s" repeatCount="indefinite"/>
-          </path>
-          <path d="M 60,110 C 56,116 52,112 55,108 C 58,104 62,106 60,110 Z" fill="#cc2200" opacity=".3">
-            <animate attributeName="opacity" values=".3;.08;.3" dur="1.1s" repeatCount="indefinite"/>
-          </path>
-        </g>
+    const particles: FlameParticle[] = [];
 
-        {/* Flying ember particles — orbiting in reverse */}
-        <g className={`fr-embers-${uid}`} style={{transformOrigin:'70px 70px'}}>
-          {/* Large embers */}
-          <path className={`fr-e1-${uid}`} style={{'--dx':'5px','--dy':'-8px'} as any}
-            d="M 42,28 C 46,22 50,26 47,30 C 44,34 40,32 42,28 Z" fill="#ff5500"/>
-          <path className={`fr-e2-${uid}`} style={{'--dx':'-6px','--dy':'4px'} as any}
-            d="M 118,68 C 122,64 124,68 121,72 C 118,74 116,71 118,68 Z" fill="#ff7700"/>
-          <path className={`fr-e3-${uid}`} style={{'--dx':'3px','--dy':'7px'} as any}
-            d="M 85,118 C 89,116 91,120 87,122 C 84,124 83,120 85,118 Z" fill="#ff4400"/>
-          {/* Small spark dots */}
-          <circle className={`fr-e4-${uid}`} style={{'--dx':'-4px','--dy':'-6px'} as any}
-            cx="30" cy="55" r="2.5" fill="#ffaa00"/>
-          <circle className={`fr-e5-${uid}`} style={{'--dx':'6px','--dy':'3px'} as any}
-            cx="100" cy="110" r="2" fill="#ff6600"/>
-          <circle className={`fr-e6-${uid}`} style={{'--dx':'-3px','--dy':'-5px'} as any}
-            cx="55" cy="125" r="1.8" fill="#ff3300"/>
-          {/* Tiny sparks */}
-          <circle className={`fr-e3-${uid}`} style={{'--dx':'8px','--dy':'-3px'} as any}
-            cx="125" cy="45" r="1.5" fill="#ffcc00" opacity=".7"/>
-          <circle className={`fr-e5-${uid}`} style={{'--dx':'-5px','--dy':'8px'} as any}
-            cx="25" cy="95" r="1.2" fill="#ff5500" opacity=".6"/>
-        </g>
-      </svg>
-    </>
-  );
+    const spawnFlame = (headAngle: number) => {
+      // Spawn along the arc (about 200° of trail)
+      const arcLen = Math.PI * 1.1; // ~200°
+      for (let i = 0; i < 6; i++) {
+        const pos = Math.random(); // 0=head, 1=tail
+        const a = headAngle - pos * arcLen;
+        const spread = (1 - pos) * 18 + 4; // wider at head
+
+        // Outer flame body
+        particles.push({
+          angle: a + (Math.random() - 0.5) * 0.15,
+          rOffset: (Math.random() - 0.5) * spread,
+          size: 4 + Math.random() * 8 * (1 - pos * 0.5),
+          life: 0,
+          maxLife: 8 + Math.random() * 15,
+          vr: (Math.random() - 0.5) * 1.2,
+          vAngle: (Math.random() - 0.5) * 0.008,
+          layer: pos < 0.3 ? 'core' : 'outer',
+        });
+
+        // Inner purple/blue core (fewer, only along center line)
+        if (Math.random() < 0.3) {
+          particles.push({
+            angle: a + (Math.random() - 0.5) * 0.08,
+            rOffset: (Math.random() - 0.5) * 5,
+            size: 2 + Math.random() * 4,
+            life: 0,
+            maxLife: 6 + Math.random() * 10,
+            vr: (Math.random() - 0.5) * 0.5,
+            vAngle: (Math.random() - 0.5) * 0.005,
+            layer: 'inner',
+          });
+        }
+      }
+
+      // Flying embers
+      if (Math.random() < 0.5) {
+        const emberAngle = headAngle - Math.random() * arcLen * 1.3;
+        particles.push({
+          angle: emberAngle,
+          rOffset: (Math.random() > 0.5 ? 1 : -1) * (15 + Math.random() * 20),
+          size: 1.5 + Math.random() * 3,
+          life: 0,
+          maxLife: 15 + Math.random() * 20,
+          vr: (Math.random() - 0.5) * 2,
+          vAngle: (Math.random() - 0.5) * 0.02,
+          layer: 'ember',
+        });
+      }
+    };
+
+    let headAngle = 0;
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      headAngle += 0.04; // rotation speed
+
+      spawnFlame(headAngle);
+
+      // Background glow
+      const bgGlow = ctx.createRadialGradient(cx, cy, R - 20, cx, cy, R + 30);
+      bgGlow.addColorStop(0, 'rgba(255, 60, 0, 0)');
+      bgGlow.addColorStop(0.5, 'rgba(255, 50, 0, 0.05)');
+      bgGlow.addColorStop(1, 'rgba(255, 30, 0, 0)');
+      ctx.fillStyle = bgGlow;
+      ctx.fillRect(0, 0, W, H);
+
+      // Draw particles with additive blending for fire glow
+      ctx.globalCompositeOperation = 'lighter';
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life++;
+        p.rOffset += p.vr;
+        p.angle += p.vAngle;
+
+        if (p.life > p.maxLife) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        const lifeRatio = p.life / p.maxLife;
+        const fade = Math.pow(1 - lifeRatio, 0.7);
+        const px = cx + Math.cos(p.angle) * (R + p.rOffset);
+        const py = cy + Math.sin(p.angle) * (R + p.rOffset);
+        const s = p.size * (1 - lifeRatio * 0.4);
+
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, s);
+
+        if (p.layer === 'core') {
+          // Bright yellow/white at the head
+          grad.addColorStop(0, `rgba(255, 240, 100, ${fade * 0.9})`);
+          grad.addColorStop(0.3, `rgba(255, 180, 0, ${fade * 0.7})`);
+          grad.addColorStop(0.7, `rgba(255, 80, 0, ${fade * 0.4})`);
+          grad.addColorStop(1, 'rgba(255, 30, 0, 0)');
+        } else if (p.layer === 'inner') {
+          // Purple/blue inner core
+          grad.addColorStop(0, `rgba(160, 80, 255, ${fade * 0.8})`);
+          grad.addColorStop(0.5, `rgba(120, 40, 220, ${fade * 0.5})`);
+          grad.addColorStop(1, 'rgba(80, 0, 180, 0)');
+        } else if (p.layer === 'ember') {
+          // Flying embers — orange/red
+          grad.addColorStop(0, `rgba(255, 150, 30, ${fade * 0.9})`);
+          grad.addColorStop(0.5, `rgba(255, 60, 0, ${fade * 0.5})`);
+          grad.addColorStop(1, 'rgba(200, 0, 0, 0)');
+        } else {
+          // Outer flame body — orange to red
+          const headDist = ((headAngle - p.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+          const normalizedDist = Math.min(headDist / (Math.PI * 1.1), 1); // 0=head, 1=tail
+          if (normalizedDist < 0.3) {
+            // Near head: orange/yellow
+            grad.addColorStop(0, `rgba(255, 200, 30, ${fade * 0.85})`);
+            grad.addColorStop(0.4, `rgba(255, 120, 0, ${fade * 0.6})`);
+            grad.addColorStop(1, 'rgba(255, 50, 0, 0)');
+          } else if (normalizedDist < 0.7) {
+            // Mid: red/orange
+            grad.addColorStop(0, `rgba(255, 80, 0, ${fade * 0.8})`);
+            grad.addColorStop(0.4, `rgba(230, 30, 0, ${fade * 0.5})`);
+            grad.addColorStop(1, 'rgba(180, 0, 0, 0)');
+          } else {
+            // Tail: dark red/purple
+            grad.addColorStop(0, `rgba(200, 20, 0, ${fade * 0.6})`);
+            grad.addColorStop(0.5, `rgba(140, 0, 60, ${fade * 0.3})`);
+            grad.addColorStop(1, 'rgba(80, 0, 80, 0)');
+          }
+        }
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px, py, s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Limit particle count
+      if (particles.length > 400) particles.splice(0, particles.length - 350);
+
+      animRef.current = requestAnimationFrame(draw);
+    };
+
+    animRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animRef.current);
+  }, []);
+
+  return <canvas ref={canvasRef} style={{ width: 150, height: 150 }} />;
 };
 
+
 /* ═══════════════════════════════════════════════════════════════════
-   3. FLAME BURST — Scattered flame shapes around edges, 
-      flickering inward. Red/orange outer, yellow inner cores.
+   3. FLAME BURST — Flame shapes scattered around all edges,
+      pointing inward. Red/orange outer with yellow cores.
+      Matches the second set of reference images.
    ═══════════════════════════════════════════════════════════════════ */
-
-/* A single flame shape — styled like the reference with orange outer + yellow core */
-const FlameShape: React.FC<{
-  x: number; y: number; scale: number; rotate: number;
-  delay: string; dur: string; uid: string; idx: number;
-}> = ({ x, y, scale, rotate, delay, dur, uid, idx }) => (
-  <g transform={`translate(${x},${y}) rotate(${rotate}) scale(${scale})`}>
-    {/* Orange/red outer flame */}
-    <path d="M 0,-12 C 4,-18 8,-14 6,-8 C 10,-4 8,2 4,6 C 2,8 -2,8 -4,6 C -8,2 -10,-4 -6,-8 C -8,-14 -4,-18 0,-12 Z"
-      fill="#ff4400" stroke="#e63300" strokeWidth=".5">
-      <animate attributeName="d"
-        values="M 0,-12 C 4,-18 8,-14 6,-8 C 10,-4 8,2 4,6 C 2,8 -2,8 -4,6 C -8,2 -10,-4 -6,-8 C -8,-14 -4,-18 0,-12 Z;
-                M 0,-14 C 5,-20 9,-15 7,-9 C 11,-3 7,3 3,7 C 1,9 -3,7 -5,5 C -9,1 -11,-5 -7,-9 C -9,-16 -5,-20 0,-14 Z;
-                M 0,-12 C 4,-18 8,-14 6,-8 C 10,-4 8,2 4,6 C 2,8 -2,8 -4,6 C -8,2 -10,-4 -6,-8 C -8,-14 -4,-18 0,-12 Z"
-        dur={dur} begin={delay} repeatCount="indefinite"/>
-    </path>
-    {/* Yellow inner core */}
-    <path d="M 0,-6 C 2,-10 4,-8 3,-5 C 5,-2 4,1 2,3 C 1,4 -1,4 -2,3 C -4,1 -5,-2 -3,-5 C -4,-8 -2,-10 0,-6 Z"
-      fill="#ffcc00" opacity=".9">
-      <animate attributeName="opacity" values=".9;.5;.9" dur={dur} begin={delay} repeatCount="indefinite"/>
-    </path>
-  </g>
-);
-
-/* Tiny ember/spark (small teardrop) */
-const Spark: React.FC<{
-  x: number; y: number; rotate: number; scale: number;
-  delay: string; dur: string; uid: string;
-}> = ({ x, y, rotate, scale, delay, dur }) => (
-  <g transform={`translate(${x},${y}) rotate(${rotate}) scale(${scale})`}>
-    <path d="M 0,-4 C 2,-7 3,-5 2,-2 C 3,0 1,2 0,2 C -1,2 -3,0 -2,-2 C -3,-5 -2,-7 0,-4 Z"
-      fill="#ff4400">
-      <animate attributeName="opacity" values="1;.2;1" dur={dur} begin={delay} repeatCount="indefinite"/>
-    </path>
-  </g>
-);
-
 const FlameBurst: React.FC = () => {
-  const uid = useId().replace(/:/g, '');
-  
-  /* Flame positions: scattered around the edges, pointing roughly toward center */
-  const flames = [
-    // Top edge
-    { x: 15, y: 8,   s: 1.1, r: 160, d: '0s',    dur: '.7s' },
-    { x: 35, y: 5,   s: .8,  r: 170, d: '.2s',   dur: '.9s' },
-    { x: 55, y: 10,  s: .65, r: 180, d: '.4s',   dur: '.6s' },
-    { x: 78, y: 6,   s: .7,  r: 185, d: '.1s',   dur: '.8s' },
-    { x: 100, y: 8,  s: .9,  r: 200, d: '.35s',  dur: '.75s' },
-    { x: 118, y: 12, s: 1.0, r: 210, d: '.15s',  dur: '.85s' },
-    // Right edge
-    { x: 125, y: 30, s: .85, r: 240, d: '.5s',   dur: '.7s' },
-    { x: 128, y: 55, s: .7,  r: 260, d: '.25s',  dur: '.9s' },
-    { x: 126, y: 80, s: .9,  r: 280, d: '.1s',   dur: '.65s' },
-    { x: 122, y: 105, s: 1.1, r: 300, d: '.4s',  dur: '.8s' },
-    // Bottom edge
-    { x: 105, y: 125, s: .95, r: 330, d: '.3s',  dur: '.7s' },
-    { x: 82, y: 128,  s: .7,  r: 350, d: '.15s', dur: '.85s' },
-    { x: 60, y: 130,  s: .6,  r: 0,   d: '.45s', dur: '.75s' },
-    { x: 38, y: 127,  s: .8,  r: 10,  d: '.2s',  dur: '.9s' },
-    { x: 15, y: 122,  s: 1.0, r: 30,  d: '.35s', dur: '.65s' },
-    // Left edge
-    { x: 8, y: 100,  s: .85, r: 60,  d: '.1s',   dur: '.8s' },
-    { x: 5, y: 75,   s: .7,  r: 80,  d: '.5s',   dur: '.7s' },
-    { x: 7, y: 50,   s: .9,  r: 100, d: '.25s',  dur: '.85s' },
-    { x: 10, y: 28,  s: 1.05, r: 130, d: '.4s',  dur: '.75s' },
-  ];
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
 
-  const sparks = [
-    { x: 28, y: 18, r: 155, s: .6, d: '.1s', dur: '.5s' },
-    { x: 68, y: 15, r: 180, s: .5, d: '.3s', dur: '.6s' },
-    { x: 112, y: 22, r: 215, s: .55, d: '.45s', dur: '.55s' },
-    { x: 130, y: 48, r: 255, s: .5, d: '.2s', dur: '.7s' },
-    { x: 130, y: 92, r: 290, s: .45, d: '.35s', dur: '.6s' },
-    { x: 115, y: 118, r: 320, s: .5, d: '.1s', dur: '.5s' },
-    { x: 50, y: 132, r: 5, s: .5, d: '.25s', dur: '.65s' },
-    { x: 22, y: 115, r: 45, s: .55, d: '.4s', dur: '.55s' },
-    { x: 3, y: 88, r: 75, s: .5, d: '.15s', dur: '.7s' },
-    { x: 4, y: 38, r: 110, s: .6, d: '.5s', dur: '.5s' },
-    // Extra mid-area sparks
-    { x: 42, y: 35, r: 155, s: .4, d: '.35s', dur: '.45s' },
-    { x: 95, y: 38, r: 220, s: .35, d: '.1s', dur: '.55s' },
-    { x: 98, y: 98, r: 310, s: .4, d: '.25s', dur: '.5s' },
-    { x: 35, y: 100, r: 50, s: .35, d: '.45s', dur: '.6s' },
-  ];
+  const drawFlame = useCallback((
+    ctx: CanvasRenderingContext2D,
+    x: number, y: number, size: number, angle: number, flicker: number
+  ) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    const s = size * (0.7 + flicker * 0.3);
 
-  return (
-    <>
-      <style>{`
-        .fb-wrap-${uid} { display:block; filter:drop-shadow(0 0 6px rgba(255,80,0,.4)); }
-        .fb-rot-${uid} { animation: fb-slow-${uid} 8s linear infinite; }
-        @keyframes fb-slow-${uid} { from{transform:rotate(0)}to{transform:rotate(360deg)} }
-      `}</style>
-      <svg className={`fb-wrap-${uid}`} viewBox="0 0 140 140" width="130" height="130">
-        <g className={`fb-rot-${uid}`} style={{transformOrigin:'70px 70px'}}>
-          {flames.map((f, i) => (
-            <FlameShape key={i} x={f.x} y={f.y} scale={f.s} rotate={f.r}
-              delay={f.d} dur={f.dur} uid={uid} idx={i}/>
-          ))}
-          {sparks.map((s, i) => (
-            <Spark key={`s${i}`} x={s.x} y={s.y} rotate={s.r} scale={s.s}
-              delay={s.d} dur={s.dur} uid={uid}/>
-          ))}
-        </g>
-      </svg>
-    </>
-  );
+    // Outer flame (red/orange)
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 1.8);
+    ctx.bezierCurveTo(s * 0.8, -s * 1.2, s * 0.9, -s * 0.2, s * 0.5, s * 0.6);
+    ctx.bezierCurveTo(s * 0.3, s * 0.9, -s * 0.3, s * 0.9, -s * 0.5, s * 0.6);
+    ctx.bezierCurveTo(-s * 0.9, -s * 0.2, -s * 0.8, -s * 1.2, 0, -s * 1.8);
+    ctx.closePath();
+
+    const outerGrad = ctx.createLinearGradient(0, -s * 1.8, 0, s * 0.6);
+    outerGrad.addColorStop(0, `rgba(255, 60, 0, ${0.95 * flicker})`);
+    outerGrad.addColorStop(0.4, `rgba(255, 100, 0, ${0.9 * flicker})`);
+    outerGrad.addColorStop(1, `rgba(220, 30, 0, ${0.7 * flicker})`);
+    ctx.fillStyle = outerGrad;
+    ctx.fill();
+
+    // Inner flame (yellow)
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 1.2);
+    ctx.bezierCurveTo(s * 0.4, -s * 0.7, s * 0.4, s * 0.1, s * 0.2, s * 0.4);
+    ctx.bezierCurveTo(s * 0.1, s * 0.5, -s * 0.1, s * 0.5, -s * 0.2, s * 0.4);
+    ctx.bezierCurveTo(-s * 0.4, s * 0.1, -s * 0.4, -s * 0.7, 0, -s * 1.2);
+    ctx.closePath();
+
+    const innerGrad = ctx.createLinearGradient(0, -s * 1.2, 0, s * 0.4);
+    innerGrad.addColorStop(0, `rgba(255, 220, 30, ${0.9 * flicker})`);
+    innerGrad.addColorStop(0.5, `rgba(255, 200, 0, ${0.8 * flicker})`);
+    innerGrad.addColorStop(1, `rgba(255, 160, 0, ${0.4 * flicker})`);
+    ctx.fillStyle = innerGrad;
+    ctx.fill();
+
+    ctx.restore();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    const W = 160, H = 160;
+    canvas.width = W; canvas.height = H;
+
+    // Define flame positions around edges, pointing inward
+    interface FlameConfig {
+      x: number; y: number; size: number; angle: number;
+      speed: number; phase: number;
+    }
+
+    const flames: FlameConfig[] = [];
+    const addFlame = (x: number, y: number, size: number, angle: number) => {
+      flames.push({ x, y, size, angle, speed: 2 + Math.random() * 4, phase: Math.random() * Math.PI * 2 });
+    };
+
+    // Top edge — pointing down
+    addFlame(12, 6, 10, Math.PI * 0.85);
+    addFlame(30, 3, 8, Math.PI * 0.9);
+    addFlame(48, 8, 6, Math.PI * 0.8);
+    addFlame(65, 5, 7, Math.PI * 0.95);
+    addFlame(85, 4, 9, Math.PI * 0.85);
+    addFlame(105, 7, 7, Math.PI * 0.9);
+    addFlame(125, 3, 10, Math.PI * 0.8);
+    addFlame(145, 6, 8, Math.PI * 0.75);
+
+    // Right edge — pointing left
+    addFlame(152, 22, 9, Math.PI * 1.3);
+    addFlame(155, 45, 7, Math.PI * 1.35);
+    addFlame(153, 68, 6, Math.PI * 1.25);
+    addFlame(156, 90, 8, Math.PI * 1.3);
+    addFlame(154, 112, 7, Math.PI * 1.4);
+    addFlame(152, 135, 10, Math.PI * 1.25);
+
+    // Bottom edge — pointing up
+    addFlame(140, 152, 9, -Math.PI * 0.85);
+    addFlame(120, 155, 7, -Math.PI * 0.9);
+    addFlame(100, 153, 8, -Math.PI * 0.8);
+    addFlame(78, 156, 6, -Math.PI * 0.95);
+    addFlame(55, 154, 9, -Math.PI * 0.85);
+    addFlame(35, 152, 7, -Math.PI * 0.9);
+    addFlame(15, 155, 10, -Math.PI * 0.8);
+
+    // Left edge — pointing right  
+    addFlame(5, 140, 8, -Math.PI * 0.3);
+    addFlame(3, 118, 7, -Math.PI * 0.35);
+    addFlame(6, 95, 6, -Math.PI * 0.25);
+    addFlame(4, 72, 9, -Math.PI * 0.3);
+    addFlame(5, 50, 7, -Math.PI * 0.4);
+    addFlame(3, 28, 10, -Math.PI * 0.3);
+
+    // Smaller sparks scattered mid-way
+    const sparks: FlameConfig[] = [];
+    const addSpark = (x: number, y: number, size: number, angle: number) => {
+      sparks.push({ x, y, size, angle, speed: 3 + Math.random() * 5, phase: Math.random() * Math.PI * 2 });
+    };
+    addSpark(35, 20, 3, Math.PI * 0.85);
+    addSpark(75, 18, 2.5, Math.PI * 0.9);
+    addSpark(115, 15, 3, Math.PI * 0.8);
+    addSpark(148, 38, 2.5, Math.PI * 1.3);
+    addSpark(150, 78, 2, Math.PI * 1.35);
+    addSpark(148, 120, 3, Math.PI * 1.25);
+    addSpark(130, 148, 2.5, -Math.PI * 0.85);
+    addSpark(88, 150, 3, -Math.PI * 0.9);
+    addSpark(45, 148, 2.5, -Math.PI * 0.8);
+    addSpark(8, 130, 2, -Math.PI * 0.3);
+    addSpark(10, 82, 3, -Math.PI * 0.35);
+    addSpark(8, 38, 2.5, -Math.PI * 0.3);
+    // Mid sparks
+    addSpark(40, 40, 2, Math.PI * 0.7);
+    addSpark(120, 35, 2.5, Math.PI * 1.1);
+    addSpark(125, 125, 2, -Math.PI * 0.6);
+    addSpark(30, 120, 2.5, -Math.PI * 0.1);
+
+    let time = 0;
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      time += 0.05;
+
+      // Draw main flames
+      for (const f of flames) {
+        const flicker = 0.5 + 0.5 * Math.sin(time * f.speed + f.phase);
+        const wobbleAngle = f.angle + Math.sin(time * f.speed * 0.7 + f.phase) * 0.15;
+        const wobbleX = f.x + Math.sin(time * f.speed * 0.5 + f.phase) * 2;
+        const wobbleY = f.y + Math.cos(time * f.speed * 0.6 + f.phase) * 2;
+        drawFlame(ctx, wobbleX, wobbleY, f.size * (0.8 + flicker * 0.4), wobbleAngle, 0.5 + flicker * 0.5);
+      }
+
+      // Draw sparks (small flames)
+      for (const s of sparks) {
+        const flicker = 0.3 + 0.7 * Math.sin(time * s.speed + s.phase);
+        if (flicker > 0.3) {
+          drawFlame(ctx, s.x, s.y, s.size * flicker, s.angle, flicker);
+        }
+      }
+
+      animRef.current = requestAnimationFrame(draw);
+    };
+
+    animRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animRef.current);
+  }, [drawFlame]);
+
+  return <canvas ref={canvasRef} style={{ width: 150, height: 150 }} />;
 };
 
 
@@ -335,9 +503,11 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   return <PresetSpinner preset={preset} />;
 };
 
-/* ─── Gallery Thumbnail (smaller, for settings tab) ─── */
+/* ─── Gallery Thumbnail ─── */
 export const SpinnerThumbnail: React.FC<{ preset: SpinnerPreset; size?: number }> = ({ preset, size = 64 }) => (
-  <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `scale(${size / 120})`, transformOrigin: 'center' }}>
-    <PresetSpinner preset={preset} />
+  <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+    <div style={{ transform: `scale(${size / 150})`, transformOrigin: 'center' }}>
+      <PresetSpinner preset={preset} />
+    </div>
   </div>
 );
