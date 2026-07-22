@@ -289,7 +289,9 @@ const defaultSettings = {
     customTextColor: '',
     customBgColor: '',
     customSize: 100
-  }
+  },
+  customLoaderUrl: '' as string,
+  customLoaderType: 'default' as 'default' | 'image' | 'video' | 'gif'
 };
 
 function App() {
@@ -2735,6 +2737,8 @@ function App() {
           lockModeActive={settings.lockModeActive}
           uiHideTimeout={settings.uiHideTimeout}
           tmdbApiKey={settings.tmdbApiKey}
+          customLoaderUrl={settings.customLoaderUrl}
+          customLoaderType={settings.customLoaderType}
         />
       );
     }
@@ -2750,6 +2754,8 @@ function App() {
       },
       onUpdateVideo: handleUpdateVideo,
       hideUIOverlays: settings.hideUIOverlays,
+      customLoaderUrl: settings.customLoaderUrl,
+      customLoaderType: settings.customLoaderType,
       hideVideoName: settings.hideVideoName,
       uiHideTimeout: settings.uiHideTimeout,
       toastDuration: settings.toastDuration,
@@ -3753,6 +3759,101 @@ function App() {
                                   onChange={(checked) => handleDefaultLangChange('lockModeActive', checked)}
                                 />
                               </div>
+                            </div>
+
+                            <div className="settings-section">
+                              <h3>Custom Buffering Animation</h3>
+                              <p className="settings-section-desc">Upload a custom image (GIF, PNG, SVG) or video (MP4) to replace the default loading spinner.</p>
+                              
+                              <div className="pref-row">
+                                <span className="pref-label">Animation Type</span>
+                                <CustomSelect 
+                                  value={settings.customLoaderType || 'default'} 
+                                  onChange={(val) => handleDefaultLangChange('customLoaderType' as any, val)}
+                                  options={[
+                                    { value: 'default', label: '🔥 Default Fire Circle' },
+                                    { value: 'image', label: '🖼️ Custom Image / GIF' },
+                                    { value: 'video', label: '🎬 Custom MP4 Video' }
+                                  ]}
+                                />
+                              </div>
+
+                              {settings.customLoaderType !== 'default' && (
+                                <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                                  <div 
+                                    style={{ 
+                                      border: '2px dashed rgba(255,255,255,0.15)', 
+                                      borderRadius: '8px', 
+                                      padding: '1.5rem', 
+                                      textAlign: 'center', 
+                                      background: 'rgba(255,255,255,0.03)',
+                                      cursor: 'pointer',
+                                      transition: 'border-color 0.2s, background-color 0.2s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)';
+                                      e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)';
+                                    }}
+                                    onMouseOut={(e) => {
+                                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+                                      e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)';
+                                    }}
+                                    onClick={() => {
+                                      const input = document.createElement('input');
+                                      input.type = 'file';
+                                      input.accept = settings.customLoaderType === 'video' ? 'video/mp4' : 'image/*';
+                                      input.onchange = (e: any) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          const reader = new FileReader();
+                                          reader.onload = (event) => {
+                                            const dataUrl = event.target?.result as string;
+                                            setSettings(prev => {
+                                              const updated = {
+                                                ...prev,
+                                                customLoaderUrl: dataUrl
+                                              };
+                                              saveSettingsToStorage(updated);
+                                              return updated;
+                                            });
+                                          };
+                                          reader.readAsDataURL(file);
+                                        }
+                                      };
+                                      input.click();
+                                    }}
+                                  >
+                                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', display: 'block', marginBottom: '0.4rem' }}>
+                                      {settings.customLoaderUrl ? '📂 Click to Replace File' : '📂 Click to Select File'}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+                                      {settings.customLoaderType === 'video' ? 'Supports MP4 (up to 5MB recommended)' : 'Supports GIF, SVG, PNG, JPG'}
+                                    </span>
+                                  </div>
+
+                                  {settings.customLoaderUrl && (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', padding: '0.5rem 0.8rem' }}>
+                                      <span style={{ fontSize: '0.8rem', color: '#ff4444', fontWeight: 600 }}>Active Custom Loader</span>
+                                      <button 
+                                        style={{ background: 'none', border: 'none', color: '#ff4444', fontSize: '0.8rem', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', background: 'rgba(255,68,68,0.1)' }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSettings(prev => {
+                                            const updated = {
+                                              ...prev,
+                                              customLoaderUrl: ''
+                                            };
+                                            saveSettingsToStorage(updated);
+                                            return updated;
+                                          });
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

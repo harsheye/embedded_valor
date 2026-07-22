@@ -24,9 +24,12 @@ import { DemuxManager } from '../services/ffmpeg/DemuxManager';
 import { PlaybackController } from '../services/playback/PlaybackController';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
+import { LoadingSpinner } from './LoadingSpinner';
 
 interface VideoPlayerProps {
   video: VideoItem;
+  customLoaderUrl?: string;
+  customLoaderType?: 'default' | 'image' | 'video' | 'gif';
   userId?: string;
   profileName?: string;
   videos?: VideoItem[];
@@ -135,6 +138,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   videos,
   onBack, 
   onUpdateVideo, 
+  customLoaderUrl,
+  customLoaderType = 'default',
   userId = 'local',
   profileName = 'Local Profile',
   hideUIOverlays: propHideUIOverlays = false,
@@ -4157,72 +4162,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Buffering ring loader */}
       {isBuffering && (
         <div className="buffering-spinner-overlay" onClick={(e) => e.stopPropagation()}>
-          <svg className="dragon-fire-spinner" viewBox="0 0 120 120" width="120" height="120">
-            <defs>
-              <linearGradient id="dragon-body-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ff3300" />
-                <stop offset="35%" stopColor="#ff6600" />
-                <stop offset="70%" stopColor="#ffcc00" />
-                <stop offset="100%" stopColor="#ff3300" />
-              </linearGradient>
-              <radialGradient id="fire-glow-grad" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="30%" stopColor="#ffff66" stopOpacity="1" />
-                <stop offset="70%" stopColor="#ff5500" stopOpacity="0.85" />
-                <stop offset="100%" stopColor="#ff0000" stopOpacity="0" />
-              </radialGradient>
-              <filter id="glow-filter" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="3.5" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-            
-            {/* Circular Fire Dragon Serpent */}
-            <g className="dragon-group" style={{ transformOrigin: '60px 60px' }}>
-              {/* Serpentine Flame Tail */}
-              <path 
-                d="M 60,20 A 40,40 0 1,1 25,48" 
-                fill="none" 
-                stroke="url(#dragon-body-grad)" 
-                strokeWidth="6.5" 
-                strokeLinecap="round" 
-                filter="url(#glow-filter)"
-              />
-              
-              {/* Snarling Snout and Open Mouth */}
-              <path 
-                d="M 28,32 C 26,30 20,31 18,35 C 16,39 20,43 23,42 C 20,44 16,49 20,51 C 23,52 26,46 30,43 Z" 
-                fill="url(#dragon-body-grad)" 
-                filter="url(#glow-filter)"
-              />
-              {/* Horn details */}
-              <path 
-                d="M 28,32 C 29,27 33,23 38,22 L 34,29 Z" 
-                fill="url(#dragon-body-grad)"
-                filter="url(#glow-filter)"
-              />
-              
-              {/* Spine Spikes / Flames */}
-              <path d="M 60,17 L 62,23 L 58,23 Z" fill="#ffcc00" filter="url(#glow-filter)" />
-              <path d="M 80,25 L 84,30 L 79,32 Z" fill="#ffcc00" filter="url(#glow-filter)" />
-              <path d="M 95,45 L 101,48 L 95,52 Z" fill="#ffcc00" filter="url(#glow-filter)" />
-              <path d="M 98,70 L 104,71 L 98,76 Z" fill="#ffcc00" filter="url(#glow-filter)" />
-              <path d="M 85,92 L 89,98 L 83,97 Z" fill="#ffcc00" filter="url(#glow-filter)" />
-              
-              {/* Tail Flame Tip */}
-              <path 
-                d="M 25,48 C 22,54 22,64 25,72 C 28,78 34,82 40,85" 
-                fill="none" 
-                stroke="url(#dragon-body-grad)" 
-                strokeWidth="3.5" 
-                strokeLinecap="round"
-                filter="url(#glow-filter)"
-              />
-            </g>
-          </svg>
+          <LoadingSpinner customLoaderUrl={customLoaderUrl} customLoaderType={customLoaderType} />
         </div>
       )}
 
