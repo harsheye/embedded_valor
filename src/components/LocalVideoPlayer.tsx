@@ -191,36 +191,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     if (isFile(video.file)) {
       setResolvedFile(video.file);
-      return;
-    }
-    
-    if (video.type === 'local' && video.url && video.url.startsWith('blob:')) {
-      let active = true;
-      const fetchBlob = async () => {
-        try {
-          const res = await fetch(video.url);
-          const blob = await res.blob();
-          if (active) {
-            setResolvedFile(blob);
-            onUpdateVideoRef.current((prev: any) => ({
-              ...prev,
-              file: blob
-            }), false, video.id);
-            logger.player('[LocalVideoPlayer] Successfully resolved Blob from blob URL and updated state.');
-          }
-        } catch (err) {
-          if (active) {
-            logger.error('[LocalVideoPlayer] Failed to fetch Blob from blob URL:', err);
-            if (onReassociate) {
-              onReassociate(video.id);
-            }
-          }
-        }
-      };
-      fetchBlob();
-      return () => {
-        active = false;
-      };
     } else {
       setResolvedFile(null);
     }
@@ -3154,12 +3124,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       await prevDestroyPromiseRef.current;
       if (!active) return;
 
-      const isResolvingBlob = video.type === 'local' && video.url && video.url.startsWith('blob:') && !activeFile;
-      if (isResolvingBlob) {
-        logger.player('[LocalVideoPlayer] PlaybackController init deferred: still resolving blob URL.');
-        return;
-      }
-
       if (videoRef.current) {
         const fileOrSource = activeFile ? activeFile : new HttpByteSource(video.url);
 
@@ -4107,7 +4071,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Buffering ring loader */}
       <BufferingOverlay 
-        isBuffering={isBuffering || (video.type === 'local' && video.url && video.url.startsWith('blob:') && !activeFile)} 
+        isBuffering={isBuffering}
         customLoaderUrl={customLoaderUrl} 
         customLoaderType={customLoaderType} 
         preset={(spinnerPreset || 'fire-circle') as any} 
