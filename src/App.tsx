@@ -214,7 +214,123 @@ const ratingThresholdOptions = [
   { value: 10, label: '10 minutes remaining' }
 ];
 
+const defaultSettings = {
+  keybinds: {
+    playPause: ' ',
+    rewind: 'ArrowLeft',
+    forward: 'ArrowRight',
+    fullscreen: 'f',
+    exit: 'Escape',
+    nextSubtitle: 'b',
+    nextAudio: 'v',
+    lockControls: 'w',
+    openSettings: 'Delete',
+    addBookmark: 't',
+    toggleMute: 'm',
+    audioBoost: 'n',
+    frameStep: 'e',
+    screenshot: 's'
+  },
+  defaultAudio: 'ENG',
+  defaultSub: 'ENG',
+  historyLimit: 10 as number | 'Infinite',
+  historySaveInterval: 5 as number,
+  theme: 'dark' as 'dark' | 'black-and-white' | 'light',
+  hideUIOverlays: false,
+  hideVideoName: false,
+  uiHideTimeout: 1.5,
+  toastDuration: 4.0,
+  disableAnimations: false,
+  pauseOnFocusChange: false,
+  showPlayButton: true,
+  showTimeDisplay: true,
+  showPlayBar: true,
+  showVolumeControl: true,
+  showFullscreen: true,
+  allowUiSkipping: true,
+  blockSeekingCompletely: false,
+  autoSkipIntroOutro: true,
+  autoSkipSexScenes: true,
+  lockModeActive: false,
+  settingsOrder: [
+    'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
+    'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
+  ] as string[],
+  saveHistory: true,
+  saveTrackPreferences: true,
+  saveVolume: true,
+  saveSettings: true,
+  userId: 'local',
+  profileName: 'Local Profile',
+  storageMode: 'localstorage' as 'localstorage' | 'file',
+  ratingThreshold: 3 as number,
+  theIntroDbApiKey: '' as string,
+  theIntroDbMode: 'fetch' as 'fetch' | 'send_fetch',
+  getOverlayDataFromTmdb: true as boolean,
+  tmdbApiKey: '' as string,
+  experienceMode: 'cloud' as 'local' | 'cloud' | 'hybrid',
+  overlayPosition: 'bottom-left' as 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right',
+  overlayShowBackground: true as boolean,
+  overlayShowRating: true as boolean,
+  overlayShowOverview: true as boolean,
+  openSubtitlesApiKey: '' as string,
+  traktAccessToken: '' as string,
+  traktRedirectUri: 'http://localhost:50000' as string,
+  traktSyncHistory: true as boolean,
+  traktSyncFavorites: true as boolean,
+  calendarStyle: 'grid' as 'grid' | 'list',
+  isOnboarded: false as boolean,
+  subSettings: {
+    fontSize: 'medium' as 'small' | 'medium' | 'large' | 'extra-large',
+    color: 'white' as 'white' | 'yellow' | 'cyan' | 'green',
+    backdrop: 'shadow' as 'none' | 'shadow' | 'opaque',
+    fontFamily: 'sans-serif' as 'sans-serif' | 'serif' | 'monospace' | 'poppins' | 'montserrat' | 'outfit' | 'cinzel',
+    fontStyle: 'normal' as 'normal' | 'italic' | 'bold',
+    customTextColor: '',
+    customBgColor: '',
+    customSize: 100
+  }
+};
+
 function App() {
+  const [settings, setSettings] = useState<typeof defaultSettings>(() => {
+    try {
+      const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+      const settingsKey = activeUserId === 'local' ? 'valor_settings' : `valor_settings_${activeUserId}`;
+      const saved = localStorage.getItem(settingsKey);
+      
+      const isLocal = activeUserId === 'local' || activeUserId.startsWith('local_');
+      const baseSettings = {
+        ...defaultSettings,
+        userId: activeUserId,
+        storageMode: isLocal ? ('localstorage' as const) : ('file' as const)
+      };
+
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            ...baseSettings,
+            ...parsed,
+            userId: activeUserId,
+            storageMode: isLocal ? ('localstorage' as const) : ('file' as const),
+            keybinds: {
+              ...defaultSettings.keybinds,
+              ...(parsed.keybinds && typeof parsed.keybinds === 'object' ? parsed.keybinds : {})
+            },
+            subSettings: {
+              ...defaultSettings.subSettings,
+              ...(parsed.subSettings && typeof parsed.subSettings === 'object' ? parsed.subSettings : {})
+            }
+          };
+        }
+      }
+      return baseSettings;
+    } catch (err) {
+      return defaultSettings;
+    }
+  });
+
   const getUseIdStreamFromStorage = (): boolean => {
     try {
       const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
@@ -927,84 +1043,6 @@ function App() {
   const saveTimeoutRef = useRef<any>(null);
   const loadedVideosUserIdRef = useRef<string | null>(localStorage.getItem('valor_active_user_id') || 'local');
 
-  const defaultSettings = {
-    keybinds: {
-      playPause: ' ',
-      rewind: 'ArrowLeft',
-      forward: 'ArrowRight',
-      fullscreen: 'f',
-      exit: 'Escape',
-      nextSubtitle: 'b',
-      nextAudio: 'v',
-      lockControls: 'w',
-      openSettings: 'Delete',
-      addBookmark: 't',
-      toggleMute: 'm',
-      audioBoost: 'n',
-      frameStep: 'e',
-      screenshot: 's'
-    },
-    defaultAudio: 'ENG',
-    defaultSub: 'ENG',
-    historyLimit: 10 as number | 'Infinite',
-    historySaveInterval: 5 as number,
-    theme: 'dark' as 'dark' | 'black-and-white' | 'light',
-    hideUIOverlays: false,
-    hideVideoName: false,
-    uiHideTimeout: 1.5,
-    toastDuration: 4.0,
-    disableAnimations: false,
-    pauseOnFocusChange: false,
-    showPlayButton: true,
-    showTimeDisplay: true,
-    showPlayBar: true,
-    showVolumeControl: true,
-    showFullscreen: true,
-    allowUiSkipping: true,
-    blockSeekingCompletely: false,
-    autoSkipIntroOutro: true,
-    autoSkipSexScenes: true,
-    lockModeActive: false,
-    settingsOrder: [
-      'hideUIOverlays', 'hideVideoName', 'showPlayButton', 'showTimeDisplay', 'showPlayBar', 'showVolumeControl',
-      'showFullscreen', 'disableAnimations', 'pauseOnFocusChange', 'allowUiSkipping', 'blockSeekingCompletely', 'autoSkipIntroOutro', 'lockModeActive'
-    ] as string[],
-    saveHistory: true,
-    saveTrackPreferences: true,
-    saveVolume: true,
-    saveSettings: true,
-    userId: 'local',
-    profileName: 'Local Profile',
-    storageMode: 'localstorage' as 'localstorage' | 'file',
-    ratingThreshold: 3 as number,
-    theIntroDbApiKey: '' as string,
-    theIntroDbMode: 'fetch' as 'fetch' | 'send_fetch',
-    getOverlayDataFromTmdb: true as boolean,
-    tmdbApiKey: '' as string,
-    experienceMode: 'cloud' as 'local' | 'cloud' | 'hybrid',
-    overlayPosition: 'bottom-left' as 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right',
-    overlayShowBackground: true as boolean,
-    overlayShowRating: true as boolean,
-    overlayShowOverview: true as boolean,
-    openSubtitlesApiKey: '' as string,
-    traktAccessToken: '' as string,
-    traktRedirectUri: 'http://localhost:50000' as string,
-    traktSyncHistory: true as boolean,
-    traktSyncFavorites: true as boolean,
-    calendarStyle: 'grid' as 'grid' | 'list',
-    isOnboarded: false as boolean,
-    subSettings: {
-      fontSize: 'medium' as 'small' | 'medium' | 'large' | 'extra-large',
-      color: 'white' as 'white' | 'yellow' | 'cyan' | 'green',
-      backdrop: 'shadow' as 'none' | 'shadow' | 'opaque',
-      fontFamily: 'sans-serif' as 'sans-serif' | 'serif' | 'monospace' | 'poppins' | 'montserrat' | 'outfit' | 'cinzel',
-      fontStyle: 'normal' as 'normal' | 'italic' | 'bold',
-      customTextColor: '',
-      customBgColor: '',
-      customSize: 100
-    }
-  };
-
 
   const [listeningKeyFor, setListeningKeyFor] = useState<keyof typeof defaultSettings.keybinds | null>(null);
   const [availableProfiles, setAvailableProfiles] = useState<any[]>([]);
@@ -1251,43 +1289,6 @@ function App() {
   useEffect(() => {
     fetchProfiles();
   }, []);
-  const [settings, setSettings] = useState<typeof defaultSettings>(() => {
-    try {
-      const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
-      const settingsKey = activeUserId === 'local' ? 'valor_settings' : `valor_settings_${activeUserId}`;
-      const saved = localStorage.getItem(settingsKey);
-      
-      const isLocal = activeUserId === 'local' || activeUserId.startsWith('local_');
-      const baseSettings = {
-        ...defaultSettings,
-        userId: activeUserId,
-        storageMode: isLocal ? ('localstorage' as const) : ('file' as const)
-      };
-
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          return {
-            ...baseSettings,
-            ...parsed,
-            userId: activeUserId,
-            storageMode: isLocal ? ('localstorage' as const) : ('file' as const),
-            keybinds: {
-              ...defaultSettings.keybinds,
-              ...(parsed.keybinds && typeof parsed.keybinds === 'object' ? parsed.keybinds : {})
-            },
-            subSettings: {
-              ...defaultSettings.subSettings,
-              ...(parsed.subSettings && typeof parsed.subSettings === 'object' ? parsed.subSettings : {})
-            }
-          };
-        }
-      }
-      return baseSettings;
-    } catch (err) {
-      return defaultSettings;
-    }
-  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme || 'dark');
