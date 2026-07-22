@@ -75,7 +75,7 @@ export class DemuxManager {
 
     this.ffmpegMgr.clearLogs();
     try {
-      await ff.exec(['-i', inputPath, '-t', '0', '-c', 'copy', '-f', 'null', '-']);
+      await ff.exec(['-i', inputPath, '-hide_banner']);
     } catch {}
 
     const logs = this.ffmpegMgr.getLogs().join('\n');

@@ -2247,13 +2247,8 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!videoRef.current) return;
     const err = videoRef.current.error;
 
-    if (video.type === 'local' && video.url && video.url.startsWith('blob:') && (err?.code === 2 || err?.code === 3 || err?.code === 4 || !video.file)) {
-      if (videoRef.current) {
-        videoRef.current.removeAttribute('src');
-        videoRef.current.load();
-      }
+    if (video.type === 'local' && video.url && video.url.startsWith('blob:') && (err?.code === 4 || !video.file)) {
       if (onReassociate) {
-        logger.warn('[LocalVideoPlayer] Detected dead or modified blob URL on local file. Prompting re-association.');
         onReassociate(video.id);
         return;
       }
@@ -3757,9 +3752,6 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           controls={false}
           crossOrigin={video.playbackMode === 'advanced' ? 'anonymous' : undefined}
           className="main-video-element"
-          style={{
-            objectFit: audioTracks.length === 0 ? 'scale-down' : 'contain'
-          }}
            onLoadedMetadata={() => {
             if (videoRef.current) {
               const videoDuration = videoRef.current.duration;

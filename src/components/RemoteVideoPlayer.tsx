@@ -3846,9 +3846,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           controls={false}
           crossOrigin={video.playbackMode === 'advanced' ? 'anonymous' : undefined}
           className="main-video-element"
-          style={{
-            objectFit: audioTracks.length === 0 ? 'scale-down' : 'contain'
-          }}
           onLoadedMetadata={() => {
             if (videoRef.current) {
               const videoDuration = videoRef.current.duration;
