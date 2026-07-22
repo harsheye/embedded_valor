@@ -24,7 +24,7 @@ import { DemuxManager } from '../services/ffmpeg/DemuxManager';
 import { PlaybackController } from '../services/playback/PlaybackController';
 import { logger } from '../utils/logger';
 import { classifyVideoTitle } from '../utils/libraryClassifier';
-import { LoadingSpinner } from './LoadingSpinner';
+import { LoadingSpinner, BufferingOverlay } from './LoadingSpinner';
 
 interface VideoPlayerProps {
   video: VideoItem;
@@ -4162,11 +4162,12 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Buffering ring loader */}
-      {isBuffering && (
-        <div className="buffering-spinner-overlay" onClick={(e) => e.stopPropagation()}>
-          <LoadingSpinner customLoaderUrl={customLoaderUrl} customLoaderType={customLoaderType} preset={(spinnerPreset || 'fire-circle') as any} />
-        </div>
-      )}
+      <BufferingOverlay 
+        isBuffering={isBuffering} 
+        customLoaderUrl={customLoaderUrl} 
+        customLoaderType={customLoaderType} 
+        preset={(spinnerPreset || 'fire-circle') as any} 
+      />
 
       {/* Top Header Overlay */}
       {!isLocked && (!hideUIOverlays || hoveredSetting === 'showUIOverlays') && (

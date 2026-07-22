@@ -600,3 +600,40 @@ export const SpinnerThumbnail: React.FC<{ preset: SpinnerPreset; size?: number }
     </div>
   </div>
 );
+
+/* ─── Buffering Overlay Wrapper ─── */
+export const BufferingOverlay: React.FC<{ isBuffering: boolean; customLoaderUrl?: string; customLoaderType?: any; preset?: any }> = ({ isBuffering, customLoaderUrl, customLoaderType, preset }) => {
+  const [shouldRender, setShouldRender] = React.useState(isBuffering);
+  const [visible, setVisible] = React.useState(isBuffering);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    if (isBuffering) {
+      setShouldRender(true);
+      // Small delay to allow DOM to mount before triggering CSS transition
+      timeoutId = setTimeout(() => setVisible(true), 10);
+    } else {
+      setVisible(false);
+      // Wait for fade out animation (800ms) before unmounting to free up CPU
+      timeoutId = setTimeout(() => setShouldRender(false), 800);
+    }
+    return () => clearTimeout(timeoutId);
+  }, [isBuffering]);
+
+  if (!shouldRender) return null;
+
+  return (
+    <div 
+      className="buffering-spinner-overlay" 
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 0.8s ease-in-out',
+        pointerEvents: visible ? 'auto' : 'none'
+      }}
+    >
+      <LoadingSpinner customLoaderUrl={customLoaderUrl} customLoaderType={customLoaderType} preset={preset} />
+    </div>
+  );
+};
+
