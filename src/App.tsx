@@ -331,6 +331,11 @@ function App() {
     }
   });
 
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
   const getUseIdStreamFromStorage = (): boolean => {
     try {
       const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
@@ -1058,10 +1063,10 @@ function App() {
     isPaused: boolean 
   }[]>([]);
   
-  const addToast = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
+  const addToast = useCallback((text: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
     const title = type === 'success' ? 'Changes saved' : type === 'error' ? 'Error' : 'Warning';
-    const durationMs = (settings.toastDuration || 4.0) * 1000;
+    const durationMs = (settingsRef.current.toastDuration || 4.0) * 1000;
     setToasts(prev => [...prev, { 
       id, 
       title, 
@@ -1071,7 +1076,7 @@ function App() {
       timeLeft: durationMs, 
       isPaused: false 
     }]);
-  };
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1088,9 +1093,9 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const showProfileStatus = (text: string, type: 'success' | 'error' | 'warning') => {
+  const showProfileStatus = useCallback((text: string, type: 'success' | 'error' | 'warning') => {
     addToast(text, type);
-  };
+  }, [addToast]);
 
   // Auth (Login / Signup) modal state
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -1139,7 +1144,7 @@ function App() {
     setIsAuthModalOpen(true);
   };
 
-  const secureFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const secureFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const ipBlockedUntil = localStorage.getItem('valor_ip_blocked_until');
     const accountLockedUntil = localStorage.getItem('valor_account_locked_until');
     const now = Date.now();
@@ -1174,9 +1179,9 @@ function App() {
     }
     
     return response;
-  };
+  }, [showProfileStatus]);
 
-  const gqlFetch = async (query: string, variables: any = {}) => {
+  const gqlFetch = useCallback(async (query: string, variables: any = {}) => {
     try {
       const response = await secureFetch(`${BACKEND_ORIGIN}/api/graphql`, {
         method: 'POST',
@@ -1192,7 +1197,7 @@ function App() {
       console.error('GraphQL Fetch Error:', err.message);
       throw err;
     }
-  };
+  }, [secureFetch]);
 
   const fetchProfiles = async () => {
     try {
