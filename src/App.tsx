@@ -387,6 +387,14 @@ function App() {
     }
   });
 
+  const [isPlaybackRestoring, setIsPlaybackRestoring] = useState(() => {
+    try {
+      return !!localStorage.getItem('valor_currently_playing');
+    } catch {
+      return false;
+    }
+  });
+
   const videos = videosState;
   const playingVideo = playingVideoState;
 
@@ -423,12 +431,13 @@ function App() {
   }, [activeTab]);
 
   useEffect(() => {
+    if (isPlaybackRestoring) return;
     if (playingVideo) {
       localStorage.setItem('valor_currently_playing', JSON.stringify(playingVideo));
     } else {
       localStorage.removeItem('valor_currently_playing');
     }
-  }, [playingVideo]);
+  }, [playingVideo, isPlaybackRestoring]);
 
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'subtitle' | 'storage' | 'gridOverlay' | 'api' | 'bookmarks'>('general');
   const [uiOverlaySection, setUiOverlaySection] = useState<'hotkeys' | 'gridOverlay' | 'pauseOverlay'>('hotkeys');
@@ -528,39 +537,6 @@ function App() {
     ping();
     const interval = setInterval(ping, 2500);
     return () => clearInterval(interval);
-  }, []);
-
-  // Recover currently playing local video file from IndexedDB handle on startup if it uses a blob URL
-  useEffect(() => {
-    const recoverPlayingVideoFile = async () => {
-      const playingKey = 'valor_currently_playing';
-      const saved = localStorage.getItem(playingKey);
-      if (saved) {
-        try {
-          const video = JSON.parse(saved) as VideoItem;
-          if (video && video.type === 'local' && !video.localFilePath && (!video.url || video.url.startsWith('blob:'))) {
-            const handle = await getFileHandle(video.id);
-            if (handle) {
-              const options = { mode: 'read' as const };
-              if ((await handle.queryPermission(options)) === 'granted') {
-                const file = await handle.getFile();
-                const newBlobUrl = URL.createObjectURL(file);
-                const updated = {
-                  ...video,
-                  file,
-                  url: newBlobUrl
-                };
-                rawSetPlayingVideo(updated);
-                console.log('[Recovery] Successfully programmatically recovered local file handle and generated new blob URL for playing video.');
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('[Recovery] Failed to recover local file handle on startup:', err);
-        }
-      }
-    };
-    recoverPlayingVideoFile();
   }, []);
 
   useEffect(() => {
@@ -1360,26 +1336,65 @@ function App() {
           setVideos(loadedHistory);
           loadedVideosUserIdRef.current = settings.userId;
 
-          // Sync currently playing video with loaded history to recover paths/metadata
-          setPlayingVideo(prev => {
-            if (prev) {
-              const matched = loadedHistory.find(h => h.id === prev.id || h.title === prev.title);
+          // 3. Recover currently playing video with full path and metadata
+          const currentlyPlaying = localStorage.getItem('valor_currently_playing');
+          if (currentlyPlaying) {
+            try {
+              let videoObj = JSON.parse(currentlyPlaying) as VideoItem;
+              
+              // Try to find a match in the loaded history
+              const matched = loadedHistory.find(h => h.id === videoObj.id || h.title === videoObj.title);
               if (matched) {
                 const useIdStream = (loadedSettings?.storageMode === 'file' || settings.storageMode === 'file');
                 const merged = {
-                  ...prev,
+                  ...videoObj,
                   ...matched,
-                  file: prev.file || matched.file,
-                  currentTime: prev.currentTime !== undefined ? prev.currentTime : matched.currentTime
+                  file: videoObj.file || matched.file,
+                  currentTime: videoObj.currentTime !== undefined ? videoObj.currentTime : matched.currentTime
                 };
-                return sanitizeVideoItem(merged, useIdStream);
+                videoObj = sanitizeVideoItem(merged, useIdStream);
               }
+              
+              // If it's a local file and still using a blob URL (no localFilePath), try to recover from IndexedDB handle
+              if (videoObj.type === 'local' && !videoObj.localFilePath && (!videoObj.url || videoObj.url.startsWith('blob:'))) {
+                const handle = await getFileHandle(videoObj.id);
+                if (handle) {
+                  const options = { mode: 'read' as const };
+                  if ((await handle.queryPermission(options)) === 'granted') {
+                    const file = await handle.getFile();
+                    const newBlobUrl = URL.createObjectURL(file);
+                    videoObj = {
+                      ...videoObj,
+                      file,
+                      url: newBlobUrl
+                    };
+                    console.log('[Recovery] Successfully programmatically recovered local file handle and generated new blob URL.');
+                  }
+                }
+              }
+              
+              if (active) {
+                // If it is STILL a dead blob URL (which we couldn't recover because handle permission was not granted/stored),
+                // we set it to null to prevent "empty string was passed to src attribute" or subtitle parser crashes
+                if (videoObj.type === 'local' && !videoObj.localFilePath && (!videoObj.file || !videoObj.url || videoObj.url.startsWith('blob:'))) {
+                  console.warn('[Recovery] Local video is unplayable (dead blob and no file handle). Clearing playingVideo.');
+                  rawSetPlayingVideo(null);
+                  localStorage.removeItem('valor_currently_playing');
+                } else {
+                  rawSetPlayingVideo(videoObj);
+                }
+              }
+            } catch (err) {
+              console.error('[Recovery] Failed to restore playing video:', err);
             }
-            return prev;
-          });
+          }
         }
       } catch (err) {
         console.error('[StorageProvider] Failed to load data:', err);
+      } finally {
+        if (active) {
+          setIsPlaybackRestoring(false);
+        }
       }
     };
 
@@ -2641,8 +2656,8 @@ function App() {
     await processRemoteUrl(url, isLocalFile);
   };
 
-  // If playing, render VideoPlayer fullscreen
-  if (playingVideo) {
+  // If playing, render VideoPlayer fullscreen (blocking mount until playback source restoration finishes)
+  if (playingVideo && !isPlaybackRestoring) {
     if (playingVideo.type === 'online_movie' || playingVideo.type === 'online_tv' || playingVideo.type === 'online_anime') {
       return (
         <OnlineVideoPlayer

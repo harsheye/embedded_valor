@@ -880,6 +880,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
 
 
   const [duration, setDuration] = useState(0);
+  const [resumePromptTime, setResumePromptTime] = useState<number | null>(null);
 
   const totalTimeWatchedRef = useRef<number>((video as any).totalTimeWatched || 0);
   const sessionStartRef = useRef<number | null>(null);
@@ -1571,16 +1572,17 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   useEffect(() => {
     hasAutoSelectedRef.current = false;
-    const resumeTime = video.currentTime || 0;
-    activeAudioStartOffsetRef.current = Math.floor(resumeTime / 10) * 10;
-    activeSubtitleStartOffsetRef.current = resumeTime;
-    setCurrentTime(resumeTime);
+    const startFromTime = (video.resumeTime && video.resumeTime > 5) ? 0 : (video.currentTime || 0);
+    activeAudioStartOffsetRef.current = Math.floor(startFromTime / 10) * 10;
+    activeSubtitleStartOffsetRef.current = startFromTime;
+    setCurrentTime(startFromTime);
+    setResumePromptTime(null);
     setSelectedAudioTrack(null);
     setSelectedSubTrack(null);
     setActiveAudioStreamIndex(null);
     setActiveSubStreamIndex(null);
-    setActiveAudioStartOffset(Math.floor(resumeTime / 10) * 10);
-    setActiveSubtitleStartOffset(resumeTime);
+    setActiveAudioStartOffset(Math.floor(startFromTime / 10) * 10);
+    setActiveSubtitleStartOffset(startFromTime);
   }, [video.id]);
 
   const onUpdateVideoRef = useRef(onUpdateVideo);
@@ -3706,10 +3708,19 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           controls={false}
           crossOrigin={video.playbackMode === 'advanced' ? 'anonymous' : undefined}
           className="main-video-element"
-          onLoadedMetadata={() => {
+           onLoadedMetadata={() => {
             if (videoRef.current) {
               const videoDuration = videoRef.current.duration;
               setDuration(videoDuration);
+              
+              const directResumeTime = video.resumeTime || 0;
+              if (directResumeTime > 5 && videoDuration - directResumeTime > 10) {
+                setResumePromptTime(directResumeTime);
+                videoRef.current.currentTime = 0;
+                hasSeekedRef.current = true;
+                return;
+              }
+
               if (video.currentTime && !hasSeekedRef.current) {
                 const remainingTime = videoDuration - video.currentTime;
                 // Lenient resume limits: resume if watched > 5s and remaining > 10s
@@ -4265,6 +4276,47 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="rating-thanks">Thanks for rating! ({userRating}/5)</div>
           )}
         </div>
+      )}
+
+      {/* Resume Button for direct URL/path opens with saved progress */}
+      {resumePromptTime !== null && currentTime < 3 && !activeSkipBookmark && (
+        <button 
+          className="skip-btn resume-playback-btn"
+          style={{
+            position: 'absolute',
+            bottom: controlsVisible ? '160px' : '40px',
+            right: '40px',
+            zIndex: 90,
+            background: 'rgba(0,0,0,0.7)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            backdropFilter: 'blur(8px)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const targetTime = resumePromptTime;
+            setResumePromptTime(null);
+            if (videoRef.current) {
+              videoRef.current.currentTime = targetTime;
+              setCurrentTime(targetTime);
+              if (playbackControllerRef.current) {
+                playbackControllerRef.current.seek(targetTime).catch(console.error);
+              }
+            }
+          }}
+        >
+          Resume from {formatTime(resumePromptTime)}
+        </button>
       )}
 
       {/* Skip Button */}
