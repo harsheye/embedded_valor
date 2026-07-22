@@ -896,6 +896,7 @@ function App() {
   const historyVideoInputRef = useRef<HTMLInputElement>(null);
   const pendingLocalReassociateIdRef = useRef<string | null>(null);
   const isPickerOpenRef = useRef(false);
+  const registeredIdsRef = useRef<Set<string>>(new Set());
   const lastHistorySyncTimeRef = useRef<number>(0);
   const historySyncTimeoutRef = useRef<any>(null);
   const saveTimeoutRef = useRef<any>(null);
@@ -1487,7 +1488,43 @@ function App() {
     }
   }, [videos, settings.historyLimit]);
 
+  const registerLocalMedia = useCallback((video: VideoItem) => {
+    if (video.type === 'local' && video.localFilePath && !registeredIdsRef.current.has(video.id)) {
+      registeredIdsRef.current.add(video.id);
+      fetch(`${BACKEND_ORIGIN}/api/media/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: video.id,
+          title: video.title,
+          type: video.type,
+          path: video.localFilePath,
+          duration: video.duration,
+          format: video.format,
+          streams: video.streams,
+          audioTracks: video.audioTracks,
+          subtitleTracks: video.subtitleTracks,
+          tmdbId: video.tmdbId,
+          season: video.season,
+          episode: video.episode
+        })
+      })
+      .then(() => console.log(`[Media Registry] Registered local file path for ${video.title} (ID: ${video.id})`))
+      .catch(err => {
+        registeredIdsRef.current.delete(video.id);
+        console.error('Failed to register media on backend:', err);
+      });
+    }
+  }, []);
+
   const saveVideosToStorage = (videoList: VideoItem[], forceSync = false) => {
+    // Fire-and-forget background media registration for local paths
+    videoList.forEach(v => {
+      if (v.type === 'local' && v.localFilePath) {
+        registerLocalMedia(v);
+      }
+    });
+
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
