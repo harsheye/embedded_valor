@@ -1763,18 +1763,33 @@ const startShutdownChecker = (viteServer) => {
     console.log('[Server] Running in tray mode. Auto-shutdown checker disabled.');
     return;
   }
+  const startupTime = Date.now();
   setInterval(() => {
     if (activeConnections > 0) {
       lastHeartbeat = Date.now();
     }
-    const limit = 60000; // 1 minute
-    if (Date.now() - lastHeartbeat > limit) {
-      console.log('[Server] No active tabs detected. Shutting down...');
-      viteServer.close();
-      backendServer.close(() => {
-        process.exit(0);
-      });
-      setTimeout(() => process.exit(0), 1000);
+    
+    const now = Date.now();
+    if (hasReceivedFirstHeartbeat) {
+      const limit = 60000; // 1 minute inactive limit once running
+      if (now - lastHeartbeat > limit) {
+        console.log('[Server] No active tabs detected. Shutting down...');
+        viteServer.close();
+        backendServer.close(() => {
+          process.exit(0);
+        });
+        setTimeout(() => process.exit(0), 1000);
+      }
+    } else {
+      const startupLimit = 300000; // 5 minutes startup grace period for browser opening & compilation
+      if (now - startupTime > startupLimit) {
+        console.log('[Server] No browser tab connected within startup grace period. Shutting down...');
+        viteServer.close();
+        backendServer.close(() => {
+          process.exit(0);
+        });
+        setTimeout(() => process.exit(0), 1000);
+      }
     }
   }, 2000);
 };
