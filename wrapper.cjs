@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { DatabaseSync } from 'node:sqlite';
+import crypto from 'crypto';
 
 process.on('uncaughtException', (err) => {
   console.error('[Server Uncaught Exception]', err);
@@ -202,53 +203,131 @@ db.exec(`
   );
 `);
 
-// --- Normalized Schema Redesign & Media Registry ---
+// --- Normalized Schema Redesign & Media Registry with Versioning ---
 
+// Initialize database schema version table
 db.exec(`
-  CREATE TABLE IF NOT EXISTS media (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    type TEXT NOT NULL,
-    tmdbId INTEGER,
-    season INTEGER,
-    episode INTEGER,
-    year INTEGER,
-    runtime INTEGER,
-    createdAt TEXT
+  CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY,
+    updatedAt TEXT
   );
 `);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS media_sources (
-    mediaId TEXT NOT NULL,
-    sourceType TEXT NOT NULL,
-    path TEXT,
-    remoteUrl TEXT,
-    format TEXT,
-    streams TEXT,
-    audioTracks TEXT,
-    subtitleTracks TEXT,
-    duration REAL,
-    PRIMARY KEY (mediaId, sourceType),
-    FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE
-  );
-`);
+// Insert default version if table is empty
+let schemaVersionRow = db.prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get();
+if (!schemaVersionRow) {
+  const hasMedia = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='media'").get();
+  const startVersion = hasMedia ? 1 : 0;
+  db.prepare('INSERT INTO schema_version (version, updatedAt) VALUES (?, datetime("now"))').run(startVersion);
+  schemaVersionRow = { version: startVersion };
+}
+let currentVersion = schemaVersionRow.version;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS playback_history (
-    userId TEXT NOT NULL,
-    mediaId TEXT NOT NULL,
-    currentTime REAL,
-    lastPlayedDate TEXT,
-    totalTimeWatched REAL,
-    rating INTEGER,
-    timeToFinish REAL,
-    sessions TEXT,
-    playedDates TEXT,
-    PRIMARY KEY (userId, mediaId),
-    FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE
-  );
-`);
+// Version 1 Schema Initialization
+if (currentVersion < 1) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS media (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL,
+      tmdbId INTEGER,
+      season INTEGER,
+      episode INTEGER,
+      year INTEGER,
+      runtime INTEGER,
+      createdAt TEXT
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS media_sources (
+      mediaId TEXT NOT NULL,
+      sourceType TEXT NOT NULL,
+      path TEXT,
+      remoteUrl TEXT,
+      format TEXT,
+      streams TEXT,
+      audioTracks TEXT,
+      subtitleTracks TEXT,
+      duration REAL,
+      PRIMARY KEY (mediaId, sourceType),
+      FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS playback_history (
+      userId TEXT NOT NULL,
+      mediaId TEXT NOT NULL,
+      currentTime REAL,
+      lastPlayedDate TEXT,
+      totalTimeWatched REAL,
+      rating INTEGER,
+      timeToFinish REAL,
+      sessions TEXT,
+      playedDates TEXT,
+      PRIMARY KEY (userId, mediaId),
+      FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.prepare('INSERT INTO schema_version (version, updatedAt) VALUES (1, datetime("now"))').run();
+  currentVersion = 1;
+}
+
+// Version 2 Migration: Multiple Sources & Health Tracking
+if (currentVersion === 1) {
+  console.log('[Database Migration] Migrating schema to version 2 (multiple sources & health tracking)...');
+  try {
+    db.transaction(() => {
+      // 1. Rename old media_sources table
+      db.exec('ALTER TABLE media_sources RENAME TO media_sources_old;');
+
+      // 2. Create the new media_sources table with health columns and auto-incrementing ID
+      db.exec(`
+        CREATE TABLE media_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          mediaId TEXT NOT NULL,
+          sourceType TEXT NOT NULL,
+          path TEXT,
+          remoteUrl TEXT,
+          format TEXT,
+          streams TEXT,
+          audioTracks TEXT,
+          subtitleTracks TEXT,
+          duration REAL,
+          hash TEXT,
+          lastVerified TEXT,
+          exists INTEGER DEFAULT 1,
+          lastError TEXT,
+          lastOpened TEXT,
+          FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE,
+          UNIQUE(mediaId, path, remoteUrl)
+        );
+      `);
+
+      // 3. Migrate existing records
+      db.exec(`
+        INSERT INTO media_sources (
+          mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration, exists
+        )
+        SELECT 
+          mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration, 1
+        FROM media_sources_old;
+      `);
+
+      // 4. Drop the old table
+      db.exec('DROP TABLE media_sources_old;');
+
+      // 5. Update version to 2
+      db.prepare('INSERT INTO schema_version (version, updatedAt) VALUES (2, datetime("now"))').run();
+    })();
+    console.log('[Database Migration] Migrated schema to version 2 successfully.');
+    currentVersion = 2;
+  } catch (err) {
+    console.error('[Database Migration] Error migrating to version 2:', err.message);
+  }
+}
 
 // Try to alter bookmarks table to add indexes if needed
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_bookmarks_userId_videoId ON bookmarks (userId, videoId);`); } catch(e){}
@@ -267,8 +346,14 @@ try {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const insertSource = db.prepare(`
-          INSERT OR REPLACE INTO media_sources (mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration)
+          INSERT INTO media_sources (mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(mediaId, path, remoteUrl) DO UPDATE SET
+            format = excluded.format,
+            streams = excluded.streams,
+            audioTracks = excluded.audioTracks,
+            subtitleTracks = excluded.subtitleTracks,
+            duration = excluded.duration
         `);
         const insertPlayback = db.prepare(`
           INSERT OR REPLACE INTO playback_history (userId, mediaId, currentTime, lastPlayedDate, totalTimeWatched, rating, timeToFinish, sessions, playedDates)
@@ -333,6 +418,44 @@ try {
   }
 } catch (migrationError) {
   console.error('[Database Migration] Error during migration:', migrationError);
+}
+
+function getFileFingerprint(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const stats = fs.statSync(filePath);
+    const size = stats.size;
+
+    const hash = crypto.createHash('sha256');
+    hash.update(String(size));
+
+    const threshold = 128 * 1024; // 128KB
+    if (size <= threshold) {
+      const data = fs.readFileSync(filePath);
+      hash.update(data);
+    } else {
+      const fd = fs.openSync(filePath, 'r');
+      try {
+        const buffer = Buffer.alloc(64 * 1024);
+        
+        // Read first 64KB
+        fs.readSync(fd, buffer, 0, buffer.length, 0);
+        hash.update(buffer);
+
+        // Read last 64KB
+        fs.readSync(fd, buffer, 0, buffer.length, size - buffer.length);
+        hash.update(buffer);
+      } finally {
+        fs.closeSync(fd);
+      }
+    }
+    return hash.digest('hex');
+  } catch (err) {
+    console.error(`[Fingerprint Error] Failed to hash ${filePath}:`, err.message);
+    return null;
+  }
 }
 
 // Helpers for fetching/saving normalized history
@@ -442,8 +565,14 @@ function saveNormalizedHistory(userId, historyData) {
     `);
 
     const insertSource = db.prepare(`
-      INSERT OR REPLACE INTO media_sources (mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration)
+      INSERT INTO media_sources (mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(mediaId, path, remoteUrl) DO UPDATE SET
+        format = excluded.format,
+        streams = excluded.streams,
+        audioTracks = excluded.audioTracks,
+        subtitleTracks = excluded.subtitleTracks,
+        duration = excluded.duration
     `);
 
     const insertPlayback = db.prepare(`
@@ -1661,9 +1790,60 @@ const backendServer = http.createServer((req, res) => {
 
     if (!videoPath && mediaId) {
       try {
-        const sourceRow = db.prepare("SELECT path FROM media_sources WHERE mediaId = ? AND sourceType = 'local'").get(mediaId);
-        if (sourceRow && sourceRow.path) {
-          videoPath = sourceRow.path;
+        const sources = db.prepare("SELECT id, path, hash, [exists] FROM media_sources WHERE mediaId = ? AND sourceType = 'local'").all(mediaId);
+        
+        for (const sourceRow of sources) {
+          if (sourceRow.path) {
+            if (fs.existsSync(sourceRow.path)) {
+              videoPath = sourceRow.path;
+              
+              // Update health stats
+              db.prepare(`
+                UPDATE media_sources 
+                SET exists = 1, lastVerified = datetime('now'), lastOpened = datetime('now'), lastError = null 
+                WHERE id = ?
+              `).run(sourceRow.id);
+
+              // Fill hash if missing (lazy computation in backend)
+              if (!sourceRow.hash) {
+                // Run in background to avoid blocking initial streaming responses
+                setTimeout(() => {
+                  try {
+                    const computedHash = getFileFingerprint(sourceRow.path);
+                    if (computedHash) {
+                      db.prepare("UPDATE media_sources SET hash = ? WHERE id = ?").run(computedHash, sourceRow.id);
+                      console.log(`[Fingerprint] Lazily generated hash for path: ${sourceRow.path}`);
+                    }
+                  } catch (e) {
+                    console.error('[Fingerprint] Error calculating hash:', e.message);
+                  }
+                }, 100);
+              }
+              break;
+            } else {
+              // Mark as missing
+              db.prepare(`
+                UPDATE media_sources 
+                SET exists = 0, lastVerified = datetime('now'), lastError = 'File not found on disk' 
+                WHERE id = ?
+              `).run(sourceRow.id);
+
+              // Auto-heal if same hash exists elsewhere
+              if (sourceRow.hash) {
+                const healed = db.prepare("SELECT path FROM media_sources WHERE hash = ? AND exists = 1 LIMIT 1").get(sourceRow.hash);
+                if (healed && healed.path && fs.existsSync(healed.path)) {
+                  console.log(`[Auto-Heal] File moved. Updating path for media ID ${mediaId} to ${healed.path}`);
+                  db.prepare(`
+                    UPDATE media_sources 
+                    SET path = ?, exists = 1, lastVerified = datetime('now'), lastOpened = datetime('now'), lastError = null 
+                    WHERE id = ?
+                  `).run(healed.path, sourceRow.id);
+                  videoPath = healed.path;
+                  break;
+                }
+              }
+            }
+          }
         }
       } catch (e) {
         console.error(`[Server] Error resolving path for media ID ${mediaId}:`, e.message);
