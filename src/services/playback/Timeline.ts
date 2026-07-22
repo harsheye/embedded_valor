@@ -8,7 +8,7 @@ export class Timeline {
   public checkDrift(currentTime: number, audioPlayhead: number | null): boolean {
     if (audioPlayhead !== null) {
       const drift = Math.abs(currentTime - audioPlayhead);
-      if (drift > 1.8) {
+      if (drift > 0.35) {
         return true;
       }
     }

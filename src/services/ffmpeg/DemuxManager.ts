@@ -13,6 +13,20 @@ export class DemuxManager {
     private videoFileOrSource: File | ByteSource
   ) {}
 
+  private isFile(obj: any): obj is File {
+    return obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
+  }
+
+  private async getSizeFallback(source: any): Promise<number> {
+    if (typeof source.getSize === 'function') {
+      return await source.getSize();
+    }
+    if (typeof source.size === 'number') {
+      return source.size;
+    }
+    throw new Error('Source does not expose getSize() or size');
+  }
+
   createSibling(ffmpegMgr: FFmpegManager): DemuxManager {
     return new DemuxManager(ffmpegMgr, this.videoFileOrSource);
   }
@@ -20,7 +34,7 @@ export class DemuxManager {
   async getMountedInputPath(ff: FFmpeg): Promise<string> {
     if (this.mountedPath) return this.mountedPath;
 
-    if (this.videoFileOrSource instanceof File) {
+    if (this.isFile(this.videoFileOrSource)) {
       const mountPoint = `/input_${this.uniqueId}`;
       const ext = this.videoFileOrSource.name.substring(this.videoFileOrSource.name.lastIndexOf('.')) || '.mkv';
       const cleanName = `input${ext}`;
@@ -51,10 +65,10 @@ export class DemuxManager {
   async probe(ff: FFmpeg): Promise<ProbeResult> {
     const inputPath = await this.getMountedInputPath(ff);
     
-    if (!(this.videoFileOrSource instanceof File)) {
+    if (!this.isFile(this.videoFileOrSource)) {
       // remote probe: load first 2MB
       const source = this.videoFileOrSource as ByteSource;
-      const size = await source.getSize();
+      const size = await this.getSizeFallback(source);
       const bytes = await source.read(0, Math.min(2 * 1024 * 1024, size - 1));
       await ff.writeFile(inputPath, bytes);
     }
@@ -142,7 +156,7 @@ export class DemuxManager {
   ): Promise<Uint8Array> {
     const mountedInputPath = await this.getMountedInputPath(ff);
     const tempOutFile = `slice_${streamIndex}_${startTime}.wav`;
-    const isRemoteSource = !(this.videoFileOrSource instanceof File);
+    const isRemoteSource = !this.isFile(this.videoFileOrSource);
     const inputPath = isRemoteSource
       ? `remote_input_${this.uniqueId}_${streamIndex}_${Math.floor(startTime * 1000)}_${Math.random().toString(36).substring(2, 7)}.mkv`
       : mountedInputPath;
@@ -156,7 +170,7 @@ export class DemuxManager {
       let startOffset = 0;
       let endOffset = 8 * 1024 * 1024;
       let offsetTime = 0;
-      const fileSize = await source.getSize();
+      const fileSize = await this.getSizeFallback(source);
 
       const matchedStart = seekList.reduce((prev: any, curr: any) => {
         return curr.time <= startTime ? curr : prev;
@@ -172,7 +186,7 @@ export class DemuxManager {
         endOffset = matchedEnd ? matchedEnd.offset + 8 * 1024 * 1024 : startOffset + 24 * 1024 * 1024;
       } else {
         // Linear fallback
-        const size = await source.getSize();
+        const size = await this.getSizeFallback(source);
         startOffset = Math.floor((startTime / 3600) * size);
         endOffset = Math.min(startOffset + 24 * 1024 * 1024, size);
         offsetTime = startTime;
@@ -247,7 +261,7 @@ export class DemuxManager {
 
   async cleanup(ff: FFmpeg): Promise<void> {
     if (this.mountedPath) {
-      if (this.videoFileOrSource instanceof File) {
+      if (this.isFile(this.videoFileOrSource)) {
         const mountPoint = this.mountedPath.substring(0, this.mountedPath.lastIndexOf('/'));
         try {
           await ff.unmount(mountPoint);

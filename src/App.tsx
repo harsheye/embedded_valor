@@ -488,7 +488,23 @@ function App() {
       let loadedVideos: VideoItem[] = [];
       let historyLoaded = false;
 
-      const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+      let activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+      if (activeUserId === 'local') {
+        const newUserId = 'local_' + Math.random().toString(36).substring(2, 11);
+        const oldSettings = localStorage.getItem('valor_settings');
+        if (oldSettings) {
+          localStorage.setItem(`valor_settings_${newUserId}`, oldSettings);
+          localStorage.removeItem('valor_settings');
+        }
+        const oldVideos = localStorage.getItem('valor_videos');
+        if (oldVideos) {
+          localStorage.setItem(`valor_videos_${newUserId}`, oldVideos);
+          localStorage.removeItem('valor_videos');
+        }
+        activeUserId = newUserId;
+        localStorage.setItem('valor_active_user_id', activeUserId);
+      }
+
       console.log('[VALOR INITIALIZATION] Starting setup. activeUserId in localStorage:', activeUserId);
 
       // 0. If using local browser profile, load it immediately and do not let server override it
@@ -2513,6 +2529,7 @@ function App() {
         <OnlineVideoPlayer
           video={playingVideo}
           userId={settings.userId}
+          profileName={settings.profileName || 'Local Profile'}
           onBack={() => {
             setPlayingVideo(null);
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -2542,6 +2559,7 @@ function App() {
     const playerProps = {
       video: playingVideo,
       userId: settings.userId,
+      profileName: settings.profileName || 'Local Profile',
       onBack: () => {
         setPlayingVideo(null);
         // Clear query parameter when returning to library

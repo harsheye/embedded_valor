@@ -17,6 +17,7 @@ export class AudioScheduler {
   getCurrentPlayhead(): number | null {
     if (this.audioCtx.state === 'suspended') return null;
     const now = this.audioCtx.currentTime;
+
     for (const node of this.activeNodes) {
       if (now >= node.audioStartTime && now < node.audioEndTime) {
         const elapsed = now - node.audioStartTime;
@@ -39,10 +40,14 @@ export class AudioScheduler {
     source.playbackRate.value = playbackRate;
     source.connect(this.gainNode);
 
-    // Projection calculation: anchor chunk start directly to video currentTime
+    // Clean, natural projection calculation without accumulating offsets
     const delay = (packet.startTime - currentTime) / playbackRate;
     const playOffset = Math.max(0, currentTime - packet.startTime);
-    const audioStartTime = this.audioCtx.currentTime + Math.max(0, delay);
+
+    // Give a tiny 15ms scheduling safety margin for immediate chunks
+    const isCurrentChunk = delay <= 0;
+    const LOOKAHEAD = isCurrentChunk ? 0.015 : 0;
+    const audioStartTime = this.audioCtx.currentTime + Math.max(0, delay) + LOOKAHEAD;
     const durationPlayed = (packet.buffer.duration - playOffset) / playbackRate;
     const audioEndTime = audioStartTime + durationPlayed;
 

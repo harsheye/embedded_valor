@@ -173,6 +173,12 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({ bookmarks, onJump,
                     {formatTime(bm.time)}
                     {bm.endTime ? ` → ${formatTime(bm.endTime)}` : ''}
                   </div>
+                  {(bm.userName || bm.userTime) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '2px' }}>
+                      {bm.userName && <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '120px' }}>👤 {bm.userName}</span>}
+                      {bm.userTime && <span>• 📅 {new Date(bm.userTime).toLocaleDateString()}</span>}
+                    </div>
+                  )}
                 </div>
                 
                 <button 

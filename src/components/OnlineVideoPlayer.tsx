@@ -9,6 +9,7 @@ import { BookmarkPanel } from './BookmarkPanel';
 import { BookmarkModal } from './BookmarkModal';
 import { CustomSelect } from './CustomSelect';
 import { logger } from '../utils/logger';
+import { classifyVideoTitle } from '../utils/libraryClassifier';
 
 interface OnlineVideoPlayerProps {
   video: VideoItem;
@@ -33,6 +34,7 @@ interface OnlineVideoPlayerProps {
   lockModeActive?: boolean;
   uiHideTimeout?: number;
   tmdbApiKey?: string;
+  profileName?: string;
 }
 
 const DEFAULT_TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
@@ -40,6 +42,7 @@ const DEFAULT_TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJ
 export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
   video,
   userId,
+  profileName = 'Local Profile',
   onBack,
   onUpdateVideo,
   hideUIOverlays = false,
@@ -103,13 +106,13 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
 
   // Toast / Alerts
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const toastTimeoutRef = useRef<any | null>(null);
 
   // Refs
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const bookmarksTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimeoutRef = useRef<any | null>(null);
+  const bookmarksTimeoutRef = useRef<any | null>(null);
   const lastSaveTimeRef = useRef(video.currentTime || 0);
   const lastSkipTimeRef = useRef<number>(0);
 
@@ -143,64 +146,207 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
     ];
     
     payloads.forEach(p => {
-      try { iframe.contentWindow.postMessage(JSON.stringify(p), '*'); } catch (e) {}
-      try { iframe.contentWindow.postMessage(p, '*'); } catch (e) {}
+      try { iframe.contentWindow?.postMessage(JSON.stringify(p), '*'); } catch (e) {}
+      try { iframe.contentWindow?.postMessage(p, '*'); } catch (e) {}
     });
   }, []);
 
-  // Fetch Bookmarks from GraphQL API (with LocalStorage fallback)
+  // Fetch Bookmarks from GraphQL API and TiDB (with LocalStorage fallback)
   const fetchBookmarks = useCallback(async () => {
-    let loadedFromServer = false;
-    try {
-      const activeUserId = userId || 'local';
-      const queryStr = `
-        query GetBookmarks($userId: String!, $videoId: String!) {
-          bookmarks(userId: $userId, videoId: $videoId) {
-            id
-            time
-            endTime
-            label
-            isIntro
-            isOutro
-            skipEnabled
-            title
-            description
-            category
-            thumbnail
-            favorite
-            createdBy
-          }
-        }
-      `;
-      const response = await fetch('http://127.0.0.1:50001/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: queryStr,
-          variables: { userId: activeUserId, videoId: video.id }
-        })
-      });
-      const result = await response.json();
-      if (result.data && Array.isArray(result.data.bookmarks) && result.data.bookmarks.length > 0) {
-        setBookmarks(result.data.bookmarks);
-        loadedFromServer = true;
-      }
-    } catch (err) {
-      console.warn('Failed to load bookmarks from server:', err);
-    }
+    let serverBms: any[] = [];
+    let tidbBms: any[] = [];
 
-    // Local Storage fallback if server query produced no data
-    if (!loadedFromServer) {
+    const resolvedTmdbId = video.tmdbId;
+    const seriesInfo = classifyVideoTitle(video.title);
+    const isTV = video.type === 'online_tv' || seriesInfo.type === 'series';
+    const season = video.season || seriesInfo.season || 1;
+    const episode = video.episode || seriesInfo.episode || 1;
+
+    // 1. Fetch from our server
+    if (resolvedTmdbId) {
+      try {
+        const queryStr = `
+          query GetVideoBookmarks($tmdbId: Int!, $season: Int, $episode: Int) {
+            videoBookmarks(tmdbId: $tmdbId, season: $season, episode: $episode) {
+              id
+              time
+              endTime
+              label
+              isIntro
+              isOutro
+              skipEnabled
+              title
+              description
+              category
+              thumbnail
+              favorite
+              createdAt
+              updatedAt
+              userName
+              userTime
+              mediaName
+              tmdbId
+              episode
+              season
+              color
+              userId
+              createdBy
+            }
+          }
+        `;
+        const response = await fetch('http://127.0.0.1:50001/api/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: queryStr,
+            variables: { 
+              tmdbId: resolvedTmdbId,
+              season: isTV ? season : null,
+              episode: isTV ? episode : null
+            }
+          })
+        });
+        const result = await response.json();
+        if (result.data && Array.isArray(result.data.videoBookmarks)) {
+          serverBms = result.data.videoBookmarks.map((bm: any) => ({
+            ...bm,
+            isIntro: !!bm.isIntro,
+            isOutro: !!bm.isOutro,
+            skipEnabled: !!bm.skipEnabled,
+            favorite: !!bm.favorite
+          }));
+        }
+      } catch (err) {
+        console.warn('Failed to load bookmarks from our server:', err);
+      }
+    } else {
+      // Fallback query by videoId if tmdbId is not present
       try {
         const activeUserId = userId || 'local';
-        const key = `valor_bookmarks_${activeUserId}_${video.id}`;
-        const saved = localStorage.getItem(key);
-        if (saved) {
-          setBookmarks(JSON.parse(saved));
+        const queryStr = `
+          query GetBookmarks($userId: String!, $videoId: String!) {
+            bookmarks(userId: $userId, videoId: $videoId) {
+              id time endTime label isIntro isOutro skipEnabled title description category thumbnail favorite createdBy
+            }
+          }
+        `;
+        const response = await fetch('http://127.0.0.1:50001/api/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: queryStr,
+            variables: { userId: activeUserId, videoId: video.id }
+          })
+        });
+        const result = await response.json();
+        if (result.data && Array.isArray(result.data.bookmarks)) {
+          serverBms = result.data.bookmarks;
         }
-      } catch (err) {}
+      } catch (err) {
+        console.warn('Failed to load fallback bookmarks from our server:', err);
+      }
     }
-  }, [video.id, userId]);
+
+    // 2. Fetch from TiDB (TheIntroDB)
+    if (resolvedTmdbId && duration > 0) {
+      try {
+        const durationMs = Math.round(duration * 1000);
+        let introDbUrl = `https://api.theintrodb.org/v3/media?tmdb_id=${resolvedTmdbId}`;
+        if (isTV) {
+          introDbUrl += `&season=${season}&episode=${episode}`;
+        }
+        introDbUrl += `&duration_ms=${durationMs}`;
+
+        const savedSettings = localStorage.getItem('valor_settings');
+        let apiKey = "";
+        if (savedSettings) {
+          try {
+            apiKey = JSON.parse(savedSettings).theIntroDbApiKey || "";
+          } catch {}
+        }
+
+        const headers: Record<string, string> = { 'accept': 'application/json' };
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+
+        const introDbRes = await fetch(introDbUrl, { headers });
+        if (introDbRes.ok) {
+          const introDbData = await introDbRes.json();
+          const msToSec = (ms: number | null | undefined) => ms ? Math.round(ms / 1000) : 0;
+
+          if (introDbData.intro && Array.isArray(introDbData.intro)) {
+            introDbData.intro.forEach((item: any, idx: number) => {
+              tidbBms.push({
+                id: `api-intro-${idx}`,
+                time: msToSec(item.start_ms),
+                endTime: msToSec(item.end_ms),
+                label: 'Intro',
+                isIntro: true,
+                isOutro: false,
+                skipEnabled: true,
+                createdBy: 'theintrodb'
+              });
+            });
+          }
+
+          if (introDbData.recap && Array.isArray(introDbData.recap)) {
+            introDbData.recap.forEach((item: any, idx: number) => {
+              tidbBms.push({
+                id: `api-recap-${idx}`,
+                time: msToSec(item.start_ms),
+                endTime: msToSec(item.end_ms),
+                label: 'Recap',
+                isIntro: true,
+                isOutro: false,
+                skipEnabled: true,
+                createdBy: 'theintrodb'
+              });
+            });
+          }
+
+          if (introDbData.credits && Array.isArray(introDbData.credits)) {
+            introDbData.credits.forEach((item: any, idx: number) => {
+              tidbBms.push({
+                id: `api-credits-${idx}`,
+                time: msToSec(item.start_ms),
+                endTime: msToSec(item.end_ms),
+                label: 'Credits/Outro',
+                isIntro: false,
+                isOutro: true,
+                skipEnabled: true,
+                createdBy: 'theintrodb'
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[TheIntroDB Sync] Failed to fetch from TheIntroDB:', err);
+      }
+    }
+
+    // Merge bookmarks (local storage fallback, server bookmarks, and tidb bookmarks)
+    let localBms: any[] = [];
+    try {
+      const activeUserId = userId || 'local';
+      const key = `valor_bookmarks_${activeUserId}_${video.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        localBms = JSON.parse(saved);
+      }
+    } catch {}
+
+    const mergeBookmarks = (existing: any[], newBms: any[]) => {
+      const map = new Map<string, any>();
+      existing.forEach(bm => map.set(bm.id, bm));
+      newBms.forEach(bm => map.set(bm.id, bm));
+      return Array.from(map.values()).sort((a, b) => a.time - b.time);
+    };
+
+    const initialBms = video.bookmarks || localBms;
+    const merged = mergeBookmarks(mergeBookmarks(initialBms, serverBms), tidbBms);
+    setBookmarks(merged);
+  }, [video.id, video.tmdbId, video.title, video.type, video.season, video.episode, video.bookmarks, userId, duration]);
 
   // Sync Bookmarks to Server & Local Storage
   const saveBookmarksToServer = useCallback(async (updatedBookmarks: Bookmark[]) => {
@@ -214,16 +360,32 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
     // 2. Send GraphQL mutation to server (SQLite / TiDB)
     try {
       const activeUserId = userId || 'local';
+      const resolvedTmdbId = video.tmdbId;
+      if (!resolvedTmdbId) {
+        console.warn('Skipping bookmarks server sync: tmdbId is missing');
+        return;
+      }
+      
+      const seriesInfo = classifyVideoTitle(video.title);
+      const isTV = video.type === 'online_tv' || seriesInfo.type === 'series';
+      const season = video.season || seriesInfo.season || 1;
+      const episode = video.episode || seriesInfo.episode || 1;
+
+      // Filter only bookmarks created by the current user
+      const userBookmarks = updatedBookmarks.filter(bm => {
+        return !bm.createdBy || bm.createdBy === 'manual' || bm.userId === activeUserId || bm.userName === profileName;
+      });
+
       const mutation = `
-        mutation SaveBookmarks($userId: String!, $videoId: String!, $bookmarks: [BookmarkInput!]!) {
-          saveBookmarks(userId: $userId, videoId: $videoId, bookmarks: $bookmarks) {
+        mutation SaveBookmarks($userId: String!, $videoId: String!, $tmdbId: Int!, $season: Int, $episode: Int, $bookmarks: [BookmarkInput!]!) {
+          saveBookmarks(userId: $userId, videoId: $videoId, tmdbId: $tmdbId, season: $season, episode: $episode, bookmarks: $bookmarks) {
             success
             count
           }
         }
       `;
       
-      const serialized = updatedBookmarks.map(bm => ({
+      const serialized = userBookmarks.map(bm => ({
         id: bm.id,
         time: bm.time,
         endTime: bm.endTime !== undefined ? bm.endTime : null,
@@ -236,7 +398,11 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
         category: bm.category || 'Custom',
         thumbnail: bm.thumbnail || '',
         favorite: bm.favorite || false,
-        createdBy: bm.createdBy || 'manual'
+        createdAt: bm.createdAt || new Date().toISOString(),
+        updatedAt: bm.updatedAt || new Date().toISOString(),
+        userName: bm.userName || profileName || 'Local Profile',
+        userTime: bm.userTime || new Date().toISOString(),
+        mediaName: bm.mediaName || video.title || ''
       }));
 
       await fetch('http://127.0.0.1:50001/api/graphql', {
@@ -244,13 +410,20 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: mutation,
-          variables: { userId: activeUserId, videoId: video.id, bookmarks: serialized }
+          variables: { 
+            userId: activeUserId, 
+            videoId: video.id, 
+            tmdbId: resolvedTmdbId,
+            season: isTV ? season : null,
+            episode: isTV ? episode : null,
+            bookmarks: serialized 
+          }
         })
       });
     } catch (err) {
       console.warn('Failed to sync bookmarks to server:', err);
     }
-  }, [video.id, userId]);
+  }, [video.id, video.tmdbId, video.title, video.type, video.season, video.episode, userId, profileName]);
 
   // Load TV metadata (TMDB)
   useEffect(() => {

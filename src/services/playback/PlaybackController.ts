@@ -460,8 +460,8 @@ export class PlaybackController {
         this.manifest.transitionTo(target, 'DECODED');
         this.manifest.transitionTo(target, 'CACHED');
 
-        // Immediately schedule newly fetched packet if playhead is still relevant
-        if (this.videoEl && !this.videoEl.paused) {
+        // Immediately schedule newly fetched packet if playhead is still relevant and we are not in a seek/maintenance transaction
+        if (this.videoEl && !this.videoEl.paused && !this.session.maintenanceFrozen) {
           this.playbackQueue.update(this.videoEl.currentTime, this.state.playbackRate);
         }
       } catch (err: any) {
@@ -596,7 +596,8 @@ export class PlaybackController {
       this.stopHeartbeat();
       this.playbackQueue.clear();
       this.audioScheduler.stopAll();
-      this.audioScheduler.suspend().catch(console.error);
+      // Keep AudioContext running to avoid browser user-gesture restrictions on resume
+      // this.audioScheduler.suspend().catch(console.error);
     } finally {
       this.session.isTransitioningState = false;
     }
@@ -640,7 +641,7 @@ export class PlaybackController {
         this.hydrateManifestFromCache();
         this.playbackQueue.update(syncedTime, this.state.playbackRate);
       } else {
-        this.playbackQueue.update(time, this.state.playbackRate);
+        this.hydrateManifestFromCache();
       }
     } finally {
       this.endSeekTransaction('seek');
@@ -686,7 +687,7 @@ export class PlaybackController {
         this.hydrateManifestFromCache();
         this.playbackQueue.update(syncedTime, this.state.playbackRate);
       } else {
-        this.playbackQueue.update(currentTime, this.state.playbackRate);
+        this.hydrateManifestFromCache();
       }
     }
   }

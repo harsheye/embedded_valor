@@ -28,6 +28,7 @@ import { classifyVideoTitle } from '../utils/libraryClassifier';
 interface VideoPlayerProps {
   video: VideoItem;
   userId?: string;
+  profileName?: string;
   videos?: VideoItem[];
   onBack: () => void;
   onUpdateVideo: (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting?: boolean, targetVideoId?: string, forceSave?: boolean) => void;
@@ -134,6 +135,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   videos,
   onBack, 
   onUpdateVideo, 
+  userId = 'local',
+  profileName = 'Local Profile',
   hideUIOverlays: propHideUIOverlays = false,
   hideVideoName: propHideVideoName = false,
   toastDuration = 0.5,
@@ -169,6 +172,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   const [videoLayout, setVideoLayout] = useState({ left: 0, top: 0, width: 0, height: 0 });
   const [openSubtitles, setOpenSubtitles] = useState<any[]>([]);
   const [isOpenSubLoading, setIsOpenSubLoading] = useState(false);
+  const [hasFetchedOpenSubtitles, setHasFetchedOpenSubtitles] = useState(false);
 
   const updateVideoLayout = useCallback(() => {
     if (!videoRef.current || !containerRef.current) return;
@@ -237,6 +241,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     setIsOpenSubLoading(true);
+    setHasFetchedOpenSubtitles(true);
     setOpenSubtitles([]);
     try {
       const seriesInfo = classifyVideoTitle(video.title);
@@ -353,8 +358,9 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [openSubtitlesApiKey, onUpdateVideo]);
 
   useEffect(() => {
-    fetchOpenSubtitles();
-  }, [fetchOpenSubtitles, video.id]);
+    setHasFetchedOpenSubtitles(false);
+    setOpenSubtitles([]);
+  }, [video.id]);
 
   // UI Customization & Bookmarks State
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -635,28 +641,34 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [video.id, video.title, videos]);
 
-  // Sync bookmarks to server via GraphQL (for server profiles)
+  // Sync bookmarks to server via GraphQL (for all profiles)
   const syncBookmarksToServer = async (updatedBookmarks: any[]) => {
     try {
-      const savedSettings = localStorage.getItem('valor_settings');
-      if (!savedSettings) return;
-      const parsed = JSON.parse(savedSettings);
-      const userId = parsed.userId;
-      const storageMode = parsed.storageMode;
+      const activeUserId = userId || 'local';
       
-      // Only sync for server profiles in file storage mode
-      if (!userId || userId === 'local' || userId.startsWith('local_') || storageMode !== 'file') return;
-      
+      const seriesInfo = classifyVideoTitle(video.title);
+      const isTV = seriesInfo.type === 'series';
+      const resolvedTmdbId = video.tmdbId || tmdbIdRef.current;
+      if (!resolvedTmdbId) {
+        logger.player('[Bookmark Sync] Skipping sync: tmdbId is not resolved yet.');
+        return;
+      }
+
+      // Filter only bookmarks created by the current user
+      const userBookmarks = updatedBookmarks.filter(bm => {
+        return !bm.createdBy || bm.createdBy === 'manual' || bm.userId === activeUserId || bm.userName === profileName;
+      });
+
       const mutation = `
-        mutation SaveBookmarks($userId: String!, $videoId: String!, $bookmarks: [BookmarkInput!]!) {
-          saveBookmarks(userId: $userId, videoId: $videoId, bookmarks: $bookmarks) {
+        mutation SaveBookmarks($userId: String!, $videoId: String!, $tmdbId: Int!, $season: Int, $episode: Int, $bookmarks: [BookmarkInput!]!) {
+          saveBookmarks(userId: $userId, videoId: $videoId, tmdbId: $tmdbId, season: $season, episode: $episode, bookmarks: $bookmarks) {
             success
             count
           }
         }
       `;
       
-      const serializedBookmarks = updatedBookmarks.map(bm => ({
+      const serializedBookmarks = userBookmarks.map(bm => ({
         id: bm.id,
         time: bm.time,
         endTime: bm.endTime !== undefined ? bm.endTime : null,
@@ -670,7 +682,10 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         thumbnail: bm.thumbnail || '',
         favorite: bm.favorite || false,
         createdAt: bm.createdAt || new Date().toISOString(),
-        updatedAt: bm.updatedAt || new Date().toISOString()
+        updatedAt: bm.updatedAt || new Date().toISOString(),
+        userName: bm.userName || profileName || 'Local Profile',
+        userTime: bm.userTime || new Date().toISOString(),
+        mediaName: bm.mediaName || video.title || ''
       }));
       
       const response = await fetch('http://127.0.0.1:50001/api/graphql', {
@@ -678,7 +693,14 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: mutation,
-          variables: { userId, videoId: video.id, bookmarks: serializedBookmarks }
+          variables: { 
+            userId: activeUserId, 
+            videoId: video.id, 
+            tmdbId: resolvedTmdbId,
+            season: isTV ? (seriesInfo.season || 1) : null,
+            episode: isTV ? (seriesInfo.episode || 1) : null,
+            bookmarks: serializedBookmarks 
+          }
         })
       });
       
@@ -686,7 +708,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       if (result.errors) {
         logger.error('[Bookmark Sync] GraphQL error:', result.errors[0].message);
       } else {
-        logger.player(`[Bookmark Sync] Synced ${serializedBookmarks.length} bookmarks to server for video: ${video.id}`);
+        logger.player(`[Bookmark Sync] Synced ${serializedBookmarks.length} bookmarks to server for tmdbId: ${resolvedTmdbId}`);
       }
     } catch (err) {
       logger.error('[Bookmark Sync] Failed to sync bookmarks:', err);
@@ -1020,244 +1042,267 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     if (duration <= 0) return;
 
-    const fetchIntroDb = async () => {
+    const fetchAllBookmarks = async () => {
+      let resolvedTmdbId = video.tmdbId || tmdbIdRef.current;
+      const seriesInfo = classifyVideoTitle(video.title);
+      const isTV = seriesInfo.type === 'series';
+      const season = seriesInfo.season || 1;
+      const episode = seriesInfo.episode || 1;
+
+      if (!resolvedTmdbId) {
+        try {
+          const tmdbToken = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
+          let searchUrl = "";
+          if (isTV && seriesInfo.seriesTitle) {
+            searchUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(seriesInfo.seriesTitle)}&include_adult=false`;
+          } else {
+            searchUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(seriesInfo.displayTitle)}&include_adult=false`;
+          }
+
+          logger.player(`[Bookmarks Sync] Querying TMDB search: "${searchUrl}"`);
+          const searchRes = await fetch(searchUrl, {
+            headers: { 'Authorization': `Bearer ${tmdbToken}`, 'accept': 'application/json' }
+          });
+
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            if (searchData.results && searchData.results.length > 0) {
+              const matchedItem = searchData.results[0];
+              resolvedTmdbId = matchedItem.id;
+              tmdbIdRef.current = resolvedTmdbId;
+
+              // Save tmdbId in the video metadata
+              onUpdateVideo((prev: any) => ({
+                ...prev,
+                tmdbId: resolvedTmdbId
+              }));
+
+              // Resolve full metadata details for paused overlay card
+              if (getOverlayDataFromTmdb) {
+                const mediaImg = matchedItem.poster_path ? `https://image.tmdb.org/t/p/w500${matchedItem.poster_path}` : (matchedItem.backdrop_path ? `https://image.tmdb.org/t/p/w500${matchedItem.backdrop_path}` : '');
+                const details: MediaDetails = {
+                  title: matchedItem.name || matchedItem.title || seriesInfo.seriesTitle || 'Unknown Title',
+                  overview: matchedItem.overview || '',
+                  imageUrl: mediaImg,
+                  releaseDate: matchedItem.release_date ? matchedItem.release_date.split('-')[0] : (matchedItem.first_air_date ? matchedItem.first_air_date.split('-')[0] : ''),
+                  rating: matchedItem.vote_average || undefined
+                };
+
+                // Fetch show/movie logos from TMDB images endpoint
+                try {
+                  const imagesUrl = `https://api.themoviedb.org/3/${isTV ? 'tv' : 'movie'}/${resolvedTmdbId}/images`;
+                  const imagesRes = await fetch(imagesUrl, {
+                    headers: { 'Authorization': `Bearer ${tmdbToken}`, 'accept': 'application/json' }
+                  });
+                  if (imagesRes.ok) {
+                    const imagesData = await imagesRes.ok ? await imagesRes.json() : null;
+                    if (imagesData) {
+                      const logos = imagesData.logos || [];
+                      let selectedLogo = logos.find((l: any) => l.iso_639_1 === 'en') || logos.find((l: any) => !l.iso_639_1) || logos[0];
+                      if (selectedLogo) {
+                        details.logoUrl = `https://image.tmdb.org/t/p/w500${selectedLogo.file_path}`;
+                      }
+                    }
+                  }
+                } catch {}
+
+                if (isTV) {
+                  try {
+                    const epUrl = `https://api.themoviedb.org/3/tv/${resolvedTmdbId}/season/${season}/episode/${episode}`;
+                    const epRes = await fetch(epUrl, {
+                      headers: { 'Authorization': `Bearer ${tmdbToken}`, 'accept': 'application/json' }
+                    });
+                    if (epRes.ok) {
+                      const epData = await epRes.json();
+                      details.episodeTitle = epData.name;
+                      details.season = epData.season_number;
+                      details.episode = epData.episode_number;
+                      if (epData.overview) details.overview = epData.overview;
+                      if (epData.still_path) {
+                        details.imageUrl = `https://image.tmdb.org/t/p/w500${epData.still_path}`;
+                      }
+                    }
+                  } catch {}
+                }
+                setMediaDetails(details);
+              }
+            }
+          }
+        } catch (err) {
+          logger.player(`[Bookmarks Sync] TMDB search error: ${err}`);
+        }
+      }
+
+      if (!resolvedTmdbId) {
+        logger.player('[Bookmarks Sync] Could not resolve TMDB ID, skipping global bookmarks fetch.');
+        return;
+      }
+
+      let serverBms: any[] = [];
+      let tidbBms: any[] = [];
       hadTidbDataRef.current = false;
-      setMediaDetails(null);
+
+      // 1. Fetch from our SQLite server using tmdbId
       try {
-        const seriesInfo = classifyVideoTitle(video.title);
-        const isTV = seriesInfo.type === 'series';
-        logger.player(`[TheIntroDB Sync] Title: "${video.title}" parsed as type: "${seriesInfo.type}" (Series: "${seriesInfo.seriesTitle}", Season: ${seriesInfo.season}, Episode: ${seriesInfo.episode}, Movie Display Title: "${seriesInfo.displayTitle}")`);
-        
-        // 1. Search TMDB
-        const tmdbToken = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
-        let searchUrl = "";
-        if (isTV && seriesInfo.seriesTitle) {
-          searchUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(seriesInfo.seriesTitle)}&include_adult=false`;
-        } else {
-          searchUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(seriesInfo.displayTitle)}&include_adult=false`;
-        }
-
-        logger.player(`[TheIntroDB Sync] Requesting TMDB search: "${searchUrl}"`);
-        const searchRes = await fetch(searchUrl, {
-          headers: {
-            'Authorization': `Bearer ${tmdbToken}`,
-            'accept': 'application/json'
+        const queryStr = `
+          query GetVideoBookmarks($tmdbId: Int!, $season: Int, $episode: Int) {
+            videoBookmarks(tmdbId: $tmdbId, season: $season, episode: $episode) {
+              id
+              time
+              endTime
+              label
+              isIntro
+              isOutro
+              skipEnabled
+              title
+              description
+              category
+              thumbnail
+              favorite
+              createdAt
+              updatedAt
+              userName
+              userTime
+              mediaName
+              tmdbId
+              episode
+              season
+              color
+              userId
+              createdBy
+            }
           }
+        `;
+        const res = await fetch('http://127.0.0.1:50001/api/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: queryStr,
+            variables: { 
+              tmdbId: resolvedTmdbId,
+              season: isTV ? season : null,
+              episode: isTV ? episode : null
+            }
+          })
         });
-
-        if (!searchRes.ok) {
-          logger.player(`[TheIntroDB Sync] TMDB search failed with HTTP status: ${searchRes.status}`);
-          triggerSwitchToast("No data on TIDB");
-          throw new Error('TMDB search failed');
-        }
-        const searchData = await searchRes.json();
-        if (!searchData.results || searchData.results.length === 0) {
-          logger.player('[TheIntroDB Sync] No matching TMDB results found for title: ' + video.title);
-          triggerSwitchToast("No data on TIDB");
-          return;
-        }
-
-        const matchedItem = searchData.results[0];
-        const tmdbId = matchedItem.id;
-        const tmdbTitle = matchedItem.name || matchedItem.title;
-        logger.player(`[TheIntroDB Sync] TMDB match resolved. ID: ${tmdbId}, Title: "${tmdbTitle}"`);
-        tmdbIdRef.current = tmdbId;
-
-        // Save tmdbId in the video metadata
-        onUpdateVideo((prev: any) => ({
-          ...prev,
-          tmdbId: tmdbId
-        }));
-
-        // Resolve full metadata details for paused overlay card
-        if (getOverlayDataFromTmdb) {
-          const mediaImg = matchedItem.poster_path ? `https://image.tmdb.org/t/p/w500${matchedItem.poster_path}` : (matchedItem.backdrop_path ? `https://image.tmdb.org/t/p/w500${matchedItem.backdrop_path}` : '');
-          const details: MediaDetails = {
-            title: matchedItem.name || matchedItem.title || seriesInfo.seriesTitle || 'Unknown Title',
-            overview: matchedItem.overview || '',
-            imageUrl: mediaImg,
-            releaseDate: matchedItem.release_date ? matchedItem.release_date.split('-')[0] : (matchedItem.first_air_date ? matchedItem.first_air_date.split('-')[0] : ''),
-            rating: matchedItem.vote_average || undefined
-          };
-
-          // Fetch show/movie logos from TMDB images endpoint
-          try {
-            const imagesUrl = `https://api.themoviedb.org/3/${isTV ? 'tv' : 'movie'}/${tmdbId}/images`;
-            logger.player(`[TheIntroDB Sync] Querying TMDB Images: "${imagesUrl}"`);
-            const imagesRes = await fetch(imagesUrl, {
-              headers: {
-                'Authorization': `Bearer ${tmdbToken}`,
-                'accept': 'application/json'
-              }
-            });
-            if (imagesRes.ok) {
-              const imagesData = await imagesRes.json();
-              const logos = imagesData.logos || [];
-              // Find English logo first, then neutral, then any
-              let selectedLogo = logos.find((l: any) => l.iso_639_1 === 'en');
-              if (!selectedLogo) {
-                selectedLogo = logos.find((l: any) => l.iso_639_1 === null || !l.iso_639_1);
-              }
-              if (!selectedLogo && logos.length > 0) {
-                selectedLogo = logos[0];
-              }
-              if (selectedLogo) {
-                details.logoUrl = `https://image.tmdb.org/t/p/w500${selectedLogo.file_path}`;
-                logger.player(`[TheIntroDB Sync] Found logo URL: ${details.logoUrl}`);
-              }
-            }
-          } catch (imgErr) {
-            logger.player(`[TheIntroDB Sync] Failed to fetch TMDB logos: ${imgErr}`);
+        if (res.ok) {
+          const result = await res.json();
+          if (result.data && Array.isArray(result.data.videoBookmarks)) {
+            serverBms = result.data.videoBookmarks.map((bm: any) => ({
+              ...bm,
+              isIntro: !!bm.isIntro,
+              isOutro: !!bm.isOutro,
+              skipEnabled: !!bm.skipEnabled,
+              favorite: !!bm.favorite
+            }));
+            logger.player(`[Server Bookmarks] Loaded ${serverBms.length} bookmarks from our server.`);
           }
-
-          if (isTV) {
-            try {
-              const epUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seriesInfo.season || 1}/episode/${seriesInfo.episode || 1}`;
-              logger.player(`[TheIntroDB Sync] Querying TMDB Episode Details: "${epUrl}"`);
-              const epRes = await fetch(epUrl, {
-                headers: {
-                  'Authorization': `Bearer ${tmdbToken}`,
-                  'accept': 'application/json'
-                }
-              });
-              if (epRes.ok) {
-                const epData = await epRes.json();
-                details.episodeTitle = epData.name;
-                details.season = epData.season_number;
-                details.episode = epData.episode_number;
-                if (epData.overview) details.overview = epData.overview;
-                if (epData.still_path) {
-                  details.imageUrl = `https://image.tmdb.org/t/p/w500${epData.still_path}`;
-                }
-              }
-            } catch (epErr) {
-              logger.player(`[TheIntroDB Sync] Failed to fetch TMDB episode details: ${epErr}`);
-            }
-          }
-          setMediaDetails(details);
         }
+      } catch (err) {
+        logger.player('[Server Bookmarks] Failed to fetch from our server: ' + err);
+      }
 
-        // 2. Fetch from theintrodb.org
+      // 2. Fetch from TiDB (TheIntroDB)
+      try {
         const durationMs = Math.round(duration * 1000);
-        let introDbUrl = `https://api.theintrodb.org/v3/media?tmdb_id=${tmdbId}`;
+        let introDbUrl = `https://api.theintrodb.org/v3/media?tmdb_id=${resolvedTmdbId}`;
         if (isTV) {
-          introDbUrl += `&season=${seriesInfo.season || 1}&episode=${seriesInfo.episode || 1}`;
+          introDbUrl += `&season=${season}&episode=${episode}`;
         }
         introDbUrl += `&duration_ms=${durationMs}`;
 
-        // Read API key
         const savedSettings = localStorage.getItem('valor_settings');
         let apiKey = "";
         if (savedSettings) {
           try {
-            const parsed = JSON.parse(savedSettings);
-            apiKey = parsed.theIntroDbApiKey || "";
+            apiKey = JSON.parse(savedSettings).theIntroDbApiKey || "";
           } catch {}
         }
 
-        const introDbHeaders: Record<string, string> = {
-          'accept': 'application/json'
-        };
-        let finalUrl = introDbUrl;
+        const headers: Record<string, string> = { 'accept': 'application/json' };
         if (apiKey) {
-          introDbHeaders['Authorization'] = `Bearer ${apiKey}`;
-          introDbHeaders['X-API-Key'] = apiKey;
-          introDbHeaders['api_key'] = apiKey;
-          introDbHeaders['apikey'] = apiKey;
-          finalUrl += `&api_key=${encodeURIComponent(apiKey)}`;
+          headers['Authorization'] = `Bearer ${apiKey}`;
         }
 
-        logger.player(`[TheIntroDB Sync] Querying TheIntroDB API. URL: "${finalUrl}" (Headers: ${JSON.stringify(Object.keys(introDbHeaders))})`);
-        const introDbRes = await fetch(finalUrl, { headers: introDbHeaders });
-        if (!introDbRes.ok) {
-          logger.player(`[TheIntroDB Sync] TheIntroDB API query failed. HTTP Status: ${introDbRes.status}`);
-          triggerSwitchToast("No data on TIDB");
-          throw new Error('TheIntroDB request failed');
-        }
-        const introDbData = await introDbRes.json();
-        logger.player(`[TheIntroDB Sync] TheIntroDB API successful response: ${JSON.stringify(introDbData)}`);
+        const introDbRes = await fetch(introDbUrl, { headers });
+        if (introDbRes.ok) {
+          const introDbData = await introDbRes.json();
+          const msToSec = (ms: number | null | undefined) => ms ? Math.round(ms / 1000) : 0;
 
-        // 3. Map to bookmarks
-        const apiBms: any[] = [];
-        const msToSec = (ms: number | null | undefined): number | undefined => {
-          if (ms === null || ms === undefined) return undefined;
-          return Math.round(ms / 1000);
-        };
-
-        if (introDbData.intro && Array.isArray(introDbData.intro)) {
-          introDbData.intro.forEach((item: any, idx: number) => {
-            apiBms.push({
-              id: `api-intro-${idx}`,
-              time: msToSec(item.start_ms) || 0,
-              endTime: msToSec(item.end_ms),
-              label: 'Intro',
-              isIntro: true,
-              isOutro: false,
-              skipEnabled: true,
-              createdBy: 'theintrodb'
+          if (introDbData.intro && Array.isArray(introDbData.intro)) {
+            introDbData.intro.forEach((item: any, idx: number) => {
+              tidbBms.push({
+                id: `api-intro-${idx}`,
+                time: msToSec(item.start_ms),
+                endTime: msToSec(item.end_ms),
+                label: 'Intro',
+                isIntro: true,
+                isOutro: false,
+                skipEnabled: true,
+                createdBy: 'theintrodb'
+              });
             });
-          });
-        }
+          }
 
-        if (introDbData.recap && Array.isArray(introDbData.recap)) {
-          introDbData.recap.forEach((item: any, idx: number) => {
-            apiBms.push({
-              id: `api-recap-${idx}`,
-              time: msToSec(item.start_ms) || 0,
-              endTime: msToSec(item.end_ms),
-              label: 'Recap',
-              isIntro: true,
-              isOutro: false,
-              skipEnabled: true,
-              createdBy: 'theintrodb'
+          if (introDbData.recap && Array.isArray(introDbData.recap)) {
+            introDbData.recap.forEach((item: any, idx: number) => {
+              tidbBms.push({
+                id: `api-recap-${idx}`,
+                time: msToSec(item.start_ms),
+                endTime: msToSec(item.end_ms),
+                label: 'Recap',
+                isIntro: true,
+                isOutro: false,
+                skipEnabled: true,
+                createdBy: 'theintrodb'
+              });
             });
-          });
-        }
+          }
 
-        if (introDbData.credits && Array.isArray(introDbData.credits)) {
-          introDbData.credits.forEach((item: any, idx: number) => {
-            apiBms.push({
-              id: `api-credits-${idx}`,
-              time: msToSec(item.start_ms) || 0,
-              endTime: msToSec(item.end_ms),
-              label: 'Credits/Outro',
-              isIntro: false,
-              isOutro: true,
-              skipEnabled: true,
-              createdBy: 'theintrodb'
+          if (introDbData.credits && Array.isArray(introDbData.credits)) {
+            introDbData.credits.forEach((item: any, idx: number) => {
+              tidbBms.push({
+                id: `api-credits-${idx}`,
+                time: msToSec(item.start_ms),
+                endTime: msToSec(item.end_ms),
+                label: 'Credits/Outro',
+                isIntro: false,
+                isOutro: true,
+                skipEnabled: true,
+                createdBy: 'theintrodb'
+              });
             });
-          });
-        }
+          }
 
-        if (apiBms.length > 0) {
-          hadTidbDataRef.current = true;
-          const sorted = apiBms.sort((a, b) => a.time - b.time);
-          setBookmarks(sorted);
-          onUpdateVideo((prev: any) => ({
-            ...prev,
-            bookmarks: sorted,
-            tmdbId: tmdbId
-          }));
-          logger.player(`[TheIntroDB Sync] Loaded ${sorted.length} bookmarks from TheIntroDB`);
-        } else {
-          logger.player('[TheIntroDB Sync] TheIntroDB returned 0 segments for: ' + video.title);
-          triggerSwitchToast("No data on TIDB");
-          
-          // Auto-submit existing intro/outro/recap/credits bookmarks to TIDB
-          const existingBookmarks = video.bookmarks || [];
-          if (existingBookmarks.length > 0) {
-            logger.player(`[TheIntroDB Sync] Video has ${existingBookmarks.length} existing bookmarks. Auto-submitting intro/outro to TIDB...`);
-            autoSubmitBookmarksToTidb(existingBookmarks);
+          if (tidbBms.length > 0) {
+            hadTidbDataRef.current = true;
           }
         }
       } catch (err) {
         logger.player('[TheIntroDB Sync] Failed to fetch from TheIntroDB: ' + err);
-        triggerSwitchToast("No data on TIDB");
       }
+
+      // Merge local, server, and tidb bookmarks
+      const mergeBookmarks = (existing: any[], newBms: any[]) => {
+        const map = new Map<string, any>();
+        existing.forEach(bm => map.set(bm.id, bm));
+        newBms.forEach(bm => map.set(bm.id, bm));
+        return Array.from(map.values()).sort((a, b) => a.time - b.time);
+      };
+
+      const initialBms = video.bookmarks || [];
+      const merged = mergeBookmarks(mergeBookmarks(initialBms, serverBms), tidbBms);
+      
+      setBookmarks(merged);
+      onUpdateVideo((prev: any) => ({
+        ...prev,
+        bookmarks: merged,
+        tmdbId: resolvedTmdbId
+      }));
     };
 
-    fetchIntroDb();
-  }, [duration, video.id, video.title]);
+    fetchAllBookmarks();
+  }, [duration, video.id, video.title, video.tmdbId]);
 
   const [volume, setVolume] = useState<number>(() => {
     try {
@@ -1497,6 +1542,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   };
   const audioRef = useRef<HTMLAudioElement>(null);
   const playbackControllerRef = useRef<PlaybackController | null>(null);
+  const prevDestroyPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const containerRef = useRef<HTMLDivElement>(null);
   const syncEngineRef = useRef<AudioSyncEngine | null>(null);
   const controlsTimeoutRef = useRef<any>(null);
@@ -2471,6 +2517,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (uiConfig.blockSeekingCompletely) return;
+    const seekTime = parseFloat(e.target.value);
     if (isScrubbingRef.current) {
       setScrubTime(seekTime);
       if (previewVideoRef.current) {
@@ -3141,41 +3188,60 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     let active = true;
     let controller: PlaybackController | null = null;
 
-    if (videoRef.current) {
-      const ffmpegMgr = new FFmpegManager(video.id);
-      const fileOrSource = video.file || cachedSourceRef.current || new RemoteDownloadManager(new HttpByteSource(video.url));
-      const demuxMgr = new DemuxManager(ffmpegMgr, fileOrSource);
-      controller = new PlaybackController(ffmpegMgr, demuxMgr, video.seekMap);
-      
-      playbackControllerRef.current = controller;
+    const init = async () => {
+      // Wait for any previous controller to finish destroying completely
+      await prevDestroyPromiseRef.current;
+      if (!active) return;
 
-      controller.setBufferingCallback((buffering) => {
-        if (active) setIsBuffering(buffering);
-      });
+      if (videoRef.current) {
+        const isFile = (obj: any): obj is File =>
+          obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
+        const fileOrSource = isFile(video.file)
+          ? video.file
+          : (cachedSourceRef.current || new RemoteDownloadManager(new HttpByteSource(video.url)));
 
-      controller.initialize(videoRef.current, activeAudioStreamIndex).then(() => {
-        if (active) {
-          const mediaName = (video.title || video.fileName || 'Unknown media')
-            .replace(/\.[a-z\d]{2,5}$/i, '')
-            .replace(/[._]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-          logger.playback(`ready • ${mediaName}`);
-          if (controller) {
-            controller.play()
-              .then(() => setIsPlaying(true))
-              .catch(err => logger.player('Autoplay blocked:', err));
-          }
+        const ffmpegMgr = new FFmpegManager(video.id);
+        const demuxMgr = new DemuxManager(ffmpegMgr, fileOrSource);
+        controller = new PlaybackController(ffmpegMgr, demuxMgr, video.seekMap);
+        
+        playbackControllerRef.current = controller;
+
+        controller.setBufferingCallback((buffering) => {
+          if (active) setIsBuffering(buffering);
+        });
+
+        try {
+          await controller.initialize(videoRef.current, activeAudioStreamIndex);
+        } catch (err) {
+          console.warn(`[RemoteVideoPlayer] PlaybackController init failed:`, err);
+          return;
         }
-      });
-    }
+        
+        if (!active) return;
+
+        const mediaName = (video.title || video.fileName || 'Unknown media')
+          .replace(/\.[a-z\d]{2,5}$/i, '')
+          .replace(/[._]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        logger.playback(`ready • ${mediaName}`);
+        
+        if (controller) {
+          controller.play()
+            .then(() => { if (active) setIsPlaying(true); })
+            .catch(err => logger.player('Autoplay blocked:', err));
+        }
+      }
+    };
+
+    init().catch(console.error);
 
     return () => {
       active = false;
-      if (controller) {
-        controller.destroy();
-      }
       playbackControllerRef.current = null;
+      if (controller) {
+        prevDestroyPromiseRef.current = controller.destroy();
+      }
     };
   }, [video.id, video.file, video.url]);
 
@@ -3188,7 +3254,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Pause/Resume on Window Focus changes if enabled (Fullscreen only)
   useEffect(() => {
-    if (!pauseOnFocusChange || isLocked) return;
+    if (!playerSettings.pauseOnFocusChange || isLocked) return;
 
     const handleFocusLoss = () => {
       const isCurrentFullscreen = !!document.fullscreenElement || isFullscreen;
@@ -3245,7 +3311,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       window.removeEventListener('focus', handleFocusGain);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [pauseOnFocusChange, isFullscreen, isLocked]);
+  }, [playerSettings.pauseOnFocusChange, isFullscreen, isLocked]);
 
   // Re-engage fullscreen on window focus if locked
   useEffect(() => {
@@ -4702,6 +4768,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
                       openSubtitles={openSubtitles}
                       isOpenSubLoading={isOpenSubLoading}
                       onDownloadOpenSubtitle={downloadOpenSubtitle}
+                      hasFetchedOpenSubtitles={hasFetchedOpenSubtitles}
+                      onFetchOpenSubtitles={fetchOpenSubtitles}
                     />
                   )}
                 </div>

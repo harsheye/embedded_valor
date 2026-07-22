@@ -49,6 +49,8 @@ export interface AudioSubPopoverProps {
   openSubtitles?: any[];
   isOpenSubLoading?: boolean;
   onDownloadOpenSubtitle?: (fileId: number, fileName: string, language: string) => Promise<void>;
+  hasFetchedOpenSubtitles?: boolean;
+  onFetchOpenSubtitles?: () => void;
 }
 
 export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
@@ -80,7 +82,9 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
   setAudioBoost,
   openSubtitles = [],
   isOpenSubLoading = false,
-  onDownloadOpenSubtitle
+  onDownloadOpenSubtitle,
+  hasFetchedOpenSubtitles = false,
+  onFetchOpenSubtitles
 }) => {
   const [subSearchQuery, setSubSearchQuery] = useState('');
   
@@ -263,15 +267,33 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
             })}
 
             {/* OpenSubtitles section — inline inside popover-options */}
-            {(isOpenSubLoading || (openSubtitles && openSubtitles.length > 0)) && (
+            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', margin: '0.3rem 0', opacity: 0.6 }}></div>
+            <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(255, 255, 255, 0.35)', letterSpacing: '0.05em', paddingLeft: '0.4rem', marginBottom: '0.2rem' }}>
+              OpenSubtitles {isOpenSubLoading && '...'}
+            </div>
+            
+            {!hasFetchedOpenSubtitles && !isOpenSubLoading ? (
+              <label 
+                className="popover-option" 
+                style={{ color: '#38bdf8', cursor: 'pointer' }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (onFetchOpenSubtitles) onFetchOpenSubtitles();
+                }}
+              >
+                <span>🔍 Search OpenSubtitles</span>
+              </label>
+            ) : (
               <>
-                <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', margin: '0.3rem 0', opacity: 0.6 }}></div>
-                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(255, 255, 255, 0.35)', letterSpacing: '0.05em', paddingLeft: '0.4rem' }}>
-                  OpenSubtitles {isOpenSubLoading && '...'}
-                </div>
                 {isOpenSubLoading && (!openSubtitles || openSubtitles.length === 0) && (
                   <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.4)', paddingLeft: '0.4rem' }}>
                     Searching...
+                  </div>
+                )}
+                {!isOpenSubLoading && (!openSubtitles || openSubtitles.length === 0) && (
+                  <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.4)', paddingLeft: '0.4rem' }}>
+                    No subtitles found
                   </div>
                 )}
                 {openSubtitles && openSubtitles.length > 0 && openSubtitles.map((sub) => {
@@ -288,7 +310,7 @@ export const AudioSubPopover: React.FC<AudioSubPopoverProps> = ({
                       title={sub.fileName}
                     >
                       <input type="radio" name="sub-lang" checked={isSelected} readOnly />
-                      <span>{sub.language.toUpperCase()}</span>
+                      <span>{sub.language.toUpperCase()} ({sub.fileName.substring(0, 15)}...)</span>
                       {isSelected && <Check size={12} className="check-icon" />}
                     </label>
                   );

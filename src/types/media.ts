@@ -79,4 +79,9 @@ export interface Bookmark {
   season?: number;
   color?: string;
   createdBy?: 'theintrodb' | 'manual' | 'system';
+  tmdbId?: number;
+  userName?: string;
+  userTime?: string;
+  mediaName?: string;
+  userId?: string;
 }

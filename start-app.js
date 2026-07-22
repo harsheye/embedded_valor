@@ -186,6 +186,10 @@ try { db.exec(`ALTER TABLE bookmarks ADD COLUMN updatedAt TEXT;`); } catch(e){}
 try { db.exec(`ALTER TABLE bookmarks ADD COLUMN episode INTEGER;`); } catch(e){}
 try { db.exec(`ALTER TABLE bookmarks ADD COLUMN season INTEGER;`); } catch(e){}
 try { db.exec(`ALTER TABLE bookmarks ADD COLUMN color TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN tmdbId INTEGER;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN userName TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN userTime TEXT;`); } catch(e){}
+try { db.exec(`ALTER TABLE bookmarks ADD COLUMN mediaName TEXT;`); } catch(e){}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS login_attempts (
@@ -819,8 +823,8 @@ const backendServer = http.createServer((req, res) => {
           const historyRows = historyQuery.all(userId);
 
           // Fetch bookmarks
-          const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ?');
-          const bookmarksRows = bookmarksQuery.all(userId);
+          const bookmarksQuery = db.prepare('SELECT * FROM bookmarks');
+          const bookmarksRows = bookmarksQuery.all();
 
           // Combine history and bookmarks
           const videos = historyRows.map(row => {
@@ -840,7 +844,16 @@ const backendServer = http.createServer((req, res) => {
                 thumbnail: bm.thumbnail,
                 favorite: bm.favorite === 1,
                 createdAt: bm.createdAt,
-                updatedAt: bm.updatedAt
+                updatedAt: bm.updatedAt,
+                userName: bm.userName,
+                userTime: bm.userTime,
+                mediaName: bm.mediaName,
+                tmdbId: bm.tmdbId,
+                episode: bm.episode,
+                season: bm.season,
+                color: bm.color,
+                userId: bm.userId,
+                createdBy: bm.createdBy || 'manual'
               }));
             
             return {
@@ -988,70 +1001,141 @@ const backendServer = http.createServer((req, res) => {
         return;
       }
       
+      // GetVideoBookmarks or GetBookmarks query — fetch shared bookmarks by tmdbId/season/episode
+      if (query.includes('videoBookmarks') || query.includes('GetVideoBookmarks') || query.includes('bookmarks(') || query.includes('GetBookmarks')) {
+        const tmdbId = variables.tmdbId;
+        const season = variables.season || null;
+        const episode = variables.episode || null;
+        
+        if (!tmdbId) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ errors: [{ message: 'Missing tmdbId variable' }] }));
+          return;
+        }
+        
+        try {
+          let stmt;
+          let rows;
+          if (season !== null && episode !== null && season !== 0) {
+            stmt = db.prepare('SELECT * FROM bookmarks WHERE tmdbId = ? AND season = ? AND episode = ?');
+            rows = stmt.all(tmdbId, season, episode);
+          } else {
+            stmt = db.prepare('SELECT * FROM bookmarks WHERE tmdbId = ? AND (season IS NULL OR season = 0 OR season = "")');
+            rows = stmt.all(tmdbId);
+          }
+          
+          const mapped = rows.map(bm => ({
+            id: bm.id,
+            time: bm.time,
+            endTime: bm.endTime !== null ? bm.endTime : undefined,
+            label: bm.label,
+            isIntro: bm.isIntro === 1,
+            isOutro: bm.isOutro === 1,
+            skipEnabled: bm.skipEnabled === 1,
+            title: bm.title,
+            description: bm.description,
+            category: bm.category,
+            thumbnail: bm.thumbnail,
+            favorite: bm.favorite === 1,
+            createdAt: bm.createdAt,
+            updatedAt: bm.updatedAt,
+            userName: bm.userName,
+            userTime: bm.userTime,
+            mediaName: bm.mediaName,
+            tmdbId: bm.tmdbId,
+            episode: bm.episode,
+            season: bm.season,
+            color: bm.color,
+            userId: bm.userId,
+            createdBy: bm.createdBy || 'manual'
+          }));
+          
+          const responseData = (query.includes('videoBookmarks') || query.includes('GetVideoBookmarks'))
+            ? { videoBookmarks: mapped } 
+            : { bookmarks: mapped };
+            
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ data: responseData }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ errors: [{ message: e.message }] }));
+        }
+        return;
+      }
+
       // SaveBookmarks mutation — dedicated bookmark sync for a single video
       if (query.includes('SaveBookmarks') || query.includes('saveBookmarks')) {
         const userId = variables.userId;
         const videoId = variables.videoId;
+        const tmdbId = variables.tmdbId;
+        const season = variables.season || null;
+        const episode = variables.episode || null;
         const bookmarksData = variables.bookmarks;
         
-        if (!userId || !videoId) {
+        if (!userId || !videoId || !tmdbId) {
           res.statusCode = 400;
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ errors: [{ message: 'Missing userId or videoId' }] }));
+          res.end(JSON.stringify({ errors: [{ message: 'Missing userId, videoId, or tmdbId' }] }));
           return;
         }
         
-        if (userId !== 'local' && !userId.startsWith('local_')) {
-          try {
-            // Delete existing bookmarks for this video
-            const deleteBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ? AND videoId = ?');
-            deleteBookmarks.run(userId, videoId);
-            
-            // Insert new bookmarks
-            if (Array.isArray(bookmarksData) && bookmarksData.length > 0) {
-              const insertBookmark = db.prepare(`
-                INSERT OR REPLACE INTO bookmarks
-                (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?)
-              `);
-              
-              for (const bm of bookmarksData) {
-                insertBookmark.run(
-                  userId,
-                  videoId,
-                  bm.id,
-                  bm.time,
-                  bm.endTime !== undefined && bm.endTime !== null ? bm.endTime : null,
-                  bm.label || '',
-                  bm.isIntro ? 1 : 0,
-                  bm.isOutro ? 1 : 0,
-                  bm.skipEnabled ? 1 : 0,
-                  bm.title || null,
-                  bm.description || null,
-                  bm.category || null,
-                  bm.startTime || null,
-                  bm.thumbnail || null,
-                  bm.favorite ? 1 : 0,
-                  bm.episode || null,
-                  bm.season || null,
-                  bm.color || null
-                );
-              }
-            }
-            
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ data: { saveBookmarks: { success: true, count: (bookmarksData || []).length } } }));
-          } catch (e) {
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ errors: [{ message: e.message }] }));
+        try {
+          // Delete existing bookmarks for this tmdbId/season/episode created by this userId
+          let deleteBookmarks;
+          if (season !== null && episode !== null) {
+            deleteBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ? AND tmdbId = ? AND season = ? AND episode = ?');
+            deleteBookmarks.run(userId, tmdbId, season, episode);
+          } else {
+            deleteBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ? AND tmdbId = ? AND (season IS NULL OR season = 0 OR season = "")');
+            deleteBookmarks.run(userId, tmdbId);
           }
-        } else {
-          // Local profiles — no server save needed
+          
+          // Insert new bookmarks
+          if (Array.isArray(bookmarksData) && bookmarksData.length > 0) {
+            const insertBookmark = db.prepare(`
+              INSERT OR REPLACE INTO bookmarks
+              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color, userName, userTime, mediaName, tmdbId)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?, ?, ?)
+            `);
+            
+            for (const bm of bookmarksData) {
+              insertBookmark.run(
+                userId,
+                videoId,
+                bm.id,
+                bm.time,
+                bm.endTime !== undefined && bm.endTime !== null ? bm.endTime : null,
+                bm.label || '',
+                bm.isIntro ? 1 : 0,
+                bm.isOutro ? 1 : 0,
+                bm.skipEnabled ? 1 : 0,
+                bm.title || null,
+                bm.description || null,
+                bm.category || null,
+                bm.startTime || null,
+                bm.thumbnail || null,
+                bm.favorite ? 1 : 0,
+                episode,
+                season,
+                bm.color || null,
+                bm.userName || null,
+                bm.userTime || null,
+                bm.mediaName || null,
+                tmdbId
+              );
+            }
+          }
+          
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ data: { saveBookmarks: { success: true, count: 0 } } }));
+          res.end(JSON.stringify({ data: { saveBookmarks: { success: true, count: (bookmarksData || []).length } } }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ errors: [{ message: e.message }] }));
         }
         return;
       }
@@ -1085,8 +1169,8 @@ const backendServer = http.createServer((req, res) => {
       const historyRows = historyQuery.all(userId);
 
       // Fetch bookmarks
-      const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ?');
-      const bookmarksRows = bookmarksQuery.all(userId);
+      const bookmarksQuery = db.prepare('SELECT * FROM bookmarks');
+      const bookmarksRows = bookmarksQuery.all();
 
       // Combine history and bookmarks
       const videos = historyRows.map(row => {
@@ -1106,7 +1190,16 @@ const backendServer = http.createServer((req, res) => {
             thumbnail: bm.thumbnail,
             favorite: bm.favorite === 1,
             createdAt: bm.createdAt,
-            updatedAt: bm.updatedAt
+            updatedAt: bm.updatedAt,
+            userName: bm.userName,
+            userTime: bm.userTime,
+            mediaName: bm.mediaName,
+            tmdbId: bm.tmdbId,
+            episode: bm.episode,
+            season: bm.season,
+            color: bm.color,
+            userId: bm.userId,
+            createdBy: bm.createdBy || 'manual'
           }));
         
         return {
@@ -1515,17 +1608,32 @@ const backendServer = http.createServer((req, res) => {
       try {
         const mediaIdMatch = pathname.match(/^\/api\/bookmark\/media\/([^/]+)$/);
         const mediaId = mediaIdMatch[1];
-        const userId = parsedUrl.searchParams.get('userId');
         
-        const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ? AND videoId = ?');
-        const rows = bookmarksQuery.all(userId, mediaId);
+        const tmdbIdParam = parsedUrl.searchParams.get('tmdbId');
+        const seasonParam = parsedUrl.searchParams.get('season');
+        const episodeParam = parsedUrl.searchParams.get('episode');
+        
+        let rows;
+        if (tmdbIdParam) {
+          const tmdbId = parseInt(tmdbIdParam, 10);
+          const season = seasonParam ? parseInt(seasonParam, 10) : null;
+          const episode = episodeParam ? parseInt(episodeParam, 10) : null;
+          if (season !== null && episode !== null && season !== 0) {
+            rows = db.prepare('SELECT * FROM bookmarks WHERE tmdbId = ? AND season = ? AND episode = ?').all(tmdbId, season, episode);
+          } else {
+            rows = db.prepare('SELECT * FROM bookmarks WHERE tmdbId = ? AND (season IS NULL OR season = 0 OR season = "")').all(tmdbId);
+          }
+        } else {
+          rows = db.prepare('SELECT * FROM bookmarks WHERE videoId = ?').all(mediaId);
+        }
         
         const mapped = rows.map(bm => ({
           id: bm.id, time: bm.time, endTime: bm.endTime, label: bm.label,
           isIntro: bm.isIntro === 1, isOutro: bm.isOutro === 1, skipEnabled: bm.skipEnabled === 1,
           title: bm.title, description: bm.description, category: bm.category,
           startTime: bm.startTime, thumbnail: bm.thumbnail, favorite: bm.favorite === 1,
-          createdAt: bm.createdAt, updatedAt: bm.updatedAt, episode: bm.episode, season: bm.season, color: bm.color
+          createdAt: bm.createdAt, updatedAt: bm.updatedAt, episode: bm.episode, season: bm.season, color: bm.color,
+          userName: bm.userName, userTime: bm.userTime, mediaName: bm.mediaName, tmdbId: bm.tmdbId
         }));
         
         res.statusCode = 200;
@@ -1544,14 +1652,14 @@ const backendServer = http.createServer((req, res) => {
       try {
         if (req.method === 'POST' && pathname === '/api/bookmark') {
           const data = JSON.parse(body);
-          const { userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, episode, season, color } = data;
+          const { userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, episode, season, color, userName, userTime, mediaName, tmdbId } = data;
           
           const insertBookmark = db.prepare(`
             INSERT OR REPLACE INTO bookmarks
-            (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?)
+            (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color, userName, userTime, mediaName, tmdbId)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?, ?, ?)
           `);
-          insertBookmark.run(userId, videoId, id, time, endTime, label || '', isIntro ? 1 : 0, isOutro ? 1 : 0, skipEnabled ? 1 : 0, title || null, description || null, category || null, startTime || null, thumbnail || null, favorite ? 1 : 0, episode || null, season || null, color || null);
+          insertBookmark.run(userId, videoId, id, time, endTime, label || '', isIntro ? 1 : 0, isOutro ? 1 : 0, skipEnabled ? 1 : 0, title || null, description || null, category || null, startTime || null, thumbnail || null, favorite ? 1 : 0, episode || null, season || null, color || null, userName || null, userTime || null, mediaName || null, tmdbId || null);
           
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
@@ -1560,13 +1668,13 @@ const backendServer = http.createServer((req, res) => {
           const idMatch = pathname.match(/^\/api\/bookmark\/([^/]+)$/);
           const bmId = idMatch[1];
           const data = JSON.parse(body);
-          const { userId, videoId, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, episode, season, color } = data;
+          const { userId, videoId, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, episode, season, color, userName, userTime, mediaName, tmdbId } = data;
           
           const updateBookmark = db.prepare(`
-            UPDATE bookmarks SET time = ?, endTime = ?, label = ?, isIntro = ?, isOutro = ?, skipEnabled = ?, title = ?, description = ?, category = ?, startTime = ?, thumbnail = ?, favorite = ?, updatedAt = datetime('now'), episode = ?, season = ?, color = ?
+            UPDATE bookmarks SET time = ?, endTime = ?, label = ?, isIntro = ?, isOutro = ?, skipEnabled = ?, title = ?, description = ?, category = ?, startTime = ?, thumbnail = ?, favorite = ?, updatedAt = datetime('now'), episode = ?, season = ?, color = ?, userName = ?, userTime = ?, mediaName = ?, tmdbId = ?
             WHERE userId = ? AND videoId = ? AND id = ?
           `);
-          updateBookmark.run(time, endTime, label || '', isIntro ? 1 : 0, isOutro ? 1 : 0, skipEnabled ? 1 : 0, title || null, description || null, category || null, startTime || null, thumbnail || null, favorite ? 1 : 0, episode || null, season || null, color || null, userId, videoId, bmId);
+          updateBookmark.run(time, endTime, label || '', isIntro ? 1 : 0, isOutro ? 1 : 0, skipEnabled ? 1 : 0, title || null, description || null, category || null, startTime || null, thumbnail || null, favorite ? 1 : 0, episode || null, season || null, color || null, userName || null, userTime || null, mediaName || null, tmdbId || null, userId, videoId, bmId);
           
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
