@@ -2962,7 +2962,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
       if (videoRef.current) {
-        videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+        handleRewind();
         triggerHudFlash('rewind');
       }
     } else if (pressedKey === forwardKey) {
@@ -2976,7 +2976,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
       if (videoRef.current) {
-        videoRef.current.currentTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 10);
+        handleForward();
         triggerHudFlash('forward');
       }
     } else if (pressedKey === 'c') {
@@ -2987,7 +2987,11 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           ? duration 
           : (bm.endTime !== undefined && bm.endTime !== null ? bm.endTime : bm.time + 90);
         if (videoRef.current) {
-          videoRef.current.currentTime = targetTime;
+          if (playbackControllerRef.current) {
+            playbackControllerRef.current.seek(targetTime).catch(console.error);
+          } else {
+            videoRef.current.currentTime = targetTime;
+          }
           setCurrentTime(targetTime);
           triggerSwitchToast(`Skipped ${bm.label || bm.title || bm.category || 'Scene'}`);
         }

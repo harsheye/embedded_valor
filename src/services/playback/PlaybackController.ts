@@ -104,6 +104,8 @@ export class PlaybackController {
   }
 
   getCurrentTime(): number {
+    const playhead = this.audioScheduler?.getCurrentPlayhead();
+    if (playhead !== null && playhead !== undefined) return playhead;
     return this.videoEl ? this.videoEl.currentTime : 0;
   }
 
