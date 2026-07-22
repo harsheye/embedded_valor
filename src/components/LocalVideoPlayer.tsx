@@ -4183,14 +4183,13 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Center Screen HUD Controls */}
       {!isLocked && !hideUIOverlays && (showPlayButton || uiConfig.allowUiSkipping || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') && (
         <div 
-          className={`center-controls-hud ${((controlsVisible && !isPlaying) || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') ? 'visible' : 'hidden'} ${getHighlightClass('showPlayButton')}`} 
+          className={`center-controls-hud ${(controlsVisible || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') ? 'visible' : 'hidden'} ${getHighlightClass('showPlayButton')}`} 
           onClick={(e) => {
             e.stopPropagation();
             if (showPlayButtonMode === 'enable') togglePlay();
           }}
           style={{
-            opacity: showPlayButtonMode === 'enable' ? 1 : 0.5,
-            pointerEvents: ((controlsVisible && !isPlaying) || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') ? 'auto' : 'none'
+            pointerEvents: (controlsVisible || hoveredSetting === 'showPlayButton' || hoveredSetting === 'allowUiSkipping') ? 'auto' : 'none'
           }}
         >
           {(uiConfig.allowUiSkipping || hoveredSetting === 'allowUiSkipping') && (
@@ -5748,7 +5747,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: clamp(2rem, 8vw, 6rem);
+          gap: clamp(4rem, 15vw, 12rem);
           pointer-events: none;
           transition: opacity 0.15s ease;
         }
