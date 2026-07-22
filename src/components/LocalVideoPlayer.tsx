@@ -61,6 +61,7 @@ interface VideoPlayerProps {
   lockModeActive?: boolean;
   settingsOrder?: string[];
   uiHideTimeout?: number;
+  onReassociate?: (videoId: string) => void;
 }
 
 const OdometerDigit: React.FC<{ val: string }> = ({ val }) => {
@@ -165,13 +166,58 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   autoSkipSexScenes = true,
   lockModeActive: propLockModeActive = false,
   settingsOrder,
-  uiHideTimeout = 1.5
+  uiHideTimeout = 1.5,
+  onReassociate
 }) => {
   const isFile = (obj: any): obj is File => obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
   const video = useMemo(() => ({
     ...rawVideo,
     file: isFile(rawVideo.file) ? rawVideo.file : undefined
   }), [rawVideo]);
+
+  const [resolvedFile, setResolvedFile] = useState<File | Blob | null>(() => {
+    return isFile(rawVideo.file) ? rawVideo.file : null;
+  });
+
+  const activeFile = isFile(video.file) ? video.file : resolvedFile;
+
+  useEffect(() => {
+    if (isFile(video.file)) {
+      setResolvedFile(video.file);
+      return;
+    }
+    
+    if (video.type === 'local' && video.url && video.url.startsWith('blob:')) {
+      let active = true;
+      const fetchBlob = async () => {
+        try {
+          const res = await fetch(video.url);
+          const blob = await res.blob();
+          if (active) {
+            setResolvedFile(blob);
+            onUpdateVideoRef.current((prev: any) => ({
+              ...prev,
+              file: blob
+            }), false, video.id);
+            logger.player('[LocalVideoPlayer] Successfully resolved Blob from blob URL and updated state.');
+          }
+        } catch (err) {
+          if (active) {
+            logger.error('[LocalVideoPlayer] Failed to fetch Blob from blob URL:', err);
+            if (onReassociate) {
+              onReassociate(video.id);
+            }
+          }
+        }
+      };
+      fetchBlob();
+      return () => {
+        active = false;
+      };
+    } else {
+      setResolvedFile(null);
+    }
+  }, [video.id, video.url, video.file]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [mediaDetails, setMediaDetails] = useState<MediaDetails | null>(null);
@@ -1601,8 +1647,8 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       const byteSource = new HttpByteSource(video.url);
       cachedSourceRef.current = new CachedByteSource(byteSource, 4 * 1024 * 1024, 16); // 4MB chunks, cache size 16 (64MB)
     } else if (video.type === 'local') {
-      const byteSource = video.file
-        ? new FileByteSource(video.file)
+      const byteSource = activeFile
+        ? new FileByteSource(activeFile)
         : new HttpByteSource(video.url);
       cachedSourceRef.current = new CachedByteSource(byteSource, 4 * 1024 * 1024, 16); // 4MB chunks, cache size 16 (64MB)
     } else {
@@ -1622,7 +1668,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         clearTimeout(subDebounceTimeoutRef.current);
       }
     };
-  }, [video.url, video.isRemote, video.file, video.type]);
+  }, [video.url, video.isRemote, video.file, video.type, activeFile]);
 
   const getByteOffsetForTime = (seekMap: { time: number; offset: number }[], time: number): number => {
     if (!seekMap || seekMap.length === 0) return 0;
@@ -1982,6 +2028,12 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const loadSubtitleChunk = async (time: number, streamIndex: number) => {
+    const isResolvingBlob = video.type === 'local' && video.url && video.url.startsWith('blob:') && !activeFile;
+    if (isResolvingBlob) {
+      logger.player('[LocalVideoPlayer] loadSubtitleChunk deferred: still resolving blob URL.');
+      return;
+    }
+
     // Seek optimization: abort any active remote fetches
     if (subAbortControllerRef.current) {
       subAbortControllerRef.current.abort();
@@ -1996,8 +2048,8 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       let format: 'srt' | 'vtt' | 'ass' = 'srt';
 
       const cachedSource = cachedSourceRef.current || (
-        video.file
-          ? new CachedByteSource(new FileByteSource(video.file), 4 * 1024 * 1024, 16)
+        activeFile
+          ? new CachedByteSource(new FileByteSource(activeFile), 4 * 1024 * 1024, 16)
           : new CachedByteSource(new HttpByteSource(video.url), 4 * 1024 * 1024, 16)
       );
 
@@ -2203,6 +2255,11 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
       logger.error('Failed to extract remote subtitles:', err);
+      if (video.type === 'local' && video.url && video.url.startsWith('blob:') && (err instanceof TypeError || err.message?.includes('fetch') || err.message?.includes('net::'))) {
+        if (onReassociate) {
+          onReassociate(video.id);
+        }
+      }
     } finally {
       setExtractingStreamIndex(null);
       setIsKeyInitiated(false);
@@ -2212,6 +2269,14 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleVideoError = () => {
     if (!videoRef.current) return;
     const err = videoRef.current.error;
+
+    if (video.type === 'local' && video.url && video.url.startsWith('blob:') && (err?.code === 4 || !video.file)) {
+      if (onReassociate) {
+        onReassociate(video.id);
+        return;
+      }
+    }
+
     let message = 'An unknown playback error occurred.';
     
     if (video.probingError) {
@@ -3078,10 +3143,14 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       await prevDestroyPromiseRef.current;
       if (!active) return;
 
+      const isResolvingBlob = video.type === 'local' && video.url && video.url.startsWith('blob:') && !activeFile;
+      if (isResolvingBlob) {
+        logger.player('[LocalVideoPlayer] PlaybackController init deferred: still resolving blob URL.');
+        return;
+      }
+
       if (videoRef.current) {
-        const isFile = (obj: any): obj is File =>
-          obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
-        const fileOrSource = isFile(video.file) ? video.file : new HttpByteSource(video.url);
+        const fileOrSource = activeFile ? activeFile : new HttpByteSource(video.url);
 
         const ffmpegMgr = new FFmpegManager(video.id);
         const demuxMgr = new DemuxManager(ffmpegMgr, fileOrSource);
@@ -3126,7 +3195,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
         prevDestroyPromiseRef.current = controller.destroy();
       }
     };
-  }, [video.id, video.file, video.url]);
+  }, [video.id, video.file, video.url, activeFile]);
 
   // Handle track switches on-the-fly without rebuilding the controller
   useEffect(() => {
@@ -4026,7 +4095,7 @@ export const LocalVideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Buffering ring loader */}
-      {isBuffering && (
+      {(isBuffering || (video.type === 'local' && video.url && video.url.startsWith('blob:') && !activeFile)) && (
         <div className="buffering-spinner-overlay" onClick={(e) => e.stopPropagation()}>
           <svg className="dragon-fire-spinner" viewBox="0 0 120 120" width="120" height="120">
             <defs>

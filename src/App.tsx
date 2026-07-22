@@ -1374,15 +1374,18 @@ function App() {
               }
               
               if (active) {
-                // If it is STILL a dead blob URL (which we couldn't recover because handle permission was not granted/stored),
-                // we set it to null to prevent "empty string was passed to src attribute" or subtitle parser crashes
-                if (videoObj.type === 'local' && !videoObj.localFilePath && (!videoObj.file || !videoObj.url || videoObj.url.startsWith('blob:'))) {
-                  console.warn('[Recovery] Local video is unplayable (dead blob and no file handle). Clearing playingVideo.');
-                  rawSetPlayingVideo(null);
-                  localStorage.removeItem('valor_currently_playing');
-                } else {
-                  rawSetPlayingVideo(videoObj);
-                }
+                rawSetPlayingVideo(current => {
+                  const isFileObj = (obj: any): obj is File => obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
+                  if (current && (isFileObj(current.file) || current.url !== videoObj.url)) {
+                    return current;
+                  }
+                  if (videoObj.type === 'local' && !videoObj.localFilePath && (!isFileObj(videoObj.file) || !videoObj.url || videoObj.url.startsWith('blob:'))) {
+                    console.warn('[Recovery] Local video is unplayable (dead blob and no file handle). Clearing playingVideo.');
+                    localStorage.removeItem('valor_currently_playing');
+                    return null;
+                  }
+                  return videoObj;
+                });
               }
             } catch (err) {
               console.error('[Recovery] Failed to restore playing video:', err);
@@ -1715,12 +1718,50 @@ function App() {
   }, [videos, settings.historyLimit]);
 
   useEffect(() => {
+    // Check if the playingVideo is unplayable (dead local blob URL with no File object)
+    const isFileObj = (obj: any): obj is File => obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
+    const isPlayable = playingVideo && (
+      playingVideo.type !== 'local' || 
+      playingVideo.localFilePath || 
+      isFileObj(playingVideo.file) || 
+      (playingVideo.url && !playingVideo.url.startsWith('blob:'))
+    );
+
+    if (playingVideo && !isPlaybackRestoring && !isPlayable) {
+      const triggerReassociate = async () => {
+        pendingLocalReassociateIdRef.current = playingVideo.id;
+        if ('showOpenFilePicker' in window) {
+          try {
+            const [handle] = await (window as any).showOpenFilePicker({
+              types: [{
+                description: 'Video Files',
+                accept: {
+                  'video/mp4': ['.mp4', '.m4v'],
+                  'video/webm': ['.webm'],
+                  'video/x-matroska': ['.mkv'],
+                  'video/quicktime': ['.mov'],
+                  'video/x-msvideo': ['.avi']
+                }
+              }]
+            });
+            const file = await handle.getFile();
+            await processLocalVideo(file, playingVideo.id, handle);
+          } catch (err) {
+            console.error('Auto re-association cancelled:', err);
+            setPlayingVideo(null);
+          }
+        } else {
+          historyVideoInputRef.current?.click();
+        }
+      };
+      triggerReassociate();
+    }
+  }, [playingVideo, isPlaybackRestoring]);
+
+  useEffect(() => {
     // Sync the loaded history user ID reference when the videos list changes
     loadedVideosUserIdRef.current = settings.userId;
   }, [videos]);
-
-
-
 
   const handleUpdateVideo = (updatedVideoOrUpdater: VideoItem | ((prev: VideoItem) => VideoItem), isExiting = false, targetVideoId?: string, forceSave = false) => {
     setVideos((prev) => {
@@ -2656,8 +2697,16 @@ function App() {
     await processRemoteUrl(url, isLocalFile);
   };
 
+  const isFileObj = (obj: any): obj is File => obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
+  const isPlayable = playingVideo && (
+    playingVideo.type !== 'local' || 
+    playingVideo.localFilePath || 
+    isFileObj(playingVideo.file) || 
+    (playingVideo.url && !playingVideo.url.startsWith('blob:'))
+  );
+
   // If playing, render VideoPlayer fullscreen (blocking mount until playback source restoration finishes)
-  if (playingVideo && !isPlaybackRestoring) {
+  if (playingVideo && !isPlaybackRestoring && isPlayable) {
     if (playingVideo.type === 'online_movie' || playingVideo.type === 'online_tv' || playingVideo.type === 'online_anime') {
       return (
         <OnlineVideoPlayer
@@ -2744,6 +2793,31 @@ function App() {
           saveSettingsToStorage(updated);
           return updated;
         });
+      },
+      onReassociate: async (videoId: string) => {
+        pendingLocalReassociateIdRef.current = videoId;
+        if ('showOpenFilePicker' in window) {
+          try {
+            const [handle] = await (window as any).showOpenFilePicker({
+              types: [{
+                description: 'Video Files',
+                accept: {
+                  'video/mp4': ['.mp4', '.m4v'],
+                  'video/webm': ['.webm'],
+                  'video/x-matroska': ['.mkv'],
+                  'video/quicktime': ['.mov'],
+                  'video/x-msvideo': ['.avi']
+                }
+              }]
+            });
+            const file = await handle.getFile();
+            await processLocalVideo(file, videoId, handle);
+          } catch (err) {
+            console.error('Re-association picker cancelled:', err);
+          }
+        } else {
+          historyVideoInputRef.current?.click();
+        }
       }
     };
 
