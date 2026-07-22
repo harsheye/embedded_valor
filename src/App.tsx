@@ -2513,13 +2513,23 @@ function App() {
     }
   };
 
-  // URL Form submit handler
+  // URL / Path Form submit handler
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!videoUrl) return;
-    const url = videoUrl;
+    let url = videoUrl.trim();
+    
+    // Check if it is a local path rather than a URL
+    const isUrl = url.startsWith('http://') || url.startsWith('https://');
+    let isLocalFile = false;
+    if (!isUrl) {
+      // It is a local path! Convert it to local-video-stream URL served by our backend
+      url = `http://127.0.0.1:50001/local-video-stream?path=${encodeURIComponent(url)}`;
+      isLocalFile = true;
+    }
+    
     setVideoUrl('');
-    await processRemoteUrl(url);
+    await processRemoteUrl(url, isLocalFile);
   };
 
   // If playing, render VideoPlayer fullscreen
@@ -3019,9 +3029,9 @@ function App() {
                     >
                       <div className="inline-url-input-wrapper">
                         <input 
-                          type="url" 
+                          type="text" 
                           className="form-input inline-url-input" 
-                          placeholder="Enter Video Stream URL (e.g. https://.../movie.mp4)" 
+                          placeholder="Enter Stream URL or Local File Path (e.g. C:\movies\film.mp4)" 
                           value={videoUrl}
                           onChange={(e) => setVideoUrl(e.target.value)}
                           required
