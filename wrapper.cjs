@@ -1196,71 +1196,7 @@ const backendServer = http.createServer((req, res) => {
         const historyData = variables.history;
         if (userId && userId !== 'local' && !userId.startsWith('local_')) {
           try {
-            // Delete existing history & bookmarks first to match full sync behavior
-            const deleteHistory = db.prepare('DELETE FROM history WHERE userId = ?');
-            deleteHistory.run(userId);
-            const deleteBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ?');
-            deleteBookmarks.run(userId);
-
-            const insertHistory = db.prepare(`
-              INSERT OR REPLACE INTO history 
-              (userId, videoId, title, url, type, fileName, duration, currentTime, lastPlayedDate, totalTimeWatched, rating, timeToFinish, sessions, localFilePath, playedDates, format, streams, audioTracks, subtitleTracks)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-            const insertBookmark = db.prepare(`
-              INSERT OR REPLACE INTO bookmarks
-              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, thumbnail, favorite, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-
-            if (Array.isArray(historyData)) {
-              for (const video of historyData) {
-                insertHistory.run(
-                  userId,
-                  video.id,
-                  video.title || 'Untitled Video',
-                  video.url || '',
-                  video.type || 'local',
-                  video.fileName || '',
-                  video.duration || null,
-                  video.currentTime || null,
-                  video.lastPlayedDate || null,
-                  video.totalTimeWatched || null,
-                  video.rating || null,
-                  video.timeToFinish || null,
-                  video.sessions ? JSON.stringify(video.sessions) : null,
-                  video.localFilePath || null,
-                  video.playedDates ? JSON.stringify(video.playedDates) : null,
-                  video.format || null,
-                  video.streams ? JSON.stringify(video.streams) : null,
-                  video.audioTracks ? JSON.stringify(video.audioTracks) : null,
-                  video.subtitleTracks ? JSON.stringify(video.subtitleTracks) : null
-                );
-
-                if (video.bookmarks && Array.isArray(video.bookmarks)) {
-                  for (const bm of video.bookmarks) {
-                    insertBookmark.run(
-                      userId,
-                      video.id,
-                      bm.id,
-                      bm.time,
-                      bm.endTime !== undefined ? bm.endTime : null,
-                      bm.label || '',
-                      bm.isIntro ? 1 : 0,
-                      bm.isOutro ? 1 : 0,
-                      bm.skipEnabled ? 1 : 0,
-                      bm.title || '',
-                      bm.description || '',
-                      bm.category || 'Custom',
-                      bm.thumbnail || '',
-                      bm.favorite ? 1 : 0,
-                      bm.createdAt || new Date().toISOString(),
-                      bm.updatedAt || new Date().toISOString()
-                    );
-                  }
-                }
-              }
-            }
+            saveNormalizedHistory(userId, historyData);
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ data: { saveHistory: { success: true } } }));

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Component, ReactNode, useCallback } from 'react';
+import { useState, useEffect, useRef, Component, ReactNode, useCallback, useMemo } from 'react';
 import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack } from './types/media';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: any }> {
@@ -48,6 +48,8 @@ import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
 import { OnlineSearchTab } from './components/OnlineSearchTab';
 import { OnlineEmbedPlayer } from './components/OnlineEmbedPlayer';
 import { OnlineDetailsPage } from './components/OnlineDetailsPage';
+import { GraphQLStorageProvider } from './services/storage/GraphQLStorageProvider';
+import { LocalIndexedDBProvider } from './services/storage/LocalIndexedDBProvider';
 import { ActorDetailsPage } from './components/ActorDetailsPage';
 import { OnlineVideoPlayer } from './components/OnlineVideoPlayer';
 import { CustomSelect } from './components/CustomSelect';
@@ -1291,21 +1293,47 @@ function App() {
     document.documentElement.setAttribute('data-theme', settings.theme || 'dark');
   }, [settings.theme]);
 
-  const saveSettingsToStorage = async (state: typeof defaultSettings) => {
-    if (state.storageMode === 'file' && state.userId && state.userId !== 'local' && !state.userId.startsWith('local_')) {
-      try {
-        await gqlFetch(`
-          mutation SaveSettings($userId: String!, $settings: SettingsInput!) {
-            saveSettings(userId: $userId, settings: $settings) {
-              success
-            }
-          }
-        `, { userId: state.userId, settings: state });
-      } catch (e) {
-        console.error('Failed to save settings to server via GraphQL:', e);
-      }
+  const storageProvider = useMemo(() => {
+    if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
+      return new GraphQLStorageProvider(settings.userId, gqlFetch);
     }
+    return new LocalIndexedDBProvider();
+  }, [settings.storageMode, settings.userId, gqlFetch]);
 
+  useEffect(() => {
+    let active = true;
+    const loadFromProvider = async () => {
+      try {
+        console.log('[StorageProvider] Loading settings and history from provider for userId:', settings.userId);
+        
+        // 1. Load latest settings
+        const loadedSettings = await storageProvider.getSettings(defaultSettings);
+        if (active && loadedSettings) {
+          setSettings(prev => ({
+            ...prev,
+            ...loadedSettings
+          }));
+        }
+
+        // 2. Load latest history
+        const loadedHistory = await storageProvider.getHistory();
+        if (active && loadedHistory) {
+          setVideos(loadedHistory);
+          loadedVideosUserIdRef.current = settings.userId;
+        }
+      } catch (err) {
+        console.error('[StorageProvider] Failed to load data:', err);
+      }
+    };
+
+    loadFromProvider();
+
+    return () => {
+      active = false;
+    };
+  }, [storageProvider]);
+
+  const saveSettingsToStorage = async (state: typeof defaultSettings) => {
     const settingsKey = state.userId === 'local' || !state.userId ? 'valor_settings' : `valor_settings_${state.userId}`;
 
     if (!state.saveSettings) {
@@ -1323,7 +1351,7 @@ function App() {
       stateToSave.historySaveInterval = defaultSettings.historySaveInterval;
     }
 
-    localStorage.setItem(settingsKey, JSON.stringify(stateToSave));
+    await storageProvider.saveSettings(stateToSave);
   };
 
   const handleExportData = () => {
@@ -1536,6 +1564,9 @@ function App() {
         if (limit !== 'Infinite' && typeof limit === 'number') {
           targetVideos = videoList.slice(0, limit);
         }
+
+        await storageProvider.saveHistory(targetVideos, forceSync);
+
         const serialized = targetVideos.map(v => ({
           id: v.id,
           title: v.title,
@@ -1576,39 +1607,6 @@ function App() {
           hasScrobbledTrakt: v.hasScrobbledTrakt
         }));
 
-        // Sync to backend file if storageMode is file
-        if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
-          const saveHistoryMut = `
-            mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
-              saveHistory(userId: $userId, history: $history) {
-                success
-              }
-            }
-          `;
-
-          if (forceSync) {
-            if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-            lastHistorySyncTimeRef.current = Date.now();
-            gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-              .catch(err => console.error('Failed to force sync history via GraphQL:', err));
-          } else {
-            const now = Date.now();
-            if (now - lastHistorySyncTimeRef.current > 10000) {
-              lastHistorySyncTimeRef.current = now;
-              if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-              gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-                .catch(err => console.error('Failed to sync history via GraphQL:', err));
-            } else {
-              if (historySyncTimeoutRef.current) clearTimeout(historySyncTimeoutRef.current);
-              historySyncTimeoutRef.current = setTimeout(() => {
-                lastHistorySyncTimeRef.current = Date.now();
-                gqlFetch(saveHistoryMut, { userId: settings.userId, history: serialized })
-                  .catch(err => console.error('Failed to sync history via GraphQL:', err));
-              }, 10000);
-            }
-          }
-        }
-
         try {
           localStorage.setItem(videosKey, JSON.stringify(serialized));
         } catch (err: any) {
@@ -1619,16 +1617,6 @@ function App() {
               currentList.pop();
               try {
                 localStorage.setItem(videosKey, JSON.stringify(currentList));
-                if (settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_')) {
-                  const saveHistoryMut = `
-                    mutation SaveHistory($userId: String!, $history: [HistoryInput!]!) {
-                      saveHistory(userId: $userId, history: $history) {
-                        success
-                      }
-                    }
-                  `;
-                  gqlFetch(saveHistoryMut, { userId: settings.userId, history: currentList }).catch(() => {});
-                }
                 break;
               } catch (retryErr) {
                 // keep popping
