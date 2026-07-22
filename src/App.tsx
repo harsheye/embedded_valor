@@ -91,7 +91,7 @@ export const BACKEND_ORIGIN = 'http://127.0.0.1:50001';
 
 export const sanitizeVideoItem = (v: VideoItem): VideoItem => {
   if (v && v.type === 'local' && v.localFilePath) {
-    const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(v.localFilePath)}`;
+    const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?id=${encodeURIComponent(v.id)}`;
     if (v.url !== streamUrl) {
       return { ...v, url: streamUrl };
     }
@@ -2004,7 +2004,7 @@ function App() {
         setPlayingVideo(video);
       } else if (video.type === 'local') {
         if (video.localFilePath) {
-          const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(video.localFilePath)}`;
+          const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?id=${encodeURIComponent(video.id)}`;
           const updated = {
             ...video,
             url: streamUrl

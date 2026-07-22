@@ -202,6 +202,345 @@ db.exec(`
   );
 `);
 
+// --- Normalized Schema Redesign & Media Registry ---
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS media (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL,
+    tmdbId INTEGER,
+    season INTEGER,
+    episode INTEGER,
+    year INTEGER,
+    runtime INTEGER,
+    createdAt TEXT
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS media_sources (
+    mediaId TEXT NOT NULL,
+    sourceType TEXT NOT NULL,
+    path TEXT,
+    remoteUrl TEXT,
+    format TEXT,
+    streams TEXT,
+    audioTracks TEXT,
+    subtitleTracks TEXT,
+    duration REAL,
+    PRIMARY KEY (mediaId, sourceType),
+    FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS playback_history (
+    userId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    currentTime REAL,
+    lastPlayedDate TEXT,
+    totalTimeWatched REAL,
+    rating INTEGER,
+    timeToFinish REAL,
+    sessions TEXT,
+    playedDates TEXT,
+    PRIMARY KEY (userId, mediaId),
+    FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE
+  );
+`);
+
+// Try to alter bookmarks table to add indexes if needed
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_bookmarks_userId_videoId ON bookmarks (userId, videoId);`); } catch(e){}
+
+// Automatic one-time migration from legacy flat 'history' table
+try {
+  const mediaCount = db.prepare('SELECT COUNT(*) as count FROM media').get().count;
+  if (mediaCount === 0) {
+    const historyTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='history'").get();
+    if (historyTableExists) {
+      const historyRows = db.prepare('SELECT * FROM history').all();
+      if (historyRows.length > 0) {
+        console.log(`[Database Migration] Migrating ${historyRows.length} history records to the new normalized schema...`);
+        const insertMedia = db.prepare(`
+          INSERT OR IGNORE INTO media (id, title, type, tmdbId, season, episode, year, runtime, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const insertSource = db.prepare(`
+          INSERT OR REPLACE INTO media_sources (mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const insertPlayback = db.prepare(`
+          INSERT OR REPLACE INTO playback_history (userId, mediaId, currentTime, lastPlayedDate, totalTimeWatched, rating, timeToFinish, sessions, playedDates)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        db.transaction(() => {
+          for (const row of historyRows) {
+            const isLocal = row.type === 'local';
+            const sourceType = isLocal ? 'local' : 'remote';
+            
+            let season = null;
+            let episode = null;
+            if (row.title) {
+              const match = row.title.match(/S(\d+)E(\d+)/i);
+              if (match) {
+                season = parseInt(match[1], 10);
+                episode = parseInt(match[2], 10);
+              }
+            }
+
+            insertMedia.run(
+              row.videoId,
+              row.title || 'Untitled',
+              row.type || 'local',
+              row.tmdbId || null,
+              season,
+              episode,
+              null,
+              null,
+              new Date().toISOString()
+            );
+
+            insertSource.run(
+              row.videoId,
+              sourceType,
+              row.localFilePath || null,
+              row.url || null,
+              row.format || null,
+              row.streams || null,
+              row.audioTracks || null,
+              row.subtitleTracks || null,
+              row.duration || null
+            );
+
+            insertPlayback.run(
+              row.userId,
+              row.videoId,
+              row.currentTime || 0,
+              row.lastPlayedDate || null,
+              row.totalTimeWatched || 0,
+              row.rating || null,
+              row.timeToFinish || null,
+              row.sessions || null,
+              row.playedDates || null
+            );
+          }
+        })();
+        console.log('[Database Migration] Migration successfully completed.');
+      }
+    }
+  }
+} catch (migrationError) {
+  console.error('[Database Migration] Error during migration:', migrationError);
+}
+
+// Helpers for fetching/saving normalized history
+function getNormalizedHistory(userId) {
+  const historyRows = db.prepare(`
+    SELECT 
+      m.id as videoId,
+      m.title,
+      m.type,
+      m.tmdbId,
+      m.season,
+      m.episode,
+      ms.sourceType,
+      ms.path as localFilePath,
+      ms.remoteUrl,
+      ms.format,
+      ms.streams,
+      ms.audioTracks,
+      ms.subtitleTracks,
+      ms.duration,
+      ph.currentTime,
+      ph.lastPlayedDate,
+      ph.totalTimeWatched,
+      ph.rating,
+      ph.timeToFinish,
+      ph.sessions,
+      ph.playedDates
+    FROM playback_history ph
+    INNER JOIN media m ON ph.mediaId = m.id
+    LEFT JOIN media_sources ms ON ph.mediaId = ms.mediaId
+    WHERE ph.userId = ?
+  `).all(userId);
+
+  const bookmarksRows = db.prepare('SELECT * FROM bookmarks WHERE userId = ?').all(userId);
+
+  return historyRows.map(row => {
+    const videoBookmarks = bookmarksRows
+      .filter(bm => bm.videoId === row.videoId)
+      .map(bm => ({
+        id: bm.id,
+        time: bm.time,
+        endTime: bm.endTime !== null ? bm.endTime : undefined,
+        label: bm.label,
+        isIntro: bm.isIntro === 1,
+        isOutro: bm.isOutro === 1,
+        skipEnabled: bm.skipEnabled === 1,
+        title: bm.title,
+        description: bm.description,
+        category: bm.category,
+        thumbnail: bm.thumbnail,
+        favorite: bm.favorite === 1,
+        createdAt: bm.createdAt,
+        updatedAt: bm.updatedAt,
+        episode: bm.episode,
+        season: bm.season,
+        color: bm.color
+      }));
+
+    const isLocal = row.type === 'local';
+    const streamUrl = isLocal && row.localFilePath
+      ? `http://127.0.0.1:50001/local-video-stream?id=${encodeURIComponent(row.videoId)}`
+      : (row.remoteUrl || '');
+
+    return {
+      id: row.videoId,
+      title: row.title,
+      url: streamUrl,
+      type: row.type || 'local',
+      fileName: row.localFilePath ? row.localFilePath.split(/[/\\]/).pop() : '',
+      duration: row.duration,
+      currentTime: row.currentTime,
+      lastPlayedDate: row.lastPlayedDate,
+      totalTimeWatched: row.totalTimeWatched,
+      rating: row.rating,
+      timeToFinish: row.timeToFinish,
+      sessions: row.sessions ? JSON.parse(row.sessions) : [],
+      localFilePath: row.localFilePath,
+      playedDates: row.playedDates ? JSON.parse(row.playedDates) : [],
+      format: row.format || null,
+      streams: row.streams ? JSON.parse(row.streams) : [],
+      audioTracks: row.audioTracks ? JSON.parse(row.audioTracks) : [],
+      subtitleTracks: row.subtitleTracks ? JSON.parse(row.subtitleTracks) : [],
+      bookmarks: videoBookmarks,
+      tmdbId: row.tmdbId || undefined,
+      season: row.season || undefined,
+      episode: row.episode || undefined
+    };
+  });
+}
+
+function saveNormalizedHistory(userId, historyData) {
+  db.transaction(() => {
+    db.prepare('DELETE FROM playback_history WHERE userId = ?').run(userId);
+    db.prepare('DELETE FROM bookmarks WHERE userId = ?').run(userId);
+
+    const insertMedia = db.prepare(`
+      INSERT INTO media (id, title, type, tmdbId, season, episode, year, runtime, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        type = excluded.type,
+        tmdbId = COALESCE(excluded.tmdbId, tmdbId),
+        season = COALESCE(excluded.season, season),
+        episode = COALESCE(excluded.episode, episode),
+        year = COALESCE(excluded.year, year),
+        runtime = COALESCE(excluded.runtime, runtime)
+    `);
+
+    const insertSource = db.prepare(`
+      INSERT OR REPLACE INTO media_sources (mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertPlayback = db.prepare(`
+      INSERT OR REPLACE INTO playback_history (userId, mediaId, currentTime, lastPlayedDate, totalTimeWatched, rating, timeToFinish, sessions, playedDates)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertBookmark = db.prepare(`
+      INSERT OR REPLACE INTO bookmarks
+      (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const video of historyData) {
+      const isLocal = video.type === 'local';
+      const sourceType = isLocal ? 'local' : 'remote';
+      
+      let season = video.season || null;
+      let episode = video.episode || null;
+      if (!season && !episode && video.title) {
+        const match = video.title.match(/S(\d+)E(\d+)/i);
+        if (match) {
+          season = parseInt(match[1], 10);
+          episode = parseInt(match[2], 10);
+        }
+      }
+
+      insertMedia.run(
+        video.id,
+        video.title || 'Untitled Video',
+        video.type || 'local',
+        video.tmdbId || null,
+        season,
+        episode,
+        video.year || null,
+        video.runtime || null
+      );
+
+      let remoteUrl = video.url || '';
+      if (isLocal && remoteUrl.includes('/local-video-stream')) {
+        remoteUrl = '';
+      }
+
+      insertSource.run(
+        video.id,
+        sourceType,
+        video.localFilePath || null,
+        remoteUrl,
+        video.format || null,
+        video.streams ? JSON.stringify(video.streams) : null,
+        video.audioTracks ? JSON.stringify(video.audioTracks) : null,
+        video.subtitleTracks ? JSON.stringify(video.subtitleTracks) : null,
+        video.duration || null
+      );
+
+      insertPlayback.run(
+        userId,
+        video.id,
+        video.currentTime || null,
+        video.lastPlayedDate || null,
+        video.totalTimeWatched || null,
+        video.rating || null,
+        video.timeToFinish || null,
+        video.sessions ? JSON.stringify(video.sessions) : null,
+        video.playedDates ? JSON.stringify(video.playedDates) : null
+      );
+
+      if (video.bookmarks && Array.isArray(video.bookmarks)) {
+        for (const bm of video.bookmarks) {
+          insertBookmark.run(
+            userId,
+            video.id,
+            bm.id,
+            bm.time,
+            bm.endTime !== undefined && bm.endTime !== null ? bm.endTime : null,
+            bm.label || '',
+            bm.isIntro ? 1 : 0,
+            bm.isOutro ? 1 : 0,
+            bm.skipEnabled ? 1 : 0,
+            bm.title || null,
+            bm.description || null,
+            bm.category || null,
+            bm.startTime || null,
+            bm.thumbnail || null,
+            bm.favorite ? 1 : 0,
+            bm.createdAt || bm.updatedAt || new Date().toISOString(),
+            bm.updatedAt || new Date().toISOString(),
+            bm.episode || null,
+            bm.season || null,
+            bm.color || null
+          );
+        }
+      }
+    }
+  });
+}
+
 // Setup logging redirection to app.log
 const logFilePath = path.join(dataDir, 'app.log');
 const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
@@ -814,57 +1153,7 @@ const backendServer = http.createServer((req, res) => {
           const settingsRow = settingsQuery.get(userId);
           const settings = settingsRow ? JSON.parse(settingsRow.settingsJson) : {};
 
-          // Fetch history
-          const historyQuery = db.prepare('SELECT * FROM history WHERE userId = ?');
-          const historyRows = historyQuery.all(userId);
-
-          // Fetch bookmarks
-          const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ?');
-          const bookmarksRows = bookmarksQuery.all(userId);
-
-          // Combine history and bookmarks
-          const videos = historyRows.map(row => {
-            const videoBookmarks = bookmarksRows
-              .filter(bm => bm.videoId === row.videoId)
-              .map(bm => ({
-                id: bm.id,
-                time: bm.time,
-                endTime: bm.endTime !== null ? bm.endTime : undefined,
-                label: bm.label,
-                isIntro: bm.isIntro === 1,
-                isOutro: bm.isOutro === 1,
-                skipEnabled: bm.skipEnabled === 1,
-                title: bm.title,
-                description: bm.description,
-                category: bm.category,
-                thumbnail: bm.thumbnail,
-                favorite: bm.favorite === 1,
-                createdAt: bm.createdAt,
-                updatedAt: bm.updatedAt
-              }));
-            
-            return {
-              id: row.videoId,
-              title: row.title,
-              url: row.url || '',
-              type: row.type || 'local',
-              fileName: row.fileName || '',
-              duration: row.duration,
-              currentTime: row.currentTime,
-              lastPlayedDate: row.lastPlayedDate,
-              totalTimeWatched: row.totalTimeWatched,
-              rating: row.rating,
-              timeToFinish: row.timeToFinish,
-              sessions: row.sessions ? JSON.parse(row.sessions) : [],
-              localFilePath: row.localFilePath,
-              playedDates: row.playedDates ? JSON.parse(row.playedDates) : [],
-              format: row.format || null,
-              streams: row.streams ? JSON.parse(row.streams) : [],
-              audioTracks: row.audioTracks ? JSON.parse(row.audioTracks) : [],
-              subtitleTracks: row.subtitleTracks ? JSON.parse(row.subtitleTracks) : [],
-              bookmarks: videoBookmarks
-            };
-          });
+          const videos = getNormalizedHistory(userId);
 
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
@@ -1080,57 +1369,7 @@ const backendServer = http.createServer((req, res) => {
       const settingsRow = settingsQuery.get(userId);
       const settings = settingsRow ? JSON.parse(settingsRow.settingsJson) : {};
 
-      // Fetch history
-      const historyQuery = db.prepare('SELECT * FROM history WHERE userId = ?');
-      const historyRows = historyQuery.all(userId);
-
-      // Fetch bookmarks
-      const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ?');
-      const bookmarksRows = bookmarksQuery.all(userId);
-
-      // Combine history and bookmarks
-      const videos = historyRows.map(row => {
-        const videoBookmarks = bookmarksRows
-          .filter(bm => bm.videoId === row.videoId)
-          .map(bm => ({
-            id: bm.id,
-            time: bm.time,
-            endTime: bm.endTime !== null ? bm.endTime : undefined,
-            label: bm.label,
-            isIntro: bm.isIntro === 1,
-            isOutro: bm.isOutro === 1,
-            skipEnabled: bm.skipEnabled === 1,
-            title: bm.title,
-            description: bm.description,
-            category: bm.category,
-            thumbnail: bm.thumbnail,
-            favorite: bm.favorite === 1,
-            createdAt: bm.createdAt,
-            updatedAt: bm.updatedAt
-          }));
-        
-        return {
-          id: row.videoId,
-          title: row.title,
-          url: row.url || '',
-          type: row.type || 'local',
-          fileName: row.fileName || '',
-          duration: row.duration,
-          currentTime: row.currentTime,
-          lastPlayedDate: row.lastPlayedDate,
-          totalTimeWatched: row.totalTimeWatched,
-          rating: row.rating,
-          timeToFinish: row.timeToFinish,
-          sessions: row.sessions ? JSON.parse(row.sessions) : [],
-          localFilePath: row.localFilePath,
-          playedDates: row.playedDates ? JSON.parse(row.playedDates) : [],
-          format: row.format || null,
-          streams: row.streams ? JSON.parse(row.streams) : [],
-          audioTracks: row.audioTracks ? JSON.parse(row.audioTracks) : [],
-          subtitleTracks: row.subtitleTracks ? JSON.parse(row.subtitleTracks) : [],
-          bookmarks: videoBookmarks
-        };
-      });
+      const videos = getNormalizedHistory(userId);
 
       res.end(JSON.stringify({ settings, history: videos }));
     } catch (e) {
@@ -1361,73 +1600,7 @@ const backendServer = http.createServer((req, res) => {
       getJsonBody(req).then(data => {
         if (userId && userId !== 'local') {
           try {
-            // Delete existing history & bookmarks for this user first to match full sync behavior
-            const deleteHistory = db.prepare('DELETE FROM history WHERE userId = ?');
-            deleteHistory.run(userId);
-            const deleteBookmarks = db.prepare('DELETE FROM bookmarks WHERE userId = ?');
-            deleteBookmarks.run(userId);
-
-            const insertHistory = db.prepare(`
-              INSERT OR REPLACE INTO history 
-              (userId, videoId, title, url, type, fileName, duration, currentTime, lastPlayedDate, totalTimeWatched, rating, timeToFinish, sessions, localFilePath, playedDates, format, streams, audioTracks, subtitleTracks)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-            const insertBookmark = db.prepare(`
-              INSERT OR REPLACE INTO bookmarks
-              (userId, videoId, id, time, endTime, label, isIntro, isOutro, skipEnabled, title, description, category, startTime, thumbnail, favorite, createdAt, updatedAt, episode, season, color)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?)
-            `);
-
-            if (Array.isArray(data)) {
-              for (const video of data) {
-                insertHistory.run(
-                  userId,
-                  video.id,
-                  video.title || 'Untitled Video',
-                  video.url || '',
-                  video.type || 'local',
-                  video.fileName || '',
-                  video.duration || null,
-                  video.currentTime || null,
-                  video.lastPlayedDate || null,
-                  video.totalTimeWatched || null,
-                  video.rating || null,
-                  video.timeToFinish || null,
-                  video.sessions ? JSON.stringify(video.sessions) : null,
-                  video.localFilePath || null,
-                  video.playedDates ? JSON.stringify(video.playedDates) : null,
-                  video.format || null,
-                  video.streams ? JSON.stringify(video.streams) : null,
-                  video.audioTracks ? JSON.stringify(video.audioTracks) : null,
-                  video.subtitleTracks ? JSON.stringify(video.subtitleTracks) : null
-                );
-
-                if (video.bookmarks && Array.isArray(video.bookmarks)) {
-                  for (const bm of video.bookmarks) {
-                    insertBookmark.run(
-                      userId,
-                      video.id,
-                      bm.id,
-                      bm.time,
-                      bm.endTime !== undefined ? bm.endTime : null,
-                      bm.label || '',
-                      bm.isIntro ? 1 : 0,
-                      bm.isOutro ? 1 : 0,
-                      bm.skipEnabled ? 1 : 0,
-                      bm.title || null,
-                      bm.description || null,
-                      bm.category || null,
-                      bm.startTime || null,
-                      bm.thumbnail || null,
-                      bm.favorite ? 1 : 0,
-                      bm.episode || null,
-                      bm.season || null,
-                      bm.color || null
-                    );
-                  }
-                }
-              }
-            }
+            saveNormalizedHistory(userId, data);
           } catch (e) {
             console.error('[SQLite history POST error]', e.message);
           }
@@ -1440,58 +1613,7 @@ const backendServer = http.createServer((req, res) => {
     } else {
       if (userId && userId !== 'local') {
         try {
-          const historyQuery = db.prepare('SELECT * FROM history WHERE userId = ?');
-          const historyRows = historyQuery.all(userId);
-
-          const bookmarksQuery = db.prepare('SELECT * FROM bookmarks WHERE userId = ?');
-          const bookmarksRows = bookmarksQuery.all(userId);
-
-          const videos = historyRows.map(row => {
-            const videoBookmarks = bookmarksRows
-              .filter(bm => bm.videoId === row.videoId)
-              .map(bm => ({
-                id: bm.id,
-                time: bm.time,
-                endTime: bm.endTime !== null ? bm.endTime : undefined,
-                label: bm.label,
-                isIntro: bm.isIntro === 1,
-                isOutro: bm.isOutro === 1,
-                skipEnabled: bm.skipEnabled === 1,
-                title: bm.title,
-                description: bm.description,
-                category: bm.category,
-                startTime: bm.startTime,
-                thumbnail: bm.thumbnail,
-                favorite: bm.favorite === 1,
-                createdAt: bm.createdAt,
-                updatedAt: bm.updatedAt,
-                episode: bm.episode,
-                season: bm.season,
-                color: bm.color
-              }));
-
-            return {
-              id: row.videoId,
-              title: row.title,
-              url: row.url || '',
-              type: row.type || 'local',
-              fileName: row.fileName || '',
-              duration: row.duration,
-              currentTime: row.currentTime,
-              lastPlayedDate: row.lastPlayedDate,
-              totalTimeWatched: row.totalTimeWatched,
-              rating: row.rating,
-              timeToFinish: row.timeToFinish,
-              sessions: row.sessions ? JSON.parse(row.sessions) : [],
-              localFilePath: row.localFilePath,
-              playedDates: row.playedDates ? JSON.parse(row.playedDates) : [],
-              format: row.format || null,
-              streams: row.streams ? JSON.parse(row.streams) : [],
-              audioTracks: row.audioTracks ? JSON.parse(row.audioTracks) : [],
-              subtitleTracks: row.subtitleTracks ? JSON.parse(row.subtitleTracks) : [],
-              bookmarks: videoBookmarks
-            };
-          });
+          const videos = getNormalizedHistory(userId);
           res.end(JSON.stringify(videos));
         } catch (e) {
           console.error('[SQLite history GET error]', e.message);
@@ -1598,7 +1720,20 @@ const backendServer = http.createServer((req, res) => {
 
   // Video streaming endpoint with range request support
   if (pathname === '/local-video-stream') {
-    const videoPath = parsedUrl.searchParams.get('path');
+    let videoPath = parsedUrl.searchParams.get('path');
+    const mediaId = parsedUrl.searchParams.get('id');
+
+    if (!videoPath && mediaId) {
+      try {
+        const sourceRow = db.prepare("SELECT path FROM media_sources WHERE mediaId = ? AND sourceType = 'local'").get(mediaId);
+        if (sourceRow && sourceRow.path) {
+          videoPath = sourceRow.path;
+        }
+      } catch (e) {
+        console.error(`[Server] Error resolving path for media ID ${mediaId}:`, e.message);
+      }
+    }
+
     if (!videoPath || !fs.existsSync(videoPath)) {
       res.statusCode = 404;
       res.end('File not found');
