@@ -1590,67 +1590,6 @@ const backendServer = http.createServer((req, res) => {
     return;
   }
 
-  // Media Register API
-  if (pathname === '/api/media/register' && req.method === 'POST') {
-    getJsonBody(req).then(data => {
-      try {
-        const { id, title, type, path: filePath, format, streams, audioTracks, subtitleTracks, duration, tmdbId, season, episode } = data;
-        if (!id) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing id' }));
-          return;
-        }
-
-        let s = season || null;
-        let ep = episode || null;
-        if (!s && !ep && title) {
-          const match = title.match(/S(\d+)E(\d+)/i);
-          if (match) {
-            s = parseInt(match[1], 10);
-            ep = parseInt(match[2], 10);
-          }
-        }
-
-        db.transaction(() => {
-          db.prepare(`
-            INSERT INTO media (id, title, type, tmdbId, season, episode, year, runtime, createdAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(id) DO UPDATE SET
-              title = excluded.title,
-              type = excluded.type,
-              tmdbId = COALESCE(excluded.tmdbId, tmdbId),
-              season = COALESCE(excluded.season, season),
-              episode = COALESCE(excluded.episode, episode)
-          `).run(id, title || 'Untitled Video', type || 'local', tmdbId || null, s, ep, null, null);
-
-          db.prepare(`
-            INSERT OR REPLACE INTO media_sources (mediaId, sourceType, path, remoteUrl, format, streams, audioTracks, subtitleTracks, duration)
-            VALUES (?, 'local', ?, null, ?, ?, ?, ?, ?)
-          `).run(
-            id,
-            filePath || null,
-            format || null,
-            streams ? JSON.stringify(streams) : null,
-            audioTracks ? JSON.stringify(audioTracks) : null,
-            subtitleTracks ? JSON.stringify(subtitleTracks) : null,
-            duration || null
-          );
-        });
-
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ success: true }));
-      } catch (err) {
-        console.error('[SQLite media register error]', err.message);
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: err.message }));
-      }
-    });
-    return;
-  }
-
   // History API
   if (pathname === '/api/history') {
     res.statusCode = 200;

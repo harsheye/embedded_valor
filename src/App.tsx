@@ -89,9 +89,11 @@ const ToggleSwitch: React.FC<{
 
 export const BACKEND_ORIGIN = 'http://127.0.0.1:50001';
 
-export const sanitizeVideoItem = (v: VideoItem): VideoItem => {
+export const sanitizeVideoItem = (v: VideoItem, useIdStream: boolean): VideoItem => {
   if (v && v.type === 'local' && v.localFilePath) {
-    const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?id=${encodeURIComponent(v.id)}`;
+    const streamUrl = useIdStream
+      ? `${BACKEND_ORIGIN}/local-video-stream?id=${encodeURIComponent(v.id)}`
+      : `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(v.localFilePath)}`;
     if (v.url !== streamUrl) {
       return { ...v, url: streamUrl };
     }
@@ -99,9 +101,9 @@ export const sanitizeVideoItem = (v: VideoItem): VideoItem => {
   return v;
 };
 
-export const sanitizeVideoList = (list: VideoItem[]): VideoItem[] => {
+export const sanitizeVideoList = (list: VideoItem[], useIdStream: boolean): VideoItem[] => {
   if (!Array.isArray(list)) return list;
-  return list.map(sanitizeVideoItem);
+  return list.map(item => sanitizeVideoItem(item, useIdStream));
 };
 
 const originalConsoleLog = console.log;
@@ -211,6 +213,24 @@ const ratingThresholdOptions = [
 ];
 
 function App() {
+  const getUseIdStreamFromStorage = (): boolean => {
+    try {
+      const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
+      if (activeUserId === 'local' || activeUserId.startsWith('local_')) {
+        return false;
+      }
+      const settingsKey = `valor_settings_${activeUserId}`;
+      const saved = localStorage.getItem(settingsKey);
+      if (saved) {
+        const settingsObj = JSON.parse(saved);
+        return settingsObj.storageMode === 'file';
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   const [videosState, rawSetVideos] = useState<VideoItem[]>(() => {
     try {
       const activeUserId = localStorage.getItem('valor_active_user_id') || 'local';
@@ -219,11 +239,12 @@ function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
+          const useIdStreamInit = getUseIdStreamFromStorage();
           return sanitizeVideoList(parsed.map((v: any) => ({
             ...v,
             audioTracks: [],
             subtitleTracks: []
-          })));
+          })), useIdStreamInit);
         }
       }
       return [];
@@ -235,7 +256,8 @@ function App() {
   const [playingVideoState, rawSetPlayingVideo] = useState<VideoItem | null>(() => {
     try {
       const saved = localStorage.getItem('valor_currently_playing');
-      return saved ? sanitizeVideoItem(JSON.parse(saved)) : null;
+      const useIdStreamInit = getUseIdStreamFromStorage();
+      return saved ? sanitizeVideoItem(JSON.parse(saved), useIdStreamInit) : null;
     } catch (err) {
       console.error('Failed to parse currently playing video:', err);
       return null;
@@ -246,23 +268,25 @@ function App() {
   const playingVideo = playingVideoState;
 
   const setVideos = useCallback((val: VideoItem[] | ((prev: VideoItem[]) => VideoItem[])) => {
+    const useIdStream = settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_');
     if (typeof val === 'function') {
-      rawSetVideos(prev => sanitizeVideoList(val(prev)));
+      rawSetVideos(prev => sanitizeVideoList(val(prev), useIdStream));
     } else {
-      rawSetVideos(sanitizeVideoList(val));
+      rawSetVideos(sanitizeVideoList(val, useIdStream));
     }
-  }, []);
+  }, [settings.storageMode, settings.userId]);
 
   const setPlayingVideo = useCallback((val: VideoItem | null | ((prev: VideoItem | null) => VideoItem | null)) => {
+    const useIdStream = settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_');
     if (typeof val === 'function') {
       rawSetPlayingVideo(prev => {
         const res = val(prev);
-        return res ? sanitizeVideoItem(res) : null;
+        return res ? sanitizeVideoItem(res, useIdStream) : null;
       });
     } else {
-      rawSetPlayingVideo(val ? sanitizeVideoItem(val) : null);
+      rawSetPlayingVideo(val ? sanitizeVideoItem(val, useIdStream) : null);
     }
-  }, []);
+  }, [settings.storageMode, settings.userId]);
   const [selectedDetailsMedia, setSelectedDetailsMedia] = useState<VideoItem | null>(null);
   const [selectedActor, setSelectedActor] = useState<{ id: number; name: string; profilePath?: string } | null>(null);
   const [historyViewMode, setHistoryViewMode] = useState<'list' | 'calendar'>('list');
@@ -896,7 +920,6 @@ function App() {
   const historyVideoInputRef = useRef<HTMLInputElement>(null);
   const pendingLocalReassociateIdRef = useRef<string | null>(null);
   const isPickerOpenRef = useRef(false);
-  const registeredIdsRef = useRef<Set<string>>(new Set());
   const lastHistorySyncTimeRef = useRef<number>(0);
   const historySyncTimeoutRef = useRef<any>(null);
   const saveTimeoutRef = useRef<any>(null);
@@ -1488,43 +1511,7 @@ function App() {
     }
   }, [videos, settings.historyLimit]);
 
-  const registerLocalMedia = useCallback((video: VideoItem) => {
-    if (video.type === 'local' && video.localFilePath && !registeredIdsRef.current.has(video.id)) {
-      registeredIdsRef.current.add(video.id);
-      fetch(`${BACKEND_ORIGIN}/api/media/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: video.id,
-          title: video.title,
-          type: video.type,
-          path: video.localFilePath,
-          duration: video.duration,
-          format: video.format,
-          streams: video.streams,
-          audioTracks: video.audioTracks,
-          subtitleTracks: video.subtitleTracks,
-          tmdbId: video.tmdbId,
-          season: video.season,
-          episode: video.episode
-        })
-      })
-      .then(() => console.log(`[Media Registry] Registered local file path for ${video.title} (ID: ${video.id})`))
-      .catch(err => {
-        registeredIdsRef.current.delete(video.id);
-        console.error('Failed to register media on backend:', err);
-      });
-    }
-  }, []);
-
   const saveVideosToStorage = (videoList: VideoItem[], forceSync = false) => {
-    // Fire-and-forget background media registration for local paths
-    videoList.forEach(v => {
-      if (v.type === 'local' && v.localFilePath) {
-        registerLocalMedia(v);
-      }
-    });
-
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
@@ -2041,7 +2028,10 @@ function App() {
         setPlayingVideo(video);
       } else if (video.type === 'local') {
         if (video.localFilePath) {
-          const streamUrl = `${BACKEND_ORIGIN}/local-video-stream?id=${encodeURIComponent(video.id)}`;
+          const useIdStream = settings.storageMode === 'file' && settings.userId && settings.userId !== 'local' && !settings.userId.startsWith('local_');
+          const streamUrl = useIdStream
+            ? `${BACKEND_ORIGIN}/local-video-stream?id=${encodeURIComponent(video.id)}`
+            : `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(video.localFilePath)}`;
           const updated = {
             ...video,
             url: streamUrl
