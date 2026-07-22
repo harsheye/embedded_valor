@@ -530,6 +530,39 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Recover currently playing local video file from IndexedDB handle on startup if it uses a blob URL
+  useEffect(() => {
+    const recoverPlayingVideoFile = async () => {
+      const playingKey = 'valor_currently_playing';
+      const saved = localStorage.getItem(playingKey);
+      if (saved) {
+        try {
+          const video = JSON.parse(saved) as VideoItem;
+          if (video && video.type === 'local' && !video.localFilePath && (!video.url || video.url.startsWith('blob:'))) {
+            const handle = await getFileHandle(video.id);
+            if (handle) {
+              const options = { mode: 'read' as const };
+              if ((await handle.queryPermission(options)) === 'granted') {
+                const file = await handle.getFile();
+                const newBlobUrl = URL.createObjectURL(file);
+                const updated = {
+                  ...video,
+                  file,
+                  url: newBlobUrl
+                };
+                rawSetPlayingVideo(updated);
+                console.log('[Recovery] Successfully programmatically recovered local file handle and generated new blob URL for playing video.');
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[Recovery] Failed to recover local file handle on startup:', err);
+        }
+      }
+    };
+    recoverPlayingVideoFile();
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fileParam = params.get('file');
@@ -1326,6 +1359,24 @@ function App() {
         if (active && loadedHistory) {
           setVideos(loadedHistory);
           loadedVideosUserIdRef.current = settings.userId;
+
+          // Sync currently playing video with loaded history to recover paths/metadata
+          setPlayingVideo(prev => {
+            if (prev) {
+              const matched = loadedHistory.find(h => h.id === prev.id || h.title === prev.title);
+              if (matched) {
+                const useIdStream = (loadedSettings?.storageMode === 'file' || settings.storageMode === 'file');
+                const merged = {
+                  ...prev,
+                  ...matched,
+                  file: prev.file || matched.file,
+                  currentTime: prev.currentTime !== undefined ? prev.currentTime : matched.currentTime
+                };
+                return sanitizeVideoItem(merged, useIdStream);
+              }
+            }
+            return prev;
+          });
         }
       } catch (err) {
         console.error('[StorageProvider] Failed to load data:', err);
