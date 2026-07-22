@@ -335,8 +335,9 @@ const FireRing: React.FC = () => {
 
 
 /* ═══════════════════════════════════════════════════════════════════
-   3. FLAME BURST — Full-screen edge overlay. Flames spawn from
-      all 4 edges of the player viewport and lick inward.
+   3. FLAME BURST — Full-screen edge flames. Proper flame-shaped
+      bezier particles that flicker, rise, and vanish like real fire.
+      Includes entrance build-up and exit fade-down transitions.
    ═══════════════════════════════════════════════════════════════════ */
 const FlameBurst: React.FC<{ fullscreen?: boolean }> = ({ fullscreen = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -348,7 +349,6 @@ const FlameBurst: React.FC<{ fullscreen?: boolean }> = ({ fullscreen = false }) 
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: true })!;
 
-    // Resize canvas to fill parent
     const resize = () => {
       const parent = canvas.parentElement;
       if (parent && fullscreen) {
@@ -368,55 +368,122 @@ const FlameBurst: React.FC<{ fullscreen?: boolean }> = ({ fullscreen = false }) 
       resizeObserver.observe(canvas.parentElement);
     }
 
-    interface P {
-      x: number; y: number; s: number; l: number; ml: number;
-      vx: number; vy: number; h: number; bright: number;
+    interface Flame {
+      x: number; y: number; size: number; angle: number;
+      life: number; maxLife: number; vx: number; vy: number;
+      flicker: number; flickerSpeed: number; hue: number; isEmber: boolean;
     }
 
-    const ps: P[] = [];
+    const flames: Flame[] = [];
+    const startTime = Date.now();
+    let frameTime = 0;
 
-    const spawnEdge = (edge: number) => {
+    /* Draw a single flame shape using bezier curves */
+    const drawFlame = (f: Flame, time: number, intensity: number) => {
+      const t = f.life / f.maxLife;
+      const fadeIn = Math.min(t * 8, 1);
+      const fadeOut = Math.pow(1 - t, 0.6);
+      const alpha = fadeIn * fadeOut * intensity;
+      if (alpha < 0.01) return;
+
+      const flk = Math.sin(time * f.flickerSpeed + f.flicker);
+      const flk2 = Math.sin(time * f.flickerSpeed * 1.7 + f.flicker * 2.3);
+      const sz = f.size * (0.7 + flk * 0.15 + flk2 * 0.15) * (1 - t * 0.3);
+
+      if (f.isEmber) {
+        const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, sz);
+        g.addColorStop(0, `rgba(255,200,50,${alpha})`);
+        g.addColorStop(0.4, `rgba(255,100,0,${alpha * 0.6})`);
+        g.addColorStop(1, 'rgba(255,30,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, sz, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      }
+
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.angle);
+
+      const h = sz * 2.5;
+      const w = sz;
+      const wobX = flk * w * 0.18;
+      const wobX2 = flk2 * w * 0.12;
+
+      // Outer flame body (red/orange)
+      ctx.beginPath();
+      ctx.moveTo(0, -h);
+      ctx.bezierCurveTo(w * 0.3 + wobX, -h * 0.7, w * 0.8 + wobX2, -h * 0.3, w * 0.5, h * 0.1);
+      ctx.bezierCurveTo(w * 0.4, h * 0.35, w * 0.15, h * 0.45, 0, h * 0.4);
+      ctx.bezierCurveTo(-w * 0.15, h * 0.45, -w * 0.4, h * 0.35, -w * 0.5, h * 0.1);
+      ctx.bezierCurveTo(-w * 0.8 - wobX2, -h * 0.3, -w * 0.3 - wobX, -h * 0.7, 0, -h);
+      ctx.closePath();
+
+      const og = ctx.createLinearGradient(0, -h, 0, h * 0.4);
+      og.addColorStop(0, `rgba(200,20,0,${alpha * 0.35})`);
+      og.addColorStop(0.25, `rgba(255,80,0,${alpha * 0.75})`);
+      og.addColorStop(0.6, `rgba(255,120,0,${alpha * 0.9})`);
+      og.addColorStop(1, `rgba(255,60,0,${alpha * 0.5})`);
+      ctx.fillStyle = og;
+      ctx.fill();
+
+      // Inner core (yellow)
+      const iw = w * 0.5, ih = h * 0.65;
+      ctx.beginPath();
+      ctx.moveTo(0, -ih);
+      ctx.bezierCurveTo(iw * 0.25 + wobX * 0.5, -ih * 0.65, iw * 0.7 + wobX2 * 0.3, -ih * 0.2, iw * 0.35, ih * 0.15);
+      ctx.bezierCurveTo(iw * 0.2, ih * 0.3, -iw * 0.2, ih * 0.3, -iw * 0.35, ih * 0.15);
+      ctx.bezierCurveTo(-iw * 0.7 - wobX2 * 0.3, -ih * 0.2, -iw * 0.25 - wobX * 0.5, -ih * 0.65, 0, -ih);
+      ctx.closePath();
+
+      const ig = ctx.createLinearGradient(0, -ih, 0, ih * 0.3);
+      ig.addColorStop(0, `rgba(255,180,30,${alpha * 0.4})`);
+      ig.addColorStop(0.4, `rgba(255,230,80,${alpha * 0.9})`);
+      ig.addColorStop(1, `rgba(255,200,40,${alpha * 0.65})`);
+      ctx.fillStyle = ig;
+      ctx.fill();
+
+      ctx.restore();
+    };
+
+    const spawnFlame = (edge: number) => {
       const { w, h } = sizeRef.current;
-      let x = 0, y = 0, vx = 0, vy = 0;
-      const spread = 2 + Math.random() * 3;
-      // Bigger particles for fullscreen
-      const baseSize = fullscreen ? 4 + Math.random() * 14 : 2 + Math.random() * 7;
-      const edgeDepth = fullscreen ? 20 : 12;
-      // Deeper inward travel for fullscreen
-      const inSpeed = fullscreen ? (0.5 + Math.random() * spread * 0.8) : (0.3 + Math.random() * spread * 0.6);
+      let x = 0, y = 0, vx = 0, vy = 0, angle = 0;
+      const speed = fullscreen ? (0.3 + Math.random() * 1.5) : (0.2 + Math.random() * 1.0);
+      const sz = fullscreen ? (5 + Math.random() * 18) : (3 + Math.random() * 10);
+      const edgeD = fullscreen ? 15 : 8;
+      const isEmber = Math.random() < 0.3;
+      const emberSz = fullscreen ? (1.5 + Math.random() * 4) : (1 + Math.random() * 3);
 
       switch (edge) {
-        case 0: // top
-          x = Math.random() * w;
-          y = -2 + Math.random() * edgeDepth;
-          vx = (Math.random() - 0.5) * spread * 0.4;
-          vy = inSpeed;
+        case 0: // top — flames point down
+          x = Math.random() * w; y = Math.random() * edgeD;
+          vx = (Math.random() - 0.5) * speed * 0.3; vy = speed;
+          angle = Math.PI + (Math.random() - 0.5) * 0.5;
           break;
-        case 1: // right
-          x = w + 2 - Math.random() * edgeDepth;
-          y = Math.random() * h;
-          vx = -inSpeed;
-          vy = (Math.random() - 0.5) * spread * 0.4;
+        case 1: // right — flames point left
+          x = w - Math.random() * edgeD; y = Math.random() * h;
+          vx = -speed; vy = (Math.random() - 0.5) * speed * 0.3;
+          angle = Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
           break;
-        case 2: // bottom
-          x = Math.random() * w;
-          y = h + 2 - Math.random() * edgeDepth;
-          vx = (Math.random() - 0.5) * spread * 0.4;
-          vy = -inSpeed;
+        case 2: // bottom — flames point up
+          x = Math.random() * w; y = h - Math.random() * edgeD;
+          vx = (Math.random() - 0.5) * speed * 0.3; vy = -speed;
+          angle = (Math.random() - 0.5) * 0.5;
           break;
-        case 3: // left
-          x = -2 + Math.random() * edgeDepth;
-          y = Math.random() * h;
-          vx = inSpeed;
-          vy = (Math.random() - 0.5) * spread * 0.4;
+        case 3: // left — flames point right
+          x = Math.random() * edgeD; y = Math.random() * h;
+          vx = speed; vy = (Math.random() - 0.5) * speed * 0.3;
+          angle = -Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
           break;
       }
 
-      ps.push({
-        x, y, s: baseSize, l: 0, ml: 12 + Math.random() * 30,
-        vx, vy,
-        h: Math.random(),
-        bright: 0.5 + Math.random() * 0.5,
+      flames.push({
+        x, y, size: isEmber ? emberSz : sz, angle,
+        life: 0, maxLife: isEmber ? (8 + Math.random() * 15) : (15 + Math.random() * 35),
+        vx, vy, flicker: Math.random() * Math.PI * 2,
+        flickerSpeed: 5 + Math.random() * 10, hue: Math.random(), isEmber,
       });
     };
 
@@ -425,126 +492,67 @@ const FlameBurst: React.FC<{ fullscreen?: boolean }> = ({ fullscreen = false }) 
       ctx.globalCompositeOperation = 'source-over';
       ctx.clearRect(0, 0, w, h);
 
-      // Spawn rate scales with perimeter
-      const perimFactor = fullscreen ? Math.max(1, (w + h) / 300) : 1;
-      const spawnsPerEdge = Math.round(5 * perimFactor);
+      frameTime = (Date.now() - startTime) / 1000;
+      // Entrance: 0→1 over 800ms with ease-in
+      const intensity = Math.min(1, Math.pow(Math.min(frameTime / 0.8, 1), 2));
+
+      const perimFactor = fullscreen ? Math.max(1, (w + h) / 250) : 1;
+      const spawnsPerEdge = Math.round(4 * perimFactor * intensity);
       for (let e = 0; e < 4; e++) {
-        for (let i = 0; i < spawnsPerEdge; i++) {
-          spawnEdge(e);
-        }
+        for (let i = 0; i < spawnsPerEdge; i++) spawnFlame(e);
       }
 
       ctx.globalCompositeOperation = 'lighter';
 
       // Edge glow strips
-      const glowDepth = fullscreen ? Math.min(80, w * 0.08) : 40;
+      const glowD = fullscreen ? Math.min(100, Math.max(w, h) * 0.07) : 35;
+      const ga = 0.12 * intensity;
+      const gt = ctx.createLinearGradient(0, 0, 0, glowD);
+      gt.addColorStop(0, `rgba(255,60,0,${ga})`); gt.addColorStop(1, 'rgba(255,30,0,0)');
+      ctx.fillStyle = gt; ctx.fillRect(0, 0, w, glowD);
+      const gb = ctx.createLinearGradient(0, h, 0, h - glowD);
+      gb.addColorStop(0, `rgba(255,60,0,${ga})`); gb.addColorStop(1, 'rgba(255,30,0,0)');
+      ctx.fillStyle = gb; ctx.fillRect(0, h - glowD, w, glowD);
+      const gl2 = ctx.createLinearGradient(0, 0, glowD, 0);
+      gl2.addColorStop(0, `rgba(255,60,0,${ga})`); gl2.addColorStop(1, 'rgba(255,30,0,0)');
+      ctx.fillStyle = gl2; ctx.fillRect(0, 0, glowD, h);
+      const gr2 = ctx.createLinearGradient(w, 0, w - glowD, 0);
+      gr2.addColorStop(0, `rgba(255,60,0,${ga})`); gr2.addColorStop(1, 'rgba(255,30,0,0)');
+      ctx.fillStyle = gr2; ctx.fillRect(w - glowD, 0, glowD, h);
 
-      const gt = ctx.createLinearGradient(0, 0, 0, glowDepth);
-      gt.addColorStop(0, 'rgba(255,60,0,0.1)');
-      gt.addColorStop(1, 'rgba(255,30,0,0)');
-      ctx.fillStyle = gt;
-      ctx.fillRect(0, 0, w, glowDepth);
-
-      const gb = ctx.createLinearGradient(0, h, 0, h - glowDepth);
-      gb.addColorStop(0, 'rgba(255,60,0,0.1)');
-      gb.addColorStop(1, 'rgba(255,30,0,0)');
-      ctx.fillStyle = gb;
-      ctx.fillRect(0, h - glowDepth, w, glowDepth);
-
-      const gl = ctx.createLinearGradient(0, 0, glowDepth, 0);
-      gl.addColorStop(0, 'rgba(255,60,0,0.1)');
-      gl.addColorStop(1, 'rgba(255,30,0,0)');
-      ctx.fillStyle = gl;
-      ctx.fillRect(0, 0, glowDepth, h);
-
-      const gr = ctx.createLinearGradient(w, 0, w - glowDepth, 0);
-      gr.addColorStop(0, 'rgba(255,60,0,0.1)');
-      gr.addColorStop(1, 'rgba(255,30,0,0)');
-      ctx.fillStyle = gr;
-      ctx.fillRect(w - glowDepth, 0, glowDepth, h);
-
-      // Corner glow hotspots
-      const corners = [[0, 0], [w, 0], [w, h], [0, h]];
-      for (const [cxp, cyp] of corners) {
-        const cg = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, glowDepth * 1.5);
-        cg.addColorStop(0, 'rgba(255,80,0,0.08)');
+      // Corner glow
+      for (const [cx2, cy2] of [[0,0],[w,0],[w,h],[0,h]]) {
+        const cg = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, glowD * 1.8);
+        cg.addColorStop(0, `rgba(255,80,0,${ga * 0.8})`);
         cg.addColorStop(1, 'rgba(255,30,0,0)');
         ctx.fillStyle = cg;
-        ctx.beginPath();
-        ctx.arc(cxp, cyp, glowDepth * 1.5, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(cx2, cy2, glowD * 1.8, 0, Math.PI * 2); ctx.fill();
       }
 
-      // Update and draw particles
-      for (let i = ps.length - 1; i >= 0; i--) {
-        const p = ps[i];
-        p.l++;
-        p.x += p.vx * 0.4;
-        p.y += p.vy * 0.4;
-        p.vx *= 0.96;
-        p.vy *= 0.96;
-        p.s *= 0.985;
-
-        if (p.l > p.ml || p.s < 0.3) { ps.splice(i, 1); continue; }
-
-        const t = p.l / p.ml;
-        const fade = t < 0.1 ? t * 10 : Math.pow(1 - t, 1.0);
-        const alpha = fade * p.bright;
-
-        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s);
-
-        if (p.h > 0.65) {
-          g.addColorStop(0, `rgba(255,240,80,${alpha})`);
-          g.addColorStop(0.25, `rgba(255,200,20,${alpha * 0.85})`);
-          g.addColorStop(0.55, `rgba(255,100,0,${alpha * 0.5})`);
-          g.addColorStop(1, 'rgba(220,30,0,0)');
-        } else if (p.h > 0.35) {
-          g.addColorStop(0, `rgba(255,140,10,${alpha * 0.95})`);
-          g.addColorStop(0.3, `rgba(255,70,0,${alpha * 0.7})`);
-          g.addColorStop(0.65, `rgba(200,20,0,${alpha * 0.35})`);
-          g.addColorStop(1, 'rgba(120,0,0,0)');
-        } else {
-          g.addColorStop(0, `rgba(240,50,0,${alpha * 0.85})`);
-          g.addColorStop(0.35, `rgba(180,15,0,${alpha * 0.55})`);
-          g.addColorStop(0.7, `rgba(120,0,0,${alpha * 0.2})`);
-          g.addColorStop(1, 'rgba(60,0,0,0)');
-        }
-
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.s, 0, Math.PI * 2);
-        ctx.fill();
+      // Update & draw flames
+      for (let i = flames.length - 1; i >= 0; i--) {
+        const f = flames[i];
+        f.life++;
+        f.x += f.vx; f.y += f.vy;
+        f.vx *= 0.97; f.vy *= 0.97;
+        if (f.life > f.maxLife) { flames.splice(i, 1); continue; }
+        drawFlame(f, frameTime, intensity);
       }
 
       ctx.globalCompositeOperation = 'source-over';
-      const maxP = fullscreen ? 1500 : 900;
-      if (ps.length > maxP) ps.splice(0, ps.length - Math.round(maxP * 0.8));
+      const maxP = fullscreen ? 2000 : 600;
+      if (flames.length > maxP) flames.splice(0, flames.length - Math.round(maxP * 0.75));
 
       animRef.current = requestAnimationFrame(draw);
     };
 
     animRef.current = requestAnimationFrame(draw);
-    return () => {
-      cancelAnimationFrame(animRef.current);
-      resizeObserver?.disconnect();
-    };
+    return () => { cancelAnimationFrame(animRef.current); resizeObserver?.disconnect(); };
   }, [fullscreen]);
 
   if (fullscreen) {
-    return (
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-        }}
-      />
-    );
+    return <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />;
   }
-
   return <canvas ref={canvasRef} style={{ width: 150, height: 150 }} />;
 };
 
@@ -561,40 +569,30 @@ const PresetSpinner: React.FC<{ preset: SpinnerPreset; fullscreen?: boolean }> =
 
 /* ─── Main Export ─── */
 export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
-  customLoaderUrl,
-  customLoaderType = 'default',
-  preset = 'fire-circle'
+  customLoaderUrl, customLoaderType = 'default', preset = 'fire-circle'
 }) => {
   const isCustomActive = customLoaderType !== 'default' && customLoaderUrl;
-
   if (isCustomActive) {
     if (customLoaderType === 'video') {
       return (
         <div className="custom-loader-wrapper">
           <video src={customLoaderUrl} autoPlay loop muted playsInline
-            style={{ width: '120px', height: '120px', objectFit: 'contain', borderRadius: '50%' }}
-          />
+            style={{ width: '120px', height: '120px', objectFit: 'contain', borderRadius: '50%' }} />
         </div>
       );
     }
     return (
       <div className="custom-loader-wrapper">
         <img src={customLoaderUrl} alt="Loading..."
-          style={{ width: '120px', height: '120px', objectFit: 'contain' }}
-        />
+          style={{ width: '120px', height: '120px', objectFit: 'contain' }} />
       </div>
     );
   }
-
-  // Flame Burst is special — it fills the entire parent overlay
-  if (preset === 'flame-burst') {
-    return <PresetSpinner preset={preset} fullscreen={true} />;
-  }
-
+  if (preset === 'flame-burst') return <PresetSpinner preset={preset} fullscreen={true} />;
   return <PresetSpinner preset={preset} />;
 };
 
-/* ─── Gallery Thumbnail (always small preview, never fullscreen) ─── */
+/* ─── Gallery Thumbnail ─── */
 export const SpinnerThumbnail: React.FC<{ preset: SpinnerPreset; size?: number }> = ({ preset, size = 64 }) => (
   <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
     <div style={{ transform: `scale(${size / 160})`, transformOrigin: 'center' }}>
@@ -602,4 +600,3 @@ export const SpinnerThumbnail: React.FC<{ preset: SpinnerPreset; size?: number }
     </div>
   </div>
 );
-
