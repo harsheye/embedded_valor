@@ -1833,7 +1833,7 @@ function App() {
               const file = await handle.getFile();
               const fingerprint = `local-${file.name}_${file.size}_${file.lastModified}`;
               await storeFileHandle(fingerprint, handle);
-              await processLocalVideo(file, fingerprint);
+              await processLocalVideo(file, fingerprint, handle);
               return;
             }
           }
