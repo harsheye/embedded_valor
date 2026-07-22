@@ -30,6 +30,7 @@ interface VideoPlayerProps {
   video: VideoItem;
   customLoaderUrl?: string;
   customLoaderType?: 'default' | 'image' | 'video' | 'gif';
+  spinnerPreset?: string;
   userId?: string;
   profileName?: string;
   videos?: VideoItem[];
@@ -140,6 +141,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   onUpdateVideo, 
   customLoaderUrl,
   customLoaderType = 'default',
+  spinnerPreset = 'fire-circle',
   userId = 'local',
   profileName = 'Local Profile',
   hideUIOverlays: propHideUIOverlays = false,
@@ -4162,7 +4164,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Buffering ring loader */}
       {isBuffering && (
         <div className="buffering-spinner-overlay" onClick={(e) => e.stopPropagation()}>
-          <LoadingSpinner customLoaderUrl={customLoaderUrl} customLoaderType={customLoaderType} />
+          <LoadingSpinner customLoaderUrl={customLoaderUrl} customLoaderType={customLoaderType} preset={(spinnerPreset || 'fire-circle') as any} />
         </div>
       )}
 

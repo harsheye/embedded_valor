@@ -37,6 +37,7 @@ interface OnlineVideoPlayerProps {
   profileName?: string;
   customLoaderUrl?: string;
   customLoaderType?: 'default' | 'image' | 'video' | 'gif';
+  spinnerPreset?: string;
 }
 
 const DEFAULT_TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlMzQwMGRhZWZjODJjNTJlZDEyYzk1MWU1ZWFmYmVhYyIsIm5iZiI6MTc4MzU0MTI2OS44NzUsInN1YiI6IjZhNGVhZTE1MzFhOWUyYmNhZjBmY2RlMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GT6_b6NSJwjYCXlbaCi_djq09ug0rKDxY9iouqVrYWY";
@@ -65,7 +66,8 @@ export const OnlineVideoPlayer: React.FC<OnlineVideoPlayerProps> = ({
   uiHideTimeout = 3000,
   tmdbApiKey,
   customLoaderUrl,
-  customLoaderType = 'default'
+  customLoaderType = 'default',
+  spinnerPreset = 'fire-circle'
 }) => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentTime, setCurrentTime] = useState(video.currentTime || 0);

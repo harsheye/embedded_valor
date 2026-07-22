@@ -70,7 +70,8 @@ import { storeFileHandle, getFileHandle, removeFileHandle, verifyPermission } fr
 import { HttpByteSource, CachedByteSource, detectUrlCapabilities } from './services/remote/remoteByteSource';
 import { probeContainer, parseMp4, parseMkv } from './utils/containerParser';
 import { parseHlsManifest } from './utils/hlsParser';
-import { LoadingSpinner } from './components/LoadingSpinner';
+import { LoadingSpinner, SPINNER_PRESETS, SpinnerThumbnail } from './components/LoadingSpinner';
+import type { SpinnerPreset } from './components/LoadingSpinner';
 
 const ToggleSwitch: React.FC<{
   checked: boolean;
@@ -292,7 +293,8 @@ const defaultSettings = {
     customSize: 100
   },
   customLoaderUrl: '' as string,
-  customLoaderType: 'default' as 'default' | 'image' | 'video' | 'gif'
+  customLoaderType: 'default' as 'default' | 'image' | 'video' | 'gif',
+  spinnerPreset: 'fire-circle' as string
 };
 
 function App() {
@@ -2740,6 +2742,7 @@ function App() {
           tmdbApiKey={settings.tmdbApiKey}
           customLoaderUrl={settings.customLoaderUrl}
           customLoaderType={settings.customLoaderType}
+          spinnerPreset={settings.spinnerPreset}
         />
       );
     }
@@ -2757,6 +2760,7 @@ function App() {
       hideUIOverlays: settings.hideUIOverlays,
       customLoaderUrl: settings.customLoaderUrl,
       customLoaderType: settings.customLoaderType,
+      spinnerPreset: settings.spinnerPreset,
       hideVideoName: settings.hideVideoName,
       uiHideTimeout: settings.uiHideTimeout,
       toastDuration: settings.toastDuration,
@@ -4833,209 +4837,234 @@ function App() {
                         <div style={{ display: 'flex', gap: '2.5rem', flexWrap: 'wrap', width: '100%' }}>
                           
                           {/* Left: Live Preview */}
-                          <div style={{ flex: '0 0 280px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                          <div style={{ flex: '0 0 260px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                             <div className="settings-section">
                               <h3>Active Animation</h3>
-                              <p className="settings-section-desc">This is the spinner currently shown during buffering.</p>
+                              <p className="settings-section-desc">Currently shown during buffering.</p>
                               <div style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                background: 'rgba(0,0,0,0.6)', 
-                                borderRadius: '12px', 
-                                height: '200px',
-                                border: '1px solid rgba(255,255,255,0.08)',
-                                position: 'relative',
-                                overflow: 'hidden'
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                background: 'rgba(0,0,0,0.65)', borderRadius: '14px', height: '220px',
+                                border: '1px solid rgba(255,255,255,0.08)', position: 'relative', overflow: 'hidden'
                               }}>
                                 <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(255,60,0,0.06) 0%, transparent 70%)' }} />
                                 <LoadingSpinner 
                                   customLoaderUrl={settings.customLoaderUrl} 
-                                  customLoaderType={settings.customLoaderType} 
+                                  customLoaderType={settings.customLoaderType}
+                                  preset={settings.spinnerPreset as SpinnerPreset}
                                 />
                               </div>
                               <div style={{ 
-                                marginTop: '0.75rem', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '0.5rem',
-                                padding: '0.5rem 0.75rem',
-                                background: 'rgba(255,255,255,0.04)',
-                                borderRadius: '6px',
-                                fontSize: '0.78rem',
-                                color: 'rgba(255,255,255,0.6)'
+                                marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.04)',
+                                borderRadius: '6px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)'
                               }}>
                                 <span style={{ 
-                                  width: '8px', height: '8px', borderRadius: '50%', 
-                                  background: settings.customLoaderType === 'default' ? '#22c55e' : '#f59e0b',
-                                  flexShrink: 0
+                                  width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
+                                  background: settings.customLoaderType === 'default' ? '#22c55e' : '#f59e0b'
                                 }} />
-                                {settings.customLoaderType === 'default' ? 'Using default fire circle' : 
-                                 settings.customLoaderUrl ? `Using custom ${settings.customLoaderType}` : 'No file uploaded yet'}
+                                {settings.customLoaderType === 'default' 
+                                  ? `${SPINNER_PRESETS.find(p => p.id === settings.spinnerPreset)?.emoji || '🔥'} ${SPINNER_PRESETS.find(p => p.id === settings.spinnerPreset)?.name || 'Fire Circle'}`
+                                  : settings.customLoaderUrl ? `Custom ${settings.customLoaderType}` : 'No file uploaded'}
                               </div>
                             </div>
                           </div>
 
-                          {/* Right: Controls */}
-                          <div style={{ flex: '1 1 320px', minWidth: '280px' }}>
+                          {/* Right: Gallery + Upload */}
+                          <div style={{ flex: '1 1 380px', minWidth: '300px' }}>
+                            
+                            {/* Preset Gallery */}
                             <div className="settings-section">
-                              <h3>Buffering Spinner</h3>
-                              <p className="settings-section-desc">Choose the default fire circle or upload your own custom animation file.</p>
-                              
-                              <div className="pref-row">
-                                <span className="pref-label">Animation Source</span>
-                                <CustomSelect 
-                                  value={settings.customLoaderType || 'default'} 
-                                  onChange={(val) => handleDefaultLangChange('customLoaderType' as any, val)}
-                                  options={[
-                                    { value: 'default', label: '🔥 Default Fire Circle' },
-                                    { value: 'image', label: '🖼️ Custom Image / GIF' },
-                                    { value: 'video', label: '🎬 Custom MP4 Video' }
-                                  ]}
-                                />
+                              <h3>Built-in Presets</h3>
+                              <p className="settings-section-desc">Click to select a preset animation. The active one is highlighted.</p>
+                              <div style={{
+                                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+                                gap: '0.75rem', marginTop: '0.5rem'
+                              }}>
+                                {SPINNER_PRESETS.map(p => {
+                                  const isActive = settings.customLoaderType === 'default' && settings.spinnerPreset === p.id;
+                                  return (
+                                    <div
+                                      key={p.id}
+                                      onClick={() => {
+                                        setSettings(prev => {
+                                          const updated = { ...prev, spinnerPreset: p.id, customLoaderType: 'default' as const, customLoaderUrl: '' };
+                                          saveSettingsToStorage(updated);
+                                          return updated;
+                                        });
+                                      }}
+                                      style={{
+                                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                        gap: '0.5rem', padding: '0.75rem 0.5rem',
+                                        background: isActive ? 'rgba(255,100,0,0.12)' : 'rgba(255,255,255,0.03)',
+                                        border: isActive ? '2px solid rgba(255,100,0,0.5)' : '1px solid rgba(255,255,255,0.06)',
+                                        borderRadius: '10px', cursor: 'pointer',
+                                        transition: 'all 0.2s ease',
+                                        position: 'relative', overflow: 'hidden'
+                                      }}
+                                      onMouseOver={(e) => {
+                                        if (!isActive) {
+                                          e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+                                        }
+                                      }}
+                                      onMouseOut={(e) => {
+                                        if (!isActive) {
+                                          e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
+                                        }
+                                      }}
+                                    >
+                                      {isActive && (
+                                        <div style={{
+                                          position: 'absolute', top: '4px', right: '6px',
+                                          fontSize: '0.65rem', color: '#22c55e', fontWeight: 700
+                                        }}>✓</div>
+                                      )}
+                                      <div style={{ 
+                                        width: '70px', height: '70px', display: 'flex', 
+                                        alignItems: 'center', justifyContent: 'center',
+                                        background: 'rgba(0,0,0,0.4)', borderRadius: '8px',
+                                        overflow: 'hidden'
+                                      }}>
+                                        <SpinnerThumbnail preset={p.id} size={60} />
+                                      </div>
+                                      <span style={{ 
+                                        fontSize: '0.72rem', color: isActive ? 'rgba(255,180,100,0.9)' : 'rgba(255,255,255,0.55)',
+                                        fontWeight: isActive ? 600 : 400, textAlign: 'center', lineHeight: 1.2
+                                      }}>
+                                        {p.emoji} {p.name}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
 
-                            {settings.customLoaderType !== 'default' && (
-                              <div className="settings-section" style={{ marginTop: '1rem' }}>
-                                <h3>Upload File</h3>
-                                <p className="settings-section-desc">
-                                  {settings.customLoaderType === 'video' 
-                                    ? 'Upload a looping MP4 video clip (5 MB max recommended).' 
-                                    : 'Upload a GIF, animated SVG, PNG, or JPG image.'}
-                                </p>
-                                
-                                <div 
-                                  style={{ 
-                                    border: '2px dashed rgba(255,255,255,0.12)', 
-                                    borderRadius: '10px', 
-                                    padding: '2rem 1.5rem', 
-                                    textAlign: 'center', 
-                                    background: 'rgba(255,255,255,0.02)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.25s ease'
+                            {/* Custom Upload */}
+                            <div className="settings-section" style={{ marginTop: '1.5rem' }}>
+                              <h3>Custom Upload</h3>
+                              <p className="settings-section-desc">Upload your own GIF, image, or MP4 video to use as the loading animation instead.</p>
+                              
+                              <div className="pref-row" style={{ marginBottom: '0.75rem' }}>
+                                <span className="pref-label">Upload Type</span>
+                                <CustomSelect 
+                                  value={settings.customLoaderType === 'default' ? 'none' : settings.customLoaderType}
+                                  onChange={(val) => {
+                                    if (val === 'none') {
+                                      setSettings(prev => {
+                                        const updated = { ...prev, customLoaderType: 'default' as const, customLoaderUrl: '' };
+                                        saveSettingsToStorage(updated);
+                                        return updated;
+                                      });
+                                    } else {
+                                      handleDefaultLangChange('customLoaderType' as any, val);
+                                    }
                                   }}
-                                  onMouseOver={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(255,100,0,0.4)';
-                                    e.currentTarget.style.background = 'rgba(255,100,0,0.04)';
-                                  }}
-                                  onMouseOut={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                                  }}
-                                  onClick={() => {
-                                    const input = document.createElement('input');
-                                    input.type = 'file';
-                                    input.accept = settings.customLoaderType === 'video' ? 'video/mp4' : 'image/*';
-                                    input.onchange = (e: any) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        const reader = new FileReader();
-                                        reader.onload = (event) => {
-                                          const dataUrl = event.target?.result as string;
-                                          setSettings(prev => {
-                                            const updated = { ...prev, customLoaderUrl: dataUrl };
-                                            saveSettingsToStorage(updated);
-                                            return updated;
-                                          });
-                                        };
-                                        reader.readAsDataURL(file);
-                                      }
-                                    };
-                                    input.click();
-                                  }}
-                                >
-                                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                                    {settings.customLoaderUrl ? '🔄' : '📂'}
-                                  </div>
-                                  <span style={{ fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', display: 'block', marginBottom: '0.3rem', fontWeight: 500 }}>
-                                    {settings.customLoaderUrl ? 'Click to Replace' : 'Click to Upload'}
-                                  </span>
-                                  <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)' }}>
-                                    {settings.customLoaderType === 'video' ? 'MP4 format' : 'GIF · SVG · PNG · JPG'}
-                                  </span>
-                                </div>
+                                  options={[
+                                    { value: 'none', label: '— Use Preset' },
+                                    { value: 'image', label: '🖼️ Image / GIF' },
+                                    { value: 'video', label: '🎬 MP4 Video' }
+                                  ]}
+                                />
+                              </div>
 
-                                {settings.customLoaderUrl && (
-                                  <div style={{ marginTop: '1rem' }}>
-                                    <div style={{ 
-                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
-                                      background: 'rgba(255,255,255,0.04)', borderRadius: '8px', 
-                                      padding: '0.6rem 1rem',
-                                      border: '1px solid rgba(255,255,255,0.06)'
-                                    }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                        <span style={{ fontSize: '0.82rem', color: '#22c55e', fontWeight: 600 }}>✓ Custom file active</span>
-                                      </div>
-                                      <button 
-                                        style={{ 
-                                          background: 'rgba(239,68,68,0.12)', 
-                                          border: '1px solid rgba(239,68,68,0.2)', 
-                                          color: '#ef4444', 
-                                          fontSize: '0.78rem', 
-                                          cursor: 'pointer', 
-                                          padding: '4px 12px', 
-                                          borderRadius: '6px',
-                                          fontWeight: 500,
-                                          transition: 'all 0.2s'
-                                        }}
-                                        onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.25)'; }}
-                                        onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSettings(prev => {
-                                            const updated = { ...prev, customLoaderUrl: '', customLoaderType: 'default' as const };
-                                            saveSettingsToStorage(updated);
-                                            return updated;
-                                          });
-                                        }}
-                                      >
-                                        Remove & Reset
-                                      </button>
+                              {settings.customLoaderType !== 'default' && (
+                                <>
+                                  <div 
+                                    style={{ 
+                                      border: '2px dashed rgba(255,255,255,0.12)', borderRadius: '10px', 
+                                      padding: '1.5rem', textAlign: 'center', 
+                                      background: 'rgba(255,255,255,0.02)', cursor: 'pointer',
+                                      transition: 'all 0.25s ease'
+                                    }}
+                                    onMouseOver={(e) => {
+                                      e.currentTarget.style.borderColor = 'rgba(255,100,0,0.4)';
+                                      e.currentTarget.style.background = 'rgba(255,100,0,0.04)';
+                                    }}
+                                    onMouseOut={(e) => {
+                                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+                                      e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                                    }}
+                                    onClick={() => {
+                                      const input = document.createElement('input');
+                                      input.type = 'file';
+                                      input.accept = settings.customLoaderType === 'video' ? 'video/mp4' : 'image/*';
+                                      input.onchange = (e: any) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          const reader = new FileReader();
+                                          reader.onload = (event) => {
+                                            const dataUrl = event.target?.result as string;
+                                            setSettings(prev => {
+                                              const updated = { ...prev, customLoaderUrl: dataUrl };
+                                              saveSettingsToStorage(updated);
+                                              return updated;
+                                            });
+                                          };
+                                          reader.readAsDataURL(file);
+                                        }
+                                      };
+                                      input.click();
+                                    }}
+                                  >
+                                    <div style={{ fontSize: '1.8rem', marginBottom: '0.4rem' }}>
+                                      {settings.customLoaderUrl ? '🔄' : '📂'}
                                     </div>
+                                    <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', display: 'block', marginBottom: '0.2rem', fontWeight: 500 }}>
+                                      {settings.customLoaderUrl ? 'Click to Replace' : 'Click to Upload'}
+                                    </span>
+                                    <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>
+                                      {settings.customLoaderType === 'video' ? 'MP4 format' : 'GIF · SVG · PNG · JPG'}
+                                    </span>
+                                  </div>
 
-                                    {/* Uploaded file preview */}
-                                    <div style={{ marginTop: '1rem' }}>
-                                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', display: 'block', marginBottom: '0.5rem', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                        Uploaded Preview
-                                      </span>
+                                  {settings.customLoaderUrl && (
+                                    <div style={{ marginTop: '0.75rem' }}>
                                       <div style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        justifyContent: 'center', 
-                                        background: 'rgba(0,0,0,0.5)', 
-                                        borderRadius: '10px', 
-                                        height: '160px',
-                                        border: '1px solid rgba(255,255,255,0.06)',
-                                        overflow: 'hidden'
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
+                                        background: 'rgba(255,255,255,0.04)', borderRadius: '8px', 
+                                        padding: '0.5rem 0.8rem', border: '1px solid rgba(255,255,255,0.06)'
+                                      }}>
+                                        <span style={{ fontSize: '0.8rem', color: '#22c55e', fontWeight: 600 }}>✓ Custom active</span>
+                                        <button 
+                                          style={{ 
+                                            background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)', 
+                                            color: '#ef4444', fontSize: '0.75rem', cursor: 'pointer', 
+                                            padding: '3px 10px', borderRadius: '6px', fontWeight: 500
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSettings(prev => {
+                                              const updated = { ...prev, customLoaderUrl: '', customLoaderType: 'default' as const };
+                                              saveSettingsToStorage(updated);
+                                              return updated;
+                                            });
+                                          }}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                      {/* Upload preview */}
+                                      <div style={{ 
+                                        marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                        background: 'rgba(0,0,0,0.5)', borderRadius: '8px', height: '120px',
+                                        border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden'
                                       }}>
                                         {settings.customLoaderType === 'video' ? (
-                                          <video 
-                                            src={settings.customLoaderUrl} 
-                                            autoPlay loop muted playsInline
-                                            style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                                          <video src={settings.customLoaderUrl} autoPlay loop muted playsInline
+                                            style={{ width: '80px', height: '80px', objectFit: 'contain' }}
                                           />
                                         ) : (
-                                          <img 
-                                            src={settings.customLoaderUrl} 
-                                            alt="Custom loader preview"
-                                            style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                                          <img src={settings.customLoaderUrl} alt="Preview"
+                                            style={{ width: '80px', height: '80px', objectFit: 'contain' }}
                                           />
                                         )}
                                       </div>
                                     </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {settings.customLoaderType === 'default' && (
-                              <div className="settings-section" style={{ marginTop: '1rem' }}>
-                                <p className="settings-section-desc" style={{ fontStyle: 'italic', opacity: 0.7 }}>
-                                  The default fire circle is a multi-layered SVG animation with counter-rotating flame rings. Switch to "Custom Image / GIF" or "Custom MP4 Video" above to upload your own.
-                                </p>
-                              </div>
-                            )}
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
