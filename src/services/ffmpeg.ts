@@ -376,10 +376,45 @@ export class FFmpegService {
     return { duration, format, streams };
   }
 
+  private parseFfprobeJson(data: any): ProbeResult {
+    const streams: StreamInfo[] = [];
+    if (!data.streams) return { streams };
+    
+    for (const s of data.streams) {
+      if (s.codec_type === 'video' || s.codec_type === 'audio' || s.codec_type === 'subtitle') {
+        streams.push({
+          index: s.index,
+          type: s.codec_type,
+          codec: s.codec_name,
+          language: s.tags?.language || s.tags?.LANGUAGE || 'und',
+          title: s.tags?.title || s.tags?.TITLE,
+          isDefault: s.disposition?.default === 1
+        });
+      }
+    }
+    const duration = data.format?.duration ? parseFloat(data.format.duration) : undefined;
+    return { streams, duration };
+  }
+
   /**
    * Probe a remote file's streams using only the first 2MB of headers
    */
   async probeRemoteHeader(_url: string, ext: string, source: ByteSource): Promise<ProbeResult> {
+    try {
+      const parsedUrl = new URL(_url);
+      const assetId = parsedUrl.searchParams.get('assetId');
+      if (assetId) {
+        const backendUrl = `${parsedUrl.origin}/api/ffprobe?assetId=${assetId}`;
+        const res = await fetch(backendUrl);
+        if (res.ok) {
+          const data = await res.json();
+          return this.parseFfprobeJson(data);
+        }
+      }
+    } catch (e) {
+      console.warn("Backend ffprobe failed, falling back to WASM headers", e);
+    }
+
     return this.lock.run(async () => {
       const ff = await this.ensureLoaded("remote-probe");
       const tempInFile = `input${ext}`;

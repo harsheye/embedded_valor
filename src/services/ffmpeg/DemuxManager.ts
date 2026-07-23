@@ -157,10 +157,33 @@ export class DemuxManager {
     const mountedInputPath = await this.getMountedInputPath(ff);
     const tempOutFile = `slice_${streamIndex}_${startTime}.wav`;
     const isRemoteSource = !this.isFile(this.videoFileOrSource);
+    let ffmpegSeekTime = startTime;
+
+    if (isRemoteSource) {
+      try {
+        const source: any = this.videoFileOrSource;
+        const urlStr = source.source?.url || source.url;
+        if (urlStr) {
+          const proxyUrl = new URL(urlStr);
+          const assetId = proxyUrl.searchParams.get('assetId');
+          if (assetId) {
+            console.log(`[DemuxManager] Offloading slice to backend for assetId=${assetId} startTime=${startTime}`);
+            const backendUrl = `${proxyUrl.origin}/api/ffmpeg-slice?assetId=${assetId}&streamIndex=${streamIndex}&startTime=${startTime}&duration=${duration}`;
+            
+            const res = await fetch(backendUrl, { signal });
+            if (!res.ok) throw new Error(`Backend slice failed: ${res.status}`);
+            const buf = await res.arrayBuffer();
+            return new Uint8Array(buf);
+          }
+        }
+      } catch (e) {
+        console.warn('[DemuxManager] Backend slice failed, falling back to WASM slice', e);
+      }
+    }
+
     const inputPath = isRemoteSource
       ? `remote_input_${this.uniqueId}_${streamIndex}_${Math.floor(startTime * 1000)}_${Math.random().toString(36).substring(2, 7)}.mkv`
       : mountedInputPath;
-    let ffmpegSeekTime = startTime;
 
     if (isRemoteSource) {
       // Remote chunk: resolve byte range and write chunk

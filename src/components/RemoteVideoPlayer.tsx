@@ -50,11 +50,9 @@ interface VideoPlayerProps {
   onUpdateSubSettings: (settings: Partial<SubtitleSettings>) => void;
   historySaveInterval?: number;
   saveVolume?: boolean;
-  ratingThreshold?: number;
   getOverlayDataFromTmdb?: boolean;
   overlayPosition?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
   overlayShowBackground?: boolean;
-  overlayShowRating?: boolean;
   overlayShowOverview?: boolean;
   openSubtitlesApiKey?: string;
   onUpdateSettings?: (settings: Partial<any>) => void;
@@ -131,7 +129,6 @@ export interface MediaDetails {
   overview?: string;
   imageUrl?: string;
   logoUrl?: string;
-  rating?: number;
 }
 
 export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({ 
@@ -158,11 +155,9 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   onUpdateSubSettings,
   historySaveInterval = 5,
   saveVolume = true,
-  ratingThreshold = 3,
   getOverlayDataFromTmdb = true,
   overlayPosition = 'bottom-left',
   overlayShowBackground = true,
-  overlayShowRating = true,
   overlayShowOverview = true,
   openSubtitlesApiKey = '',
   onUpdateSettings,
@@ -892,9 +887,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   const totalTimeWatchedRef = useRef<number>((video as any).totalTimeWatched || 0);
   const sessionStartRef = useRef<number | null>(null);
   const mountTimeRef = useRef<number>(Date.now());
-  const [showRatingPrompt, setShowRatingPrompt] = useState(false);
-  const [userRating, setUserRating] = useState<number | null>((video as any).rating || null);
-  const ratingPromptedRef = useRef<boolean>(!!(video as any).rating);
 
   const tmdbIdRef = useRef<number | null>(null);
   const hadTidbDataRef = useRef<boolean>(false);
@@ -1786,41 +1778,64 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   // Auto-probe local file streams on startup if not already scanned
   useEffect(() => {
     const autoProbe = async () => {
-      if (video.type === 'local' && video.file && !video.streams && probingVideoIdRef.current !== video.id) {
+      if (!video.streams && probingVideoIdRef.current !== video.id) {
+        if (video.type === 'local' && !video.file) return;
+        if (video.type === 'remote' && !video.url) return;
+
         probingVideoIdRef.current = video.id;
-
-        // Verify that the file is actually readable
-        try {
-          await video.file.slice(0, 1).arrayBuffer();
-        } catch (readErr) {
-          logger.error('Local file is not readable on auto-probe:', readErr);
-          probingVideoIdRef.current = null;
-          return;
-        }
-
         setIsAutoProbing(true);
+
         try {
           if (!ffmpegService.isReady()) {
             await ffmpegService.load(video.id);
           }
-          const result = await ffmpegService.probeFile(video.file, video.id);
 
+          let result;
           let seekMap: any[] = [];
           let timecodeScale: number | undefined = undefined;
-          try {
-            const fileSource = new FileByteSource(video.file);
-            const cachedFileSource = new CachedByteSource(fileSource);
-            const containerType = (result.format || '').toLowerCase();
-            if (containerType.includes('mkv') || containerType.includes('matroska')) {
-              const mkvInfo = await parseMkv(cachedFileSource);
-              seekMap = mkvInfo.seekMap || [];
-              timecodeScale = mkvInfo.timecodeScale;
-            } else if (containerType.includes('mp4')) {
-              const mp4Info = await parseMp4(cachedFileSource);
-              seekMap = mp4Info.tracks[0]?.seekMap?.timeToOffset || [];
+
+          if (video.type === 'local' && video.file) {
+            try {
+              await video.file.slice(0, 1).arrayBuffer();
+            } catch (readErr) {
+              logger.error('Local file is not readable on auto-probe:', readErr);
+              probingVideoIdRef.current = null;
+              setIsAutoProbing(false);
+              return;
             }
-          } catch (parseErr) {
-            logger.warn('Failed parsing local container for seekMap:', parseErr);
+
+            result = await ffmpegService.probeFile(video.file, video.id);
+
+            try {
+              const fileSource = new FileByteSource(video.file);
+              const cachedFileSource = new CachedByteSource(fileSource);
+              const containerType = (result.format || '').toLowerCase();
+              if (containerType.includes('mkv') || containerType.includes('matroska')) {
+                const mkvInfo = await parseMkv(cachedFileSource);
+                seekMap = mkvInfo.seekMap || [];
+                timecodeScale = mkvInfo.timecodeScale;
+              } else if (containerType.includes('mp4')) {
+                const mp4Info = await parseMp4(cachedFileSource);
+                seekMap = mp4Info.tracks[0]?.seekMap?.timeToOffset || [];
+              }
+            } catch (parseErr) {
+              logger.warn('Failed parsing local container for seekMap:', parseErr);
+            }
+          } else {
+            const ext = '.' + (video.url.split('?')[0].split('.').pop() || 'mp4');
+            const source = new HttpByteSource(video.url);
+            result = await ffmpegService.probeRemoteHeader(video.url, ext, source);
+            
+            try {
+              const containerType = (result.format || ext).toLowerCase();
+              if (containerType.includes('mkv') || containerType.includes('matroska')) {
+                const mkvInfo = await parseMkv(source);
+                seekMap = mkvInfo.seekMap || [];
+                timecodeScale = mkvInfo.timecodeScale;
+              }
+            } catch (parseErr) {
+              logger.warn('Failed parsing remote container for seekMap:', parseErr);
+            }
           }
 
           const updatedVideo = {
@@ -1841,7 +1856,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     };
     autoProbe();
-  }, [video.id, video.type, video.file]);
+  }, [video.id, video.type, video.file, video.url]);
 
   // Synchronize Audio Volume / Muted State to video element and PlaybackController
   useEffect(() => {
@@ -2367,14 +2382,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  const handleExit = () => {
-    onUpdateVideo({
-      ...video,
-      currentTime: latestTimeRef.current
-    }, true);
-    console.clear();
-    onBack();
-  };
 
   const getLockShortcutKey = () => {
     try {
@@ -2986,11 +2993,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     } else if (pressedKey === exitKey) {
       e.preventDefault();
       if (document.fullscreenElement) {
-        document.exitFullscreen()
-          .then(() => handleExit())
-          .catch(() => handleExit());
-      } else {
-        handleExit();
+        document.exitFullscreen().catch(console.error);
       }
     } else if (pressedKey === playPauseKey) {
       e.preventDefault();
@@ -3152,7 +3155,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         target.closest('.volume-control-group-premium') ||
         target.closest('.popover-wrapper') ||
         target.closest('.audio-sub-popover') ||
-        target.closest('.floating-rating-prompt') ||
         target.closest('.settings-panel')
       ) {
         return;
@@ -3355,14 +3357,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           sessionStartRef.current = now;
           totalTimeWatchedRef.current += delta;
 
-          // Check if remaining time is below rating threshold (minutes) to show rating prompt
-          if (videoRef.current && duration > 0 && !ratingPromptedRef.current) {
-            const remaining = duration - videoRef.current.currentTime;
-            if (remaining <= (ratingThreshold || 3) * 60 && remaining > 5) {
-              setShowRatingPrompt(true);
-              ratingPromptedRef.current = true;
-            }
-          }
+
         }
       }, 1000);
       return () => {
@@ -3375,7 +3370,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       };
     }
-  }, [isPlaying, duration, ratingThreshold]);
+  }, [isPlaying, duration]);
 
   // Session Logging on Mount/Unmount
   useEffect(() => {
@@ -3898,10 +3893,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           onError={handleVideoError}
           onEnded={() => {
             scrobbleToTrakt();
-            if (!ratingPromptedRef.current) {
-              setShowRatingPrompt(true);
-              ratingPromptedRef.current = true;
-            }
+
 
             const exitTime = Date.now();
             const sessionDuration = (exitTime - mountTimeRef.current) / 1000;
@@ -4094,22 +4086,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
             </p>
           )}
 
-          {/* Rating badge */}
-          {overlayShowRating && mediaDetails.rating && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              marginTop: '4px',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              color: '#fbbf24'
-            }}>
-              <span>★</span>
-              <span>{mediaDetails.rating.toFixed(1)}</span>
-              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', fontWeight: 400 }}>/ 10</span>
-            </div>
-          )}
+
           </div>
         </>
       )}
@@ -4245,10 +4222,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           )}
 
-          {/* Close Button */}
-          <button className="close-btn" onClick={handleExit} title="Close">
-            <X size={24} />
-          </button>
         </div>
       )}
 
@@ -4312,42 +4285,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Floating Rating Prompt Overlay */}
-      {showRatingPrompt && (
-        <div className="floating-rating-prompt animate-slide-in" onClick={(e) => e.stopPropagation()}>
-          <div className="rating-header">
-            <span>Enjoying this video? Rate it:</span>
-            <button className="rating-close" onClick={() => setShowRatingPrompt(false)}>
-              <X size={14} />
-            </button>
-          </div>
-          <div className="rating-stars">
-            {[1, 2, 3, 4, 5].map((star) => {
-              const active = userRating !== null && star <= userRating;
-              return (
-                <button
-                  key={star}
-                  type="button"
-                  className={`star-btn ${active ? 'active' : ''}`}
-                  onClick={() => {
-                    setUserRating(star);
-                    onUpdateVideo((prev: any) => ({ ...prev, rating: star }));
-                    // Show a quick thank you message and then close
-                    setTimeout(() => {
-                      setShowRatingPrompt(false);
-                    }, 1500);
-                  }}
-                >
-                  ★
-                </button>
-              );
-            })}
-          </div>
-          {userRating !== null && (
-            <div className="rating-thanks">Thanks for rating! ({userRating}/5)</div>
-          )}
-        </div>
-      )}
+
 
       {/* Resume Button for direct URL/path opens with saved progress */}
       {resumePromptTime !== null && currentTime < 3 && !activeSkipBookmark && (
@@ -5715,71 +5653,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           transform: scale(1.15);
           opacity: 0.8;
         }
-        .floating-rating-prompt {
-          position: absolute;
-          top: 80px;
-          right: 20px;
-          background: rgba(10, 10, 10, 0.88);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 10px;
-          padding: 0.9rem 1.1rem;
-          z-index: 200;
-          box-shadow: 0 10px 25px rgba(0,0,0,0.6);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-          width: 250px;
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-          color: #ffffff;
-        }
-        .rating-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          font-size: 0.82rem;
-          font-weight: 600;
-          color: rgba(255,255,255,0.85);
-        }
-        .rating-close {
-          background: none;
-          border: none;
-          color: rgba(255,255,255,0.4);
-          cursor: pointer;
-          padding: 2px;
-          display: flex;
-          align-items: center;
-        }
-        .rating-close:hover {
-          color: #ffffff;
-        }
-        .rating-stars {
-          display: flex;
-          gap: 0.35rem;
-          justify-content: center;
-          margin-top: 0.25rem;
-        }
-        .star-btn {
-          background: none;
-          border: none;
-          font-size: 1.8rem;
-          color: rgba(255, 255, 255, 0.15);
-          cursor: pointer;
-          padding: 0;
-          line-height: 1;
-          transition: transform 0.15s, color 0.15s, text-shadow 0.15s;
-        }
-        .star-btn:hover, .star-btn.active {
-          color: #f1c40f;
-          text-shadow: 0 0 8px rgba(241, 196, 15, 0.6);
-          transform: scale(1.18);
-        }
-        .rating-thanks {
-          font-size: 0.75rem;
-          color: #2ecc71;
-          text-align: center;
-          font-weight: 600;
-        }
+
         .player-lock-indicator {
           position: absolute;
           top: 1.5rem;

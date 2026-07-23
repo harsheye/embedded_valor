@@ -132,6 +132,25 @@ export async function extractRemoteSubtitleSegment(
   stream: StreamInfo,
   signal?: AbortSignal
 ): Promise<string> {
+  const sourceAny = source as any;
+  const urlStr = sourceAny.source?.url || sourceAny.url;
+  if (urlStr) {
+    try {
+      const parsedUrl = new URL(urlStr);
+      const assetId = parsedUrl.searchParams.get('assetId');
+      if (assetId) {
+        let format = ffmpegService.detectSubtitleFormat(stream.codec);
+        const backendUrl = `${parsedUrl.origin}/api/ffmpeg-sub?assetId=${assetId}&streamIndex=${stream.index}&format=${format}`;
+        const res = await fetch(backendUrl, { signal });
+        if (res.ok) {
+          return await res.text();
+        }
+      }
+    } catch (e) {
+      console.warn("Backend subtitle extraction failed, falling back to WASM", e);
+    }
+  }
+
   return ffmpegService.lock.run(async () => {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const ff = await ffmpegService.ensureLoaded(videoId);

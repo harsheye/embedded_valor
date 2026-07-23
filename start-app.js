@@ -243,7 +243,7 @@ let activeConnections = 0;
 let pendingPlayFile = null;
 
 // 1. Backend API Server (Port 50001)
-const backendServer = http.createServer((req, res) => {
+const backendServer = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
@@ -299,18 +299,9 @@ const backendServer = http.createServer((req, res) => {
       console.log(`[Server] Active tab detected. Queueing file for playback: ${file}`);
       pendingPlayFile = file;
     } else {
-      const openUrl = file 
-        ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(file)}`
-        : `http://127.0.0.1:${PORT_SERVICE}/`;
-        
-      console.log(`[Server] No active tab. Opening browser: ${openUrl}`);
-      if (process.platform === 'win32') {
-        spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
-      } else if (process.platform === 'darwin') {
-        spawn('open', [openUrl], { detached: true }).unref();
-      } else {
-        spawn('xdg-open', [openUrl], { detached: true }).unref();
-      }
+      // Embedded player mode — just queue the file, no browser opening
+      console.log(`[Server] Embedded mode. File queued: ${file}`);
+      pendingPlayFile = file;
     }
     
     res.statusCode = 200;
@@ -1703,8 +1694,223 @@ const backendServer = http.createServer((req, res) => {
     });
     return;
   }
+  // Helper to fetch original path from Immich
+  async function getImmichOriginalPath(assetId) {
+    const apiKey = process.env.IMMICH_API_KEY || '';
+    const immichHost = process.env.IMMICH_INTERNAL_URL || 'http://immich_server:2283';
+    try {
+      const detailRes = await fetch(`${immichHost}/api/assets/${assetId}`, {
+        headers: { 'x-api-key': apiKey, 'Accept': 'application/json' }
+      });
+      if (!detailRes.ok) return null;
+      const detail = await detailRes.json();
+      let path = detail.originalPath;
+      if (path && path.startsWith('/usr/src/app/upload')) {
+        path = path.replace('/usr/src/app/upload', '/data');
+      }
+      return path;
+    } catch (e) {
+      console.error('[Immich] Error fetching original path:', e.message);
+      return null;
+    }
+  }
+
+  // ffprobe endpoint
+  if (pathname === '/api/ffprobe') {
+    const assetId = parsedUrl.searchParams.get('assetId');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (!assetId) {
+      res.statusCode = 400;
+      return res.end('Missing assetId');
+    }
+    try {
+      const originalPath = await getImmichOriginalPath(assetId);
+      if (!originalPath || !fs.existsSync(originalPath)) {
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ error: 'File not found on backend' }));
+      }
+      res.setHeader('Content-Type', 'application/json');
+      const proc = spawn('ffprobe', [
+        '-v', 'quiet',
+        '-print_format', 'json',
+        '-show_format',
+        '-show_streams',
+        originalPath
+      ]);
+      proc.stdout.pipe(res);
+      proc.stderr.on('data', err => console.error('[ffprobe err]', err.toString()));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(e.message);
+    }
+    return;
+  }
+
+  // ffmpeg audio slice endpoint
+  if (pathname === '/api/ffmpeg-slice') {
+    const assetId = parsedUrl.searchParams.get('assetId');
+    const startTime = parsedUrl.searchParams.get('startTime') || '0';
+    const duration = parsedUrl.searchParams.get('duration') || '10';
+    const streamIndex = parsedUrl.searchParams.get('streamIndex') || '1';
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    if (!assetId) {
+      res.statusCode = 400;
+      return res.end('Missing assetId');
+    }
+
+    try {
+      const originalPath = await getImmichOriginalPath(assetId);
+      if (!originalPath || !fs.existsSync(originalPath)) {
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ error: 'File not found on backend' }));
+      }
+
+      res.setHeader('Content-Type', 'audio/wav');
+      const proc = spawn('ffmpeg', [
+        '-ss', startTime,
+        '-i', originalPath,
+        '-t', duration,
+        '-map', `0:${streamIndex}`,
+        '-vn',
+        '-acodec', 'pcm_s16le',
+        '-ac', '2',
+        '-ar', '44100',
+        '-f', 'wav',
+        'pipe:1'
+      ]);
+
+      proc.stdout.pipe(res);
+      proc.stderr.on('data', err => console.error('[ffmpeg-slice err]', err.toString()));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(e.message);
+    }
+    return;
+  }
+
+  // ffmpeg subtitle extraction endpoint
+  if (pathname === '/api/ffmpeg-sub') {
+    const assetId = parsedUrl.searchParams.get('assetId');
+    const streamIndex = parsedUrl.searchParams.get('streamIndex') || '2';
+    const format = parsedUrl.searchParams.get('format') || 'srt';
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    if (!assetId) {
+      res.statusCode = 400;
+      return res.end('Missing assetId');
+    }
+
+    try {
+      const originalPath = await getImmichOriginalPath(assetId);
+      if (!originalPath || !fs.existsSync(originalPath)) {
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ error: 'File not found on backend' }));
+      }
+
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      const proc = spawn('ffmpeg', [
+        '-i', originalPath,
+        '-map', `0:${streamIndex}`,
+        '-c:s', format,
+        '-f', format,
+        'pipe:1'
+      ]);
+
+      proc.stdout.pipe(res);
+      proc.stderr.on('data', err => console.error('[ffmpeg-sub err]', err.toString()));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(e.message);
+    }
+    return;
+  }
 
   // Video streaming endpoint with range request support
+  // Immich video proxy — fetches video from Immich server on internal Docker network
+  if (pathname === '/immich-proxy') {
+    const assetId = parsedUrl.searchParams.get('assetId');
+    const apiKey = process.env.IMMICH_API_KEY || '';
+    const immichHost = process.env.IMMICH_INTERNAL_URL || 'http://immich_server:2283';
+
+    if (!assetId) {
+      res.statusCode = 400;
+      res.end('Missing assetId');
+      return;
+    }
+    if (!apiKey) {
+      res.statusCode = 500;
+      res.end('IMMICH_API_KEY not configured');
+      return;
+    }
+
+    const targetUrl = `${immichHost}/api/assets/${assetId}/video/playback`;
+    console.log(`[Immich Proxy] Fetching: ${targetUrl}`);
+
+    try {
+      const proxyRes = await fetch(targetUrl, {
+        headers: {
+          'x-api-key': apiKey,
+          ...(req.headers.range ? { 'Range': req.headers.range } : {})
+        }
+      });
+
+      if (!proxyRes.ok && proxyRes.status !== 206) {
+        res.statusCode = proxyRes.status;
+        res.end(`Immich returned ${proxyRes.status}`);
+        return;
+      }
+
+      // Forward headers
+      const fwdHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
+      const outHeaders = { 'Access-Control-Allow-Origin': '*' };
+      for (const h of fwdHeaders) {
+        const v = proxyRes.headers.get(h);
+        if (v) outHeaders[h] = v;
+      }
+      if (!outHeaders['accept-ranges']) outHeaders['accept-ranges'] = 'bytes';
+
+      res.writeHead(proxyRes.status, outHeaders);
+
+      // Stream the body
+      const reader = proxyRes.body.getReader();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { res.end(); break; }
+          if (!res.write(value)) {
+            await new Promise(r => res.once('drain', r));
+          }
+        }
+      };
+      pump().catch(err => {
+        console.error('[Immich Proxy] Stream error:', err.message);
+        res.end();
+      });
+
+      req.on('close', () => reader.cancel());
+    } catch (err) {
+      console.error('[Immich Proxy] Fetch error:', err.message);
+      res.statusCode = 502;
+      res.end('Failed to reach Immich server');
+    }
+    return;
+  }
+
+  // CORS preflight for immich-proxy
+  if (pathname === '/immich-proxy' && req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range',
+      'Access-Control-Max-Age': '86400'
+    });
+    res.end();
+    return;
+  }
+
   if (pathname === '/local-video-stream') {
     const videoPath = parsedUrl.searchParams.get('path');
     if (!videoPath || !fs.existsSync(videoPath)) {
@@ -1794,26 +2000,9 @@ const backendServer = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-// Auto-shutdown if no active tabs (1-minute grace period under all conditions)
-const startShutdownChecker = (viteServer) => {
-  if (trayMode) {
-    console.log('[Server] Running in tray mode. Auto-shutdown checker disabled.');
-    return;
-  }
-  setInterval(() => {
-    if (activeConnections > 0) {
-      lastHeartbeat = Date.now();
-    }
-    const limit = 60000; // 1 minute
-    if (Date.now() - lastHeartbeat > limit) {
-      console.log('[Server] No active tabs detected. Shutting down...');
-      viteServer.close();
-      backendServer.close(() => {
-        process.exit(0);
-      });
-      setTimeout(() => process.exit(0), 1000);
-    }
-  }, 2000);
+// Auto-shutdown disabled — Valor runs as an embedded player service
+const startShutdownChecker = (_viteServer) => {
+  console.log('[Server] Embedded player mode. Auto-shutdown disabled.');
 };
 
 async function start() {
@@ -1825,7 +2014,7 @@ async function start() {
       viteServer = await createViteServer({
         server: {
           port: PORT_SERVICE,
-          host: '127.0.0.1',
+          host: '0.0.0.0',
           open: false
         },
       });
@@ -1839,7 +2028,7 @@ async function start() {
   }
 
   if (!frontendOnly) {
-    backendServer.listen({ port: PORT_BACKEND, host: '127.0.0.1' }, () => {
+    backendServer.listen({ port: PORT_BACKEND, host: '0.0.0.0' }, () => {
       console.log(`[Server] Valor backend server (Dev mode) is running on http://127.0.0.1:${PORT_BACKEND}`);
       
       if (!backendOnly) {
@@ -1851,19 +2040,8 @@ async function start() {
           console.error('[Server] Failed to write active_port.txt:', e);
         }
 
-        const openUrl = resolvedFilePath 
-          ? `http://127.0.0.1:${PORT_SERVICE}/?file=${encodeURIComponent(resolvedFilePath)}`
-          : `http://127.0.0.1:${PORT_SERVICE}/`;
-          
-        console.log(`[Server] Opening browser: ${openUrl}`);
-        
-        if (process.platform === 'win32') {
-          spawn('cmd', ['/c', 'start', '', openUrl], { detached: true }).unref();
-        } else if (process.platform === 'darwin') {
-          spawn('open', [openUrl], { detached: true }).unref();
-        } else {
-          spawn('xdg-open', [openUrl], { detached: true }).unref();
-        }
+        // Browser opening disabled — Valor runs as an embedded player service
+        console.log(`[Server] Valor embedded player ready at http://127.0.0.1:${PORT_SERVICE}/`);
       }
 
       startShutdownChecker(viteServer);

@@ -110,3 +110,12 @@ export function classifyVideoTitle(title: string): {
     displayTitle: cleanTitle
   };
 }
+
+export function shouldFetchTMDB(filename: string): boolean {
+  const randomPattern = /^(img_|vid_|screen|capture|whatsapp|discord|snapchat|tiktok|pxl_)/i;
+  if (randomPattern.test(filename)) return false;
+  const yearPattern = /\b(19|20)\d{2}\b/;
+  const resolutionPattern = /\b(720p|1080p|2160p|4k)\b/i;
+  const tvPattern = /\b(s\d{1,2}e\d{1,2}|\d{1,2}x\d{1,2})\b/i;
+  return yearPattern.test(filename) || resolutionPattern.test(filename) || tvPattern.test(filename);
+}
