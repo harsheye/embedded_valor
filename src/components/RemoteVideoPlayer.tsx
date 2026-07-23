@@ -656,6 +656,8 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Sync bookmarks to server via GraphQL (for all profiles)
   const syncBookmarksToServer = async (updatedBookmarks: any[]) => {
+    return; // Disabled network tracking
+    if (updatedBookmarks.length === 0) return;
     try {
       const activeUserId = userId || 'local';
       
@@ -743,6 +745,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const submitToTheIntroDb = async (bookmark: any, force = false) => {
+    return; // Disabled telemetry
     if (hadTidbDataRef.current && !force) {
       logger.player('[TheIntroDB Submit] Skipping submission: TIDB already has data for this video.');
       return;
@@ -867,6 +870,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // TheIntroDB Bookmarks Fetching
   useEffect(() => {
+    return; // Disabled telemetry
     if (duration <= 0) return;
 
     const fetchAllBookmarks = async () => {
@@ -1719,7 +1723,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         if (now - lastHeartbeatTimeRef.current > heartbeatInterval) {
           lastHeartbeatTimeRef.current = now;
           heartbeatCountRef.current += 1;
-          fetch('http://127.0.0.1:50001/api/heartbeat', { method: 'POST' }).catch(() => {});
+          // fetch('http://127.0.0.1:50001/api/heartbeat', { method: 'POST' }).catch(() => {});
         }
         
         // Update buffered percentage
