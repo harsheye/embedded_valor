@@ -152,7 +152,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   settingsOrder,
   uiHideTimeout = 1.5
 }) => {
-  const videoTitleForRegex = video.title || video.file || video.url || '';
+  const videoTitleForRegex = rawVideo.title || rawVideo.file || rawVideo.url || '';
   const isMovieOrSeries = /\b(s\d{1,2}e\d{1,2}|season \d+|episode \d+|\d{4}\b|1080p|720p|480p|2160p|4k|bluray|web-dl|webrip|hdrip|x264|x265|hevc)\b/i.test(videoTitleForRegex);
 
   const isFile = (obj: any): obj is File => obj instanceof File || (obj && typeof obj.size === 'number' && typeof obj.slice === 'function');
