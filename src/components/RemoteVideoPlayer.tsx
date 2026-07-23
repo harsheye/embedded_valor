@@ -2305,7 +2305,9 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const togglePlay = () => {
     if (!videoRef.current) return;
-    if (isPlaying) {
+    const currentlyPaused = videoRef.current.paused;
+
+    if (!currentlyPaused) {
       if (playbackControllerRef.current) {
         playbackControllerRef.current.pause();
       } else {
