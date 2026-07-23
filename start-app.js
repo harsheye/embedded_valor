@@ -242,7 +242,7 @@ let hasReceivedFirstHeartbeat = false;
 let activeConnections = 0;
 let pendingPlayFile = null;
 
-// 1. Backend API Server (Port 50001)
+// 1. Backend API Server (Port 49998)
 const backendServer = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

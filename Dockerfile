@@ -5,5 +5,5 @@ RUN apk add --no-cache ffmpeg
 RUN npm install
 COPY . .
 RUN npm run build
-EXPOSE 50001
+EXPOSE 49998
 CMD ["node", "start-app.js"]
