@@ -25,15 +25,7 @@ const defaultSettings = {
   showPlayBar: true,
   showVolumeControl: true,
   showFullscreen: true,
-  historySaveInterval: 5,
   saveVolume: true,
-  ratingThreshold: 3,
-  getOverlayDataFromTmdb: true,
-  overlayPosition: 'bottom-left' as const,
-  overlayShowBackground: true,
-  overlayShowRating: true,
-  overlayShowOverview: true,
-  openSubtitlesApiKey: '',
   allowUiSkipping: true,
   blockSeekingCompletely: false,
   autoSkipIntroOutro: true,
@@ -55,11 +47,10 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlParam = params.get('url');
-    const fileParam = params.get('file');
     const assetId = params.get('assetId');
 
     if (assetId) {
-      // Immich asset — proxy through Valor backend (internal Docker network)
+      // Immich asset - proxy through Valor backend (internal Docker network)
       const proxyUrl = `${BACKEND_ORIGIN}/immich-proxy?assetId=${encodeURIComponent(assetId)}`;
       setVideo({
         id: assetId,
@@ -72,23 +63,9 @@ function App() {
         audioTracks: [],
         subtitleTracks: []
       });
-    } else if (fileParam) {
-      const localStreamUrl = `${BACKEND_ORIGIN}/local-video-stream?path=${encodeURIComponent(fileParam)}`;
-      setVideo({
-        id: '1',
-        title: fileParam.split(/[\\/]/).pop() || fileParam,
-        type: 'local',
-        localFilePath: fileParam,
-        url: localStreamUrl,
-        addedAt: new Date().toISOString(),
-        progress: 0,
-        duration: 0,
-        audioTracks: [],
-        subtitleTracks: []
-      });
     } else if (urlParam) {
       setVideo({
-        id: '2',
+        id: '1',
         title: urlParam.split(/[\\/]/).pop() || urlParam,
         type: 'remote',
         url: urlParam,
@@ -102,7 +79,7 @@ function App() {
   }, []);
 
   if (!video) {
-    return <div style={{ color: 'white', padding: 20 }}>No video provided. Use ?url= or ?file=</div>;
+    return <div style={{ color: 'white', padding: 20 }}>No video provided. Use ?url= or ?assetId=</div>;
   }
 
   return (

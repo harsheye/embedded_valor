@@ -2,7 +2,6 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { PacketCache } from '../cache/PacketCache';
 import { PacketReader } from '../packet/PacketReader';
 import type { AudioPacket } from '../pipeline/MediaPipeline';
-import { extractLocalSubtitleSegment } from '../local/ffmpegLocal';
 import { extractRemoteSubtitleSegment } from '../remote/ffmpegRemote';
 import { parseSubtitles } from '../../utils/subtitleParser';
 

@@ -9,21 +9,16 @@ import type { VideoItem, CustomAudioTrack, CustomSubtitleTrack, Bookmark } from 
 import { SubtitleOverlay } from './SubtitleOverlay';
 import type { SubtitleSettings } from './SubtitleOverlay';
 import { AudioSubPopover } from './AudioSubPopover';
-import { BookmarkPanel } from './BookmarkPanel';
-import { BookmarkModal } from './BookmarkModal';
 import { AudioSyncEngine } from '../services/remote/audioSync';
 import { parseSubtitles, cleanSubtitleText } from '../utils/subtitleParser';
 import { parseMkv, parseMp4, extractMkvSubtitles } from '../utils/containerParser';
 import { ffmpegService } from '../services/ffmpeg';
 import { HttpByteSource, CachedByteSource, RemoteDownloadManager } from '../services/remote/remoteByteSource';
-import { FileByteSource } from '../services/local/localByteSource';
-import { extractLocalAudioSegment, extractLocalSubtitleSegment } from '../services/local/ffmpegLocal';
 import { extractRemoteAudioSegment, extractRemoteSubtitleSegment, extractHlsAudioSegment } from '../services/remote/ffmpegRemote';
 import { FFmpegManager } from '../services/ffmpeg/FFmpegManager';
 import { DemuxManager } from '../services/ffmpeg/DemuxManager';
 import { PlaybackController } from '../services/playback/PlaybackController';
 import { logger } from '../utils/logger';
-import { classifyVideoTitle } from '../utils/libraryClassifier';
 import { LoadingSpinner, BufferingOverlay } from './LoadingSpinner';
 
 interface VideoPlayerProps {
@@ -120,17 +115,6 @@ const OdometerClock: React.FC<{ date: Date }> = ({ date }) => {
 };
 
 
-export interface MediaDetails {
-  title: string;
-  episodeTitle?: string;
-  season?: number;
-  episode?: number;
-  releaseDate?: string;
-  overview?: string;
-  imageUrl?: string;
-  logoUrl?: string;
-}
-
 export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({ 
   video: rawVideo, 
   videos,
@@ -176,7 +160,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
   }), [rawVideo]);
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [mediaDetails, setMediaDetails] = useState<MediaDetails | null>(null);
   const [videoLayout, setVideoLayout] = useState({ left: 0, top: 0, width: 0, height: 0 });
   const [openSubtitles, setOpenSubtitles] = useState<any[]>([]);
   const [isOpenSubLoading, setIsOpenSubLoading] = useState(false);
@@ -857,189 +840,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
     setEditingBookmark(undefined);
     if (videoRef.current && isPlaying) {
       videoRef.current.play().catch(console.error);
-    }
-  };
-
-  const handleDeleteBookmark = (id: string) => {
-    const updatedBookmarks = bookmarks.filter(bm => bm.id !== id);
-    setBookmarks(updatedBookmarks);
-
-    onUpdateVideo((prev: any) => ({
-      ...prev,
-      bookmarks: updatedBookmarks
-    }), false, undefined, true); // forceSave = true
-
-    if (updatedBookmarks.length === 0) {
-      syncFavoriteToTrakt(false);
-    }
-    syncBookmarksToServer(updatedBookmarks);
-  };
-  const [currentTime, setCurrentTime] = useState(video.currentTime || 0);
-  const [resumePromptTime, setResumePromptTime] = useState<number | null>(null);
-  const latestTimeRef = useRef<number>(video.currentTime || 0);
-  useEffect(() => {
-    latestTimeRef.current = currentTime;
-  }, [currentTime]);
-
-
-  const [duration, setDuration] = useState(0);
-
-  const totalTimeWatchedRef = useRef<number>((video as any).totalTimeWatched || 0);
-  const sessionStartRef = useRef<number | null>(null);
-  const mountTimeRef = useRef<number>(Date.now());
-
-  const tmdbIdRef = useRef<number | null>(null);
-  const hadTidbDataRef = useRef<boolean>(false);
-  const hasScrobbledTraktRef = useRef<boolean>(!!(video as any).hasScrobbledTrakt);
-
-  const scrobbleToTrakt = async () => {
-    const savedSettings = localStorage.getItem('valor_settings');
-    if (!savedSettings) return;
-    try {
-      const parsed = JSON.parse(savedSettings);
-      const token = parsed.traktAccessToken;
-      const syncHistory = parsed.traktSyncHistory;
-      if (!token || !syncHistory) return;
-
-      if (hasScrobbledTraktRef.current) return;
-      hasScrobbledTraktRef.current = true;
-
-      const seriesInfo = classifyVideoTitle(video.title);
-      const isTV = seriesInfo.type === 'series';
-      const tmdbId = tmdbIdRef.current;
-      const nowIso = new Date().toISOString();
-
-      const body: any = {};
-      if (isTV) {
-        if (!tmdbId) {
-          logger.player('Skipping Trakt.tv scrobble: no TMDB ID resolved for series.');
-          return;
-        }
-        body.shows = [
-          {
-            ids: { tmdb: tmdbId },
-            seasons: [
-              {
-                number: seriesInfo.season || 1,
-                episodes: [
-                  {
-                    number: seriesInfo.episode || 1,
-                    watched_at: nowIso
-                  }
-                ]
-              }
-            ]
-          }
-        ];
-      } else {
-        body.movies = [
-          {
-            title: seriesInfo.displayTitle,
-            watched_at: nowIso,
-            ids: tmdbId ? { tmdb: tmdbId } : undefined
-          }
-        ];
-        if (!tmdbId && !seriesInfo.displayTitle) {
-          logger.player('Skipping Trakt.tv scrobble: no TMDB ID or movie title.');
-          return;
-        }
-      }
-
-      logger.player(`Scrobbling watch history to Trakt.tv...`);
-      const res = await fetch('https://api.trakt.tv/sync/history', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
-          'trakt-api-version': '2'
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (res.ok) {
-        logger.player('Successfully scrobbled to Trakt.tv watch history!');
-        try {
-          const resData = await res.json();
-          triggerSwitchToast(`Trakt Scrobble Success: Added ${resData.added?.movies || resData.added?.episodes || 1} item`);
-        } catch {
-          triggerSwitchToast(`Trakt Scrobble Success (Status: ${res.status})`);
-        }
-        onUpdateVideoRef.current((prev: any) => ({
-          ...prev,
-          hasScrobbledTrakt: true
-        }), false, video.id);
-      } else {
-        logger.player(`Trakt.tv scrobble failed with status: ${res.status}`);
-        try {
-          const errText = await res.text();
-          triggerSwitchToast(`Trakt Scrobble Failed: ${res.status} - ${errText.substring(0, 40)}`);
-        } catch {
-          triggerSwitchToast(`Trakt Scrobble Failed (Status: ${res.status})`);
-        }
-      }
-    } catch (err) {
-      console.error('Error scrobbling to Trakt.tv:', err);
-    }
-  };
-
-  const syncFavoriteToTrakt = async (isAdd: boolean) => {
-    const savedSettings = localStorage.getItem('valor_settings');
-    if (!savedSettings) return;
-    try {
-      const parsed = JSON.parse(savedSettings);
-      const token = parsed.traktAccessToken;
-      const syncFavoritesSetting = parsed.traktSyncFavorites;
-      if (!token || !syncFavoritesSetting) return;
-
-      const seriesInfo = classifyVideoTitle(video.title);
-      const isTV = seriesInfo.type === 'series';
-      const tmdbId = tmdbIdRef.current;
-      if (!tmdbId) {
-        logger.player('Skipping Trakt.tv favorites sync: no TMDB ID resolved.');
-        return;
-      }
-
-      const body: any = {};
-      if (isTV) {
-        body.shows = [{ ids: { tmdb: tmdbId } }];
-      } else {
-        body.movies = [{ ids: { tmdb: tmdbId } }];
-      }
-
-      const endpoint = isAdd ? 'favorites' : 'favorites/remove';
-      logger.player(`Syncing Trakt.tv favorites (${isAdd ? 'add' : 'remove'})...`);
-
-      const res = await fetch(`https://api.trakt.tv/sync/${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'trakt-api-key': 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
-          'trakt-api-version': '2'
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (res.ok) {
-        logger.player(`Successfully synced favorites to Trakt.tv!`);
-        try {
-          const resData = await res.json();
-          triggerSwitchToast(`Trakt Favorite Sync: ${isAdd ? 'Added' : 'Removed'} ${resData.added?.movies || resData.added?.shows || resData.deleted?.movies || resData.deleted?.shows || 1} item`);
-        } catch {
-          triggerSwitchToast(`Trakt Sync Success (Status: ${res.status})`);
-        }
-      } else {
-        logger.player(`Trakt.tv favorites sync failed: ${res.status}`);
-        try {
-          const errText = await res.text();
-          triggerSwitchToast(`Trakt Sync Failed: ${res.status} - ${errText.substring(0, 40)}`);
-        } catch {
-          triggerSwitchToast(`Trakt Sync Failed (Status: ${res.status})`);
-        }
-      }
-    } catch (err) {
-      console.error('Error syncing favorites to Trakt.tv:', err);
     }
   };
 
@@ -3391,7 +3191,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       if (!timeToFinish && currentDuration > 0 && (latestTimeRef.current / currentDuration) >= 0.95) {
         const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
         timeToFinish = (exitTime - firstPlay) / 1000;
-        scrobbleToTrakt();
       }
 
       onUpdateVideoRef.current((prev: any) => ({
@@ -3424,8 +3223,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
         if (!timeToFinish && currentDuration > 0 && (latestTimeRef.current / currentDuration) >= 0.95) {
           const firstPlay = (video as any).firstPlayTimestamp || mountTimeRef.current;
           timeToFinish = (exitTime - firstPlay) / 1000;
-          scrobbleToTrakt();
-        }
+          }
 
         onUpdateVideoRef.current((prev: any) => ({
           ...prev,
@@ -3892,8 +3690,7 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
           onSeeking={() => setIsBuffering(true)}
           onError={handleVideoError}
           onEnded={() => {
-            scrobbleToTrakt();
-
+    
 
             const exitTime = Date.now();
             const sessionDuration = (exitTime - mountTimeRef.current) / 1000;
@@ -3943,153 +3740,6 @@ export const RemoteVideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Paused Metadata Overlay Card */}
-      {!isPlaying && mediaDetails && getOverlayDataFromTmdb && !hideUIOverlays && !isLocked && !showAudioSubMenu && (
-        <>
-          {/* Dark gradient scrim — adapts direction based on overlay corner position */}
-          {overlayShowBackground && (
-          <div 
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              background: (() => {
-                const hGrad = overlayPosition.includes('left')
-                  ? 'linear-gradient(to right, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 25%, rgba(0,0,0,0.2) 50%, transparent 70%)'
-                  : 'linear-gradient(to left, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 25%, rgba(0,0,0,0.2) 50%, transparent 70%)';
-                const vGrad = overlayPosition.includes('top')
-                  ? 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 40%, transparent 70%)'
-                  : 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 40%, transparent 70%)';
-                return `${hGrad}, ${vGrad}`;
-              })(),
-              zIndex: 45,
-              pointerEvents: 'none',
-              animation: 'overlayScrimFadeIn 0.8s ease forwards'
-            }}
-          />
-          )}
-          <div 
-            className="paused-metadata-overlay animate-metadata-slide-in"
-            style={{
-              position: 'absolute',
-              ...(overlayPosition === 'bottom-left' && {
-                bottom: '140px',
-                left: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
-              }),
-              ...(overlayPosition === 'bottom-right' && {
-                bottom: '140px',
-                right: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
-              }),
-              ...(overlayPosition === 'top-left' && {
-                top: videoLayout.top > 0 ? `${videoLayout.top + 60}px` : '5%',
-                left: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
-              }),
-              ...(overlayPosition === 'top-right' && {
-                top: videoLayout.top > 0 ? `${videoLayout.top + 60}px` : '5%',
-                right: videoLayout.left > 0 ? `${videoLayout.left + 24}px` : '2.5%',
-              }),
-              zIndex: 50,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              maxWidth: videoLayout.width > 0 ? `${Math.min(videoLayout.width * 0.45, 550)}px` : '40%',
-              textShadow: '0 2px 8px rgba(0, 0, 0, 0.95), 0 0 20px rgba(0, 0, 0, 0.5)',
-              pointerEvents: 'none',
-              fontFamily: "'Inter', sans-serif",
-              alignItems: overlayPosition.includes('right') ? 'flex-end' : 'flex-start',
-              textAlign: overlayPosition.includes('right') ? 'right' : 'left'
-            }}
-          >
-          {mediaDetails.logoUrl ? (
-            <img 
-              src={mediaDetails.logoUrl} 
-              alt={mediaDetails.title}
-              crossOrigin="anonymous"
-              onError={() => {
-                // Logo failed to load, clear it so we fall back to text title
-                setMediaDetails(prev => prev ? { ...prev, logoUrl: undefined } : prev);
-              }}
-              style={{
-                height: '60px',
-                maxWidth: '300px',
-                width: 'auto',
-                objectFit: 'contain',
-                alignSelf: overlayPosition.includes('right') ? 'flex-end' : 'flex-start',
-                marginBottom: '4px',
-                filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.7))'
-              }}
-            />
-          ) : (
-            <h2 style={{ 
-              margin: 0, 
-              fontSize: '2.8rem', 
-              fontWeight: 800, 
-              color: '#fff',
-              fontFamily: "'Outfit', 'Inter', sans-serif",
-              letterSpacing: '-0.02em',
-              lineHeight: '1.1'
-            }}>
-              {mediaDetails.title}
-            </h2>
-          )}
-          
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px',
-            fontSize: '0.95rem', 
-            color: 'rgba(255, 255, 255, 0.7)',
-            fontWeight: 500,
-            margin: '2px 0',
-            fontFamily: "'Inter', sans-serif"
-          }}>
-            {mediaDetails.episodeTitle ? (
-              <>
-                <span>Season {mediaDetails.season}</span>
-                <span>·</span>
-                <span>Episode {mediaDetails.episode}</span>
-              </>
-            ) : (
-              <span>Movie</span>
-            )}
-            <span>·</span>
-            <span>{formatRuntime(duration)}</span>
-          </div>
-
-          {mediaDetails.episodeTitle && (
-            <h3 style={{ 
-              margin: '2px 0 0 0', 
-              fontSize: '1.2rem', 
-              fontWeight: 700, 
-              color: '#fff',
-              fontFamily: "'Inter', sans-serif"
-            }}>
-              {mediaDetails.episodeTitle}
-            </h3>
-          )}
-
-          {overlayShowOverview && mediaDetails.overview && (
-            <p style={{ 
-              margin: 0, 
-              fontSize: '0.95rem', 
-              color: 'rgba(255, 255, 255, 0.8)', 
-              lineHeight: '1.5',
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: '550px',
-              fontFamily: "'Inter', sans-serif"
-            }}>
-              {mediaDetails.overview}
-            </p>
-          )}
-
-
-          </div>
-        </>
-      )}
 
       {/* Lock Overlay to block mouse clicks and all settings */}
       {isLocked && (
