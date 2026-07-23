@@ -225,8 +225,8 @@ console.error = (...args) => {
   originalError(...args);
 };
 
-const PORT_SERVICE = 50000;
-const PORT_BACKEND = 50001;
+const PORT_SERVICE = 49999;
+const PORT_BACKEND = 49998;
 
 const getJsonBody = (req) => new Promise((resolve) => {
   let body = '';
@@ -730,7 +730,7 @@ const backendServer = http.createServer(async (req, res) => {
           code: code,
           client_id: 'f2926f0d87d3e789c50a3c276ab6002f5027dec31089fe75792c2836165c7289',
           client_secret: client_secret || '',
-          redirect_uri: redirect_uri || 'http://localhost:50000',
+          redirect_uri: redirect_uri || 'http://localhost:49999',
           grant_type: 'authorization_code'
         };
 

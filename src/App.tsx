@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { RemoteVideoPlayer } from './components/RemoteVideoPlayer';
 import type { VideoItem } from './types/media';
 
-export const BACKEND_ORIGIN = 'http://127.0.0.1:50001';
+export const BACKEND_ORIGIN = 'http://127.0.0.1:49998';
 
 const defaultSettings = {
   subSettings: {
